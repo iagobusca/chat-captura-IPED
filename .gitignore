@@ -1,0 +1,16 @@
+# Sistema operacional / editores
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+
+# Backups locais gerados pelo instalador
+*.bak
+*.bak-*
+
+# Saidas temporarias
+tmp/
+temp/
+*.log
+
