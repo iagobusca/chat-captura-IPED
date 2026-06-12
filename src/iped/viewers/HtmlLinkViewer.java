@@ -1660,14 +1660,29 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
     }
 
     private String groupFolder(IItem item) {
-        String type = item.getType();
+        String type = item == null ? "" : safe(item.getType()).toLowerCase(); //$NON-NLS-1$
+        String name = item == null ? "" : safe(item.getName()).toLowerCase(); //$NON-NLS-1$
         if (type != null) {
-            type = type.toLowerCase();
             if (type.startsWith("image")) return "imagens"; //$NON-NLS-1$ //$NON-NLS-2$
             if (type.startsWith("audio")) return "audios"; //$NON-NLS-1$ //$NON-NLS-2$
             if (type.startsWith("video")) return "videos"; //$NON-NLS-1$ //$NON-NLS-2$
+            if (type.contains("pdf")) return "pdfs"; //$NON-NLS-1$ //$NON-NLS-2$
         }
+        if (hasExtension(name, ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif", ".bmp", ".tif", ".tiff")) return "imagens"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$
+        if (hasExtension(name, ".opus", ".ogg", ".mp3", ".m4a", ".aac", ".wav", ".amr", ".flac")) return "audios"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
+        if (hasExtension(name, ".mp4", ".3gp", ".mov", ".webm", ".avi", ".mkv")) return "videos"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
+        if (hasExtension(name, ".pdf")) return "pdfs"; //$NON-NLS-1$ //$NON-NLS-2$
         return "outros"; //$NON-NLS-1$
+    }
+
+    private boolean hasExtension(String name, String... extensions) {
+        String safeName = safe(name).toLowerCase();
+        for (String extension : extensions) {
+            if (safeName.endsWith(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Path uniquePath(Path path) {
@@ -1825,13 +1840,11 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
             out.println("<script>function showSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});var el=document.getElementById(id);if(el)el.classList.add('active');document.querySelectorAll('#menu a[data-section]').forEach(function(a){a.classList.toggle('active-link',a.getAttribute('data-section')===id)});return false;}window.onload=function(){showSection('info');};</script>"); //$NON-NLS-1$
             out.println("</head><body><div id=\"menu\"><h1>Relat&oacute;rio de Captura</h1>"); //$NON-NLS-1$
             out.println("<h2>Informa&ccedil;&otilde;es</h2><a href=\"#\" data-section=\"info\" onclick=\"return showSection('info')\">Informa&ccedil;&otilde;es</a><a href=\"#\" data-section=\"busca\" onclick=\"return showSection('busca')\">Busca por palavras-chave</a>"); //$NON-NLS-1$
-            out.println("<h2>Marcadores</h2><a class=\"sub\" href=\"#\" data-section=\"sem-marcador\" onclick=\"return showSection('sem-marcador')\">[Sem Marcador]</a><a class=\"sub\" href=\"#\" data-section=\"whatsapp-share\" onclick=\"return showSection('whatsapp-share')\">Provavelmente Compartilhados via WhatsApp</a>"); //$NON-NLS-1$
-            out.println("<h2>Categorias</h2><a class=\"sub\" href=\"#\" data-section=\"audios\" onclick=\"return showSection('audios')\">&Aacute;udios</a><a class=\"sub\" href=\"#\" data-section=\"pdfs\" onclick=\"return showSection('pdfs')\">Documentos PDF</a><a class=\"sub\" href=\"#\" data-section=\"imagens\" onclick=\"return showSection('imagens')\">Outras Imagens</a><a class=\"sub\" href=\"#\" data-section=\"scans\" onclick=\"return showSection('scans')\">Poss&iacute;veis Digitaliza&ccedil;&otilde;es</a><a class=\"sub\" href=\"#\" data-section=\"videos\" onclick=\"return showSection('videos')\">V&iacute;deos</a><a class=\"sub\" href=\"#\" data-section=\"whatsapp\" onclick=\"return showSection('whatsapp')\">WhatsApp</a>"); //$NON-NLS-1$
+            out.println("<h2>Categorias</h2><a class=\"sub\" href=\"#\" data-section=\"captura\" onclick=\"return showSection('captura')\">Captura</a><a class=\"sub\" href=\"#\" data-section=\"audios\" onclick=\"return showSection('audios')\">&Aacute;udios</a><a class=\"sub\" href=\"#\" data-section=\"pdfs\" onclick=\"return showSection('pdfs')\">Documentos PDF</a><a class=\"sub\" href=\"#\" data-section=\"imagens\" onclick=\"return showSection('imagens')\">Outras Imagens</a><a class=\"sub\" href=\"#\" data-section=\"scans\" onclick=\"return showSection('scans')\">Poss&iacute;veis Digitaliza&ccedil;&otilde;es</a><a class=\"sub\" href=\"#\" data-section=\"videos\" onclick=\"return showSection('videos')\">V&iacute;deos</a><a class=\"sub\" href=\"#\" data-section=\"whatsapp\" onclick=\"return showSection('whatsapp')\">WhatsApp</a>"); //$NON-NLS-1$
             out.println("<h2>Ajuda</h2><a class=\"sub\" href=\"#\" data-section=\"ajuda\" onclick=\"return showSection('ajuda')\">Relat&oacute;rio e Anexo</a></div><div id=\"content\">"); //$NON-NLS-1$
             out.println("<div class=\"section\" id=\"info\"><div class=\"card\"><h2>Informa&ccedil;&otilde;es</h2><p><b>Status:</b> " + html(status) + "</p><p><b>Frames capturados:</b> " + frames.size() + "</p><p><b>Arquivos exportados:</b> " + exported.size() + "</p><p class=\"links\"><a href=\"whatsapp.html\">whatsapp.html</a><a href=\"whatsapp-coordinates.json\">whatsapp-coordinates.json</a><a href=\"texto.txt\">texto.txt</a><a href=\"hashes.txt\">hashes.txt</a><a href=\"Lista de Arquivos.csv\">Lista de Arquivos.csv</a><a href=\"manifest.json\">manifest.json</a></p></div></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             out.println("<div class=\"section\" id=\"busca\"><div class=\"card\"><h2>Busca por palavras-chave</h2><p>Use a busca do navegador neste relat&oacute;rio ou consulte os arquivos exportados na lista CSV.</p></div></div>"); //$NON-NLS-1$
-            writeReportFileSection(out, "sem-marcador", "[Sem Marcador]", exported, "all"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            writeReportFileSection(out, "whatsapp-share", "Provavelmente Compartilhados via WhatsApp", exported, "attachments"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            writeReportFileSection(out, "captura", "Captura", exported, "capture"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             writeReportFileSection(out, "audios", "&Aacute;udios", exported, "audio"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             writeReportFileSection(out, "pdfs", "Documentos PDF", exported, "pdf"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             writeReportFileSection(out, "imagens", "Outras Imagens", exported, "image"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -1869,7 +1882,7 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
     }
 
     private String reportSectionKind(String filter) {
-        return "all".equals(filter) || "attachments".equals(filter) ? "Marcador" : "Categoria"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        return "Categoria"; //$NON-NLS-1$
     }
 
     private void writeReportFileEntry(PrintWriter out, ExportedFile file, String typeLabel) {
@@ -1907,10 +1920,9 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
         out.println("<h2>Ajuda</h2><p><b>Itens do Menu:</b></p>"); //$NON-NLS-1$
         out.println("<p class=\"item\"><b>Informa&ccedil;&otilde;es</b><br>P&aacute;gina inicial contendo informa&ccedil;&otilde;es referentes ao exame pericial, como o n&uacute;mero do laudo, material examinado, peritos respons&aacute;veis, entre outros.</p>"); //$NON-NLS-1$
         out.println("<p class=\"item\"><b>Arquivos selecionados</b></p>"); //$NON-NLS-1$
-        out.println("<p class=\"subitem\"><b>Marcadores:</b> P&aacute;gina contendo lista dos arquivos agrupados segundo classifica&ccedil;&atilde;o realizada pelo perito durante o exame pericial.</p>"); //$NON-NLS-1$
         out.println("<p class=\"subitem\"><b>Categorias (Opcional):</b> P&aacute;gina contendo lista dos arquivos agrupados segundo classifica&ccedil;&atilde;o autom&aacute;tica realizada pelo software pericial.</p>"); //$NON-NLS-1$
         out.println("<h3>Armazenamento e visualiza&ccedil;&atilde;o dos arquivos</h3>"); //$NON-NLS-1$
-        out.println("<p>Os arquivos selecionados durante os exames foram renomeados e exportados para o diret&oacute;rio &quot;Exportados&quot; desta m&iacute;dia. Para obter os nomes e demais informa&ccedil;&otilde;es originais dos arquivos acesse &quot;Marcadores&quot;.</p>"); //$NON-NLS-1$
+        out.println("<p>Os arquivos selecionados durante os exames foram renomeados e exportados para o diret&oacute;rio &quot;Exportados&quot; desta m&iacute;dia. Para obter os nomes e demais informa&ccedil;&otilde;es originais dos arquivos acesse as categorias do relat&oacute;rio.</p>"); //$NON-NLS-1$
         out.println("<p>Recomenda-se configurar o programa navegador para modo de trabalho offline, de forma que o conte&uacute;do de arquivos hipertexto, tais como tempor&aacute;rios de navega&ccedil;&atilde;o na Internet, seja visualizado sem atualiza&ccedil;&atilde;o de dados em servidores externos.</p>"); //$NON-NLS-1$
         out.println("<p>Para visualizar o conte&uacute;do desta m&iacute;dia &oacute;tica num computador com sistema Linux/Unix, certifique-se de que as configura&ccedil;&otilde;es de locales do sistema est&atilde;o configuradas para o conjunto de caracteres ISO-8859-1.</p>"); //$NON-NLS-1$
         out.println("<p>Nem todos os arquivos exportados nesta m&iacute;dia podem ser abertos diretamente pelo programa navegador utilizado. Neste caso, pode ser necess&aacute;ria a instala&ccedil;&atilde;o do aplicativo apropriado (entre em contato com o suporte t&eacute;cnico de inform&aacute;tica do seu setor para informa&ccedil;&otilde;es sobre visualizadores dispon&iacute;veis).</p>"); //$NON-NLS-1$
@@ -1934,13 +1946,14 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
     private boolean matchesReportFilter(ExportedFile file, String filter) {
         String path = file == null ? "" : safe(file.relativePath).toLowerCase(); //$NON-NLS-1$
         if ("all".equals(filter)) return true; //$NON-NLS-1$
+        if ("capture".equals(filter)) return path.startsWith("screenshots/"); //$NON-NLS-1$ //$NON-NLS-2$
         if ("attachments".equals(filter)) return path.startsWith("anexos/"); //$NON-NLS-1$ //$NON-NLS-2$
-        if ("audio".equals(filter)) return path.contains("/audios/"); //$NON-NLS-1$ //$NON-NLS-2$
-        if ("video".equals(filter)) return path.contains("/videos/"); //$NON-NLS-1$ //$NON-NLS-2$
-        if ("pdf".equals(filter)) return path.endsWith(".pdf"); //$NON-NLS-1$ //$NON-NLS-2$
-        if ("image".equals(filter)) return path.startsWith("screenshots/") || path.contains("/imagens/") || path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
-        if ("scan".equals(filter)) return path.endsWith(".pdf") || path.contains("/imagens/"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        if ("whatsapp".equals(filter)) return path.startsWith("screenshots/") || path.startsWith("anexos/"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if ("audio".equals(filter)) return path.startsWith("anexos/audios/"); //$NON-NLS-1$ //$NON-NLS-2$
+        if ("video".equals(filter)) return path.startsWith("anexos/videos/"); //$NON-NLS-1$ //$NON-NLS-2$
+        if ("pdf".equals(filter)) return path.startsWith("anexos/pdfs/") || path.endsWith(".pdf"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if ("image".equals(filter)) return path.startsWith("anexos/imagens/"); //$NON-NLS-1$ //$NON-NLS-2$
+        if ("scan".equals(filter)) return path.startsWith("anexos/pdfs/") || path.startsWith("anexos/imagens/"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if ("whatsapp".equals(filter)) return path.startsWith("anexos/"); //$NON-NLS-1$ //$NON-NLS-2$
         return false;
     }
 
@@ -1960,7 +1973,6 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
             out.println("</head><body>"); //$NON-NLS-1$
             out.println("<div id=\"menu\"><h1>Relatório de Captura</h1>"); //$NON-NLS-1$
             out.println("<h2>Informações</h2><a href=\"#info\">Informações</a><a href=\"#busca\">Busca por palavras-chave</a>"); //$NON-NLS-1$
-            out.println("<h2>Marcadores</h2><div class=\"sub\">[Sem Marcador]</div><div class=\"sub\">Provavelmente Compartilhados via WhatsApp</div>"); //$NON-NLS-1$
             out.println("<h2>Categorias</h2><div class=\"sub\">Áudios</div><div class=\"sub\">Documentos PDF</div><div class=\"sub\">Outras Imagens</div><div class=\"sub\">Possíveis Digitalizações</div><div class=\"sub\">Vídeos</div><div class=\"sub\">WhatsApp</div>"); //$NON-NLS-1$
             out.println("<h2>Ajuda</h2><a href=\"#ajuda\">Relatório e Anexo</a></div>"); //$NON-NLS-1$
             out.println("<div id=\"content\">"); //$NON-NLS-1$
@@ -3240,6 +3252,11 @@ public class HtmlLinkViewer extends HtmlViewer implements SelectionListener {
 
     private String fileType(ExportedFile file) {
         String path = file == null ? "" : safe(file.relativePath).toLowerCase(); //$NON-NLS-1$
+        if (path.startsWith("screenshots/")) return "Captura"; //$NON-NLS-1$ //$NON-NLS-2$
+        if (path.startsWith("anexos/audios/")) return "Audio"; //$NON-NLS-1$ //$NON-NLS-2$
+        if (path.startsWith("anexos/videos/")) return "Video"; //$NON-NLS-1$ //$NON-NLS-2$
+        if (path.startsWith("anexos/pdfs/") || path.endsWith(".pdf")) return "Documento PDF"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if (path.startsWith("anexos/imagens/")) return "Imagem"; //$NON-NLS-1$ //$NON-NLS-2$
         if (path.startsWith("screenshots/") || path.endsWith(".png")) return "Imagem PNG"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         if (path.contains("/audios/")) return "Áudio"; //$NON-NLS-1$ //$NON-NLS-2$
         if (path.contains("/videos/")) return "Vídeo"; //$NON-NLS-1$ //$NON-NLS-2$
