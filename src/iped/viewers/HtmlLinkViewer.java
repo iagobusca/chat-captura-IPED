@@ -1189,7 +1189,7 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
                 jobs.add(job);
                 continue;
             }
-String content = Files.readString(manifest);
+            String content = Files.readString(manifest);
             job.legacyAnnotations = jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             job.status = jsonField(content, "status"); //$NON-NLS-1$
             job.startMessageId = jsonField(content, "startMessageId"); //$NON-NLS-1$
@@ -1201,6 +1201,10 @@ String content = Files.readString(manifest);
             job.sourceTitle = jsonField(source, "title"); //$NON-NLS-1$
             job.sourceHash = jsonField(source, "hash"); //$NON-NLS-1$
             job.sourcePath = jsonField(source, "caminho"); //$NON-NLS-1$
+
+            // Compatibilidade com capturas legadas: tenta recuperar dados de origem
+            // a partir de whatsapp-coordinates.json e texto.txt quando o manifest
+            // (versao 1) nao trouxe sourceMetadata completo.
             Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
             if (Files.isRegularFile(coordinates)) {
                 String coordinateContent = Files.readString(coordinates);
@@ -1216,13 +1220,43 @@ String content = Files.readString(manifest);
                 } else {
                     job.endAnchor = enrichAnchorFromCoordinates(job.endAnchor, coordinateEndAnchor);
                 }
+                if (job.sourceName == null || job.sourceName.isBlank()) {
+                    String coordSource = jsonObjectField(coordinateContent, "sourceMetadata"); //$NON-NLS-1$
+                    job.sourceName = firstNonBlank(job.sourceName, jsonField(coordSource, "nome"), jsonField(coordSource, "title")); //$NON-NLS-1$ //$NON-NLS-2$
+                    job.sourceTitle = firstNonBlank(job.sourceTitle, jsonField(coordSource, "title"), jsonField(coordSource, "nome")); //$NON-NLS-1$ //$NON-NLS-2$
+                    job.sourceHash = firstNonBlank(job.sourceHash, jsonField(coordSource, "hash")); //$NON-NLS-1$
+                    job.sourcePath = firstNonBlank(job.sourcePath, jsonField(coordSource, "caminho")); //$NON-NLS-1$
+                }
             }
+
+            Path text = folderPath.resolve("texto.txt"); //$NON-NLS-1$
+            if (Files.isRegularFile(text)) {
+                CaptureTextHeader textHeader = readCaptureTextHeader(text);
+                job.sourceName = firstNonBlank(job.sourceName, textHeader.title, textHeader.chatId);
+                job.sourceTitle = firstNonBlank(job.sourceTitle, textHeader.title);
+                job.chatId = firstNonBlank(job.chatId, textHeader.chatId);
+            }
+
+            // Legado: se ainda sem nome de origem, usa o titulo/pasta para permitir
+            // localizar o chat e re-extrair, salvando na versao recente.
             job.title = firstNonBlank(job.sourceTitle, job.sourceName, folder);
-            job.chatId = inferChatId(job.title);
+            if (job.sourceName == null || job.sourceName.isBlank()) {
+                job.sourceName = job.title;
+            }
+            if (job.sourceTitle == null || job.sourceTitle.isBlank()) {
+                job.sourceTitle = job.title;
+            }
+            if (job.chatId == null || job.chatId.isBlank()) {
+                job.chatId = inferChatId(job.title);
+            }
+
             job.luceneQueries = buildRecaptureQueries(job);
             job.luceneQuery = job.luceneQueries.isEmpty() ? "" : job.luceneQueries.get(0); //$NON-NLS-1$
-            job.valid = job.startAnchor.isUsable() && job.endAnchor.isUsable() && !job.luceneQueries.isEmpty()
-                    && job.sourceName != null && !job.sourceName.isBlank();
+            boolean hasAnchors = job.startAnchor.isUsable() && job.endAnchor.isUsable();
+            boolean hasQueries = !job.luceneQueries.isEmpty();
+            // Capturas legadas podem nao ter todos os dados de assinatura; aceita
+            // quando ha ancora utilizavel e ao menos uma consulta derivada.
+            job.valid = hasAnchors && (hasQueries || job.legacyAnnotations);
             if (!job.valid && job.invalidReason == null) {
                 job.invalidReason = "dados insuficientes para localizar chat/inicio/fim por assinatura"; //$NON-NLS-1$
             }
@@ -1230,6 +1264,7 @@ String content = Files.readString(manifest);
         }
         return jobs;
     }
+
 
     private List<String> readCaptureFolders(Path outputRoot) throws IOException {
         List<String> folders = new ArrayList<>();
