@@ -2581,7 +2581,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 + "var grid=document.getElementById('grid');var q=document.getElementById('q');"
                 + "var chrono=document.getElementById('chrono');var count=document.getElementById('count');"
                 + "var none=document.getElementById('noresult');"
-                + "function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');}"
+                + "function norm(s){return String(s||'').toLowerCase().replace(/_/g,' ').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/\\s+/g,' ').trim();}"
                 + "function byChrono(a,b){var ka=a.getAttribute('data-chrono')||'';var kb=b.getAttribute('data-chrono')||'';"
                 + "if(ka===kb)return a.getAttribute('data-folder').localeCompare(b.getAttribute('data-folder'));"
                 + "if(ka&&kb)return ka<kb?-1:1;if(ka)return -1;if(kb)return 1;"

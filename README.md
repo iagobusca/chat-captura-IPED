@@ -324,6 +324,8 @@ O fluxo esperado e:
 
 ## Atualizacoes recentes
 
+- Busca no `index.html` agora normaliza `_` e espaços, facilitando nomes como `Jean_pai_de_carlos`.
+
 - Painel externo de anotacoes (`Nota` / `Chat vinculado`) no `whatsapp.html`, ao lado do chat.
 - Busca textual do `whatsapp.html` movida para a coluna lateral esquerda.
 - Captura de chat vinculado com nome deterministico (`chatRefId`), permitindo exibir o trecho sem re-extrair.
