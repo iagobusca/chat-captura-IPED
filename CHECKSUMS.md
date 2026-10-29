@@ -4,7 +4,43 @@ Arquivo principal do instalador:
 
 ```text
 instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
-SHA-256: 15483DB46CC133CE7DF9D20D95AC5CB335ED46943D0760D805736668D289FCD7
+SHA-256: 4BDF24B458B42776BF04016B54A46E7D45515C6026FE5FFD05A62B6F5E181734
+Versao do plugin: 2.0.0
 ```
 
 Use este hash para confirmar se o JAR do pacote e o JAR instalado no IPED sao a mesma versao.
+
+## Historico
+
+| Versao | SHA-256 | Data | Mudanca |
+|---|---|---|---|
+| 2.0.0 | `4C8EDA288C27691F28F19BE205CE3EDCF61ABEC4CB51491133F3149937EB29A5` | 2026-10-09 | busca por texto tambem no `whatsapp.html` gerado |
+| 2.0.0 | `41A9D7B0D935381C08D428A864D16B5009F049C5E405258DB5E3DB2C98A153AB` | 2026-10-08 | pesquisa por texto no chat, com scroll ate a mensagem; tambem na janela vinculada |
+| 2.0.0 | `4C7B5C5816FCCB394012B17F6B7E7757CC43D28C52DACA9560576C56566A5B3D` | 2026-10-08 | anotacoes so na RAM; `anotacoes.json` e gravado apenas na captura |
+| 2.0.0 | `AF595DED00CAC3B92D0580C0FDF85543282B595F17C9DC8ADF2432C34EBC3521` | 2026-10-08 | clique no icone abre janela com Notas/Chat Vinculado (ver/apagar); icone nunca entra na captura |
+| 2.0.0 | `B55827E568FA3FCFCB2CC8B34393AFE065F470CD54418B316EB8438B01E7E8DD` | 2026-10-08 | icone de anotacao a esquerda + popup de opcoes; busca e toggle de cronologia no `index.html` |
+| 2.0.0 | `502AAC4C45FAD63FA100859DECE769F7A4510092B2CD6E40CEEB585D06E38644` | 2026-10-08 | corrige SyntaxError no JS do `whatsapp.html` |
+| 2.0.0 | `AA56CF8F65733855D34603E8D12E6322F1232DE726E9CE2FF1757391EC56FDC1` | 2026-10-08 | HTML carrega a captura vinculada; pasta `vinculado` ignorada no indice |
+| 2.0.0 | `DE2A2D3BF772928CF410A92737CB18995BD0FDA5A7F18CA1A385205D0720888B` | 2026-10-08 | janela do chat vinculado sem Notas/Links |
+| 2.0.0 | `33D8882A195C9D93E7A52634132709F95C2F940D33E5D83CCD4032BB753F109E` | 2026-10-08 | destino fixo `vinculado`; lista mostra nomes e participantes |
+| 2.0.0 | `0D9E5F78AC381E4EB91EA5F75DD7C9138943347A44EB921456390EB8536C1D4E` | 2026-10-08 | corrige carga dos chats do caso e abertura da janela |
+| 2.0.0 | `09F56B44CF8599FA6066A980B4219AF0520C8B2530EFF6FB9BC083E40743DB0E` | 2026-10-08 | vincula CHATS, janela de captura propria, dialogos 640x640 |
+| 2.0.0 | `C42E4F050D1EF8368C4E6FE833E11AE33151A2AB9A944CAAFC9DBDBB4844E59B` | 2026-10-08 | notas/links com chats e janela de captura |
+| 2.0.0 | `AB243B99E180EEAAE8476656CF86B7114CBD0FC03BFFE222B84B20629BEB699F` | 2026-10-08 | primeira build com notas/links (vinculava contatos) |
+| 1.x | `727783D85FABB34AEFF65AEAC4902A58977D05209710DFFE842DF81D3F730EAC` | 2026-06-14 | captura por intervalo, re-extrair, censura por blur |
+
+## Como verificar
+
+```powershell
+Get-FileHash -Algorithm SHA256 `
+  'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\plugins\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
+```
+
+E o instalado:
+
+```powershell
+Get-FileHash -Algorithm SHA256 `
+  'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\lib\iped-viewers-impl-4.3.1.jar'
+```
+
+Os dois hashes devem ser iguais.

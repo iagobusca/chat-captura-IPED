@@ -2,19 +2,36 @@ package iped.viewers;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
 import iped.viewers.localization.Messages;
 
@@ -33,25 +50,57 @@ public class ChatCapturePanel extends JPanel {
     private final JButton chooseSensitiveFolder = new JButton("..."); //$NON-NLS-1$
     private final JButton startStop = new JButton(Messages.getString("ChatCapturePanel.Start")); //$NON-NLS-1$
     private final JButton recapture = new JButton("Re-Extrair"); //$NON-NLS-1$
+    private final JButton annotateSaved = new JButton("Anotar chat salvo..."); //$NON-NLS-1$
+    private final JButton saveAnnotations = new JButton("Salvar Trecho-Notas"); //$NON-NLS-1$
+    private final JCheckBox annotationsToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), true); //$NON-NLS-1$ //$NON-NLS-2$
     private final JLabel status = new JLabel(Messages.getString("ChatCapturePanel.MarkMessages")); //$NON-NLS-1$
     private final JLabel frames = new JLabel("0"); //$NON-NLS-1$
     private final JLabel attachments = new JLabel("0"); //$NON-NLS-1$
+    private final JLabel notesCounter = new JLabel("0"); //$NON-NLS-1$
+    private final JLabel linksCounter = new JLabel("0"); //$NON-NLS-1$
+    private final JLabel outOfRangeCounter = new JLabel("0"); //$NON-NLS-1$
     private final JLabel recaptureBatchLabel = new JLabel(" "); //$NON-NLS-1$
     private final JLabel recaptureStepLabel = new JLabel(" "); //$NON-NLS-1$
     private final JProgressBar recaptureBatchProgress = new JProgressBar(0, 100);
     private final JProgressBar recaptureStepProgress = new JProgressBar(0, 100);
+    private JPanel linkedDestinationRow;
+    private JLabel linkedDestinationLabel;
+    private JPanel outputRow;
+    private JPanel countersPanel;
+    private JPanel linksCell;
+    private JLabel notesLabel;
+    private boolean linkedCaptureMode;
+    private String linkedCustomName;
+
+    private final JTextField searchField = new JTextField();
+    private final JLabel searchStatus = new JLabel(" "); //$NON-NLS-1$
+    private final JButton searchPrevious = new JButton(Messages.getString("ChatSearch.Previous")); //$NON-NLS-1$
+    private final JButton searchNext = new JButton(Messages.getString("ChatSearch.Next")); //$NON-NLS-1$
+    private final JButton searchClear = new JButton(Messages.getString("ChatSearch.Clear")); //$NON-NLS-1$
+    private final DefaultListModel<ChatSearchHit> searchModel = new DefaultListModel<>();
+    private final JList<ChatSearchHit> searchList = new JList<>(searchModel);
+    private final Timer searchDebounce;
+    private int searchResultTotal;
 
     public ChatCapturePanel(HtmlLinkViewer viewer) {
         super(new BorderLayout(4, 6));
         this.viewer = viewer;
+        searchDebounce = new Timer(450, e -> viewer.searchChat(searchField.getText()));
+        searchDebounce.setRepeats(false);
         setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        setPreferredSize(new Dimension(260, 250));
+        setPreferredSize(new Dimension(290, 320));
 
         JPanel form = new JPanel(new BorderLayout(4, 4));
-        JPanel outputRow = new JPanel(new BorderLayout(4, 4));
+        outputRow = new JPanel(new BorderLayout(4, 4));
         outputRow.add(new JLabel(Messages.getString("ChatCapturePanel.OutputFolder")), BorderLayout.NORTH); //$NON-NLS-1$
         outputRow.add(outputFolder, BorderLayout.CENTER);
         outputRow.add(chooseFolder, BorderLayout.EAST);
+        // linha exibida apenas na captura de chat vinculado
+        linkedDestinationRow = new JPanel(new BorderLayout(4, 4));
+        linkedDestinationRow.add(new JLabel(Messages.getString("ChatCapturePanel.LinkedDestination")), BorderLayout.NORTH); //$NON-NLS-1$
+        linkedDestinationLabel = new JLabel(" ");
+        linkedDestinationRow.add(linkedDestinationLabel, BorderLayout.CENTER);
+        linkedDestinationRow.setVisible(false);
 
         JPanel customNameRow = new JPanel(new BorderLayout(4, 4));
         customFolderName.setEnabled(false);
@@ -65,7 +114,10 @@ public class ChatCapturePanel extends JPanel {
         sensitiveRow.add(sensitiveImagesFolder, BorderLayout.CENTER);
         sensitiveRow.add(chooseSensitiveFolder, BorderLayout.EAST);
 
-        form.add(outputRow, BorderLayout.NORTH);
+        JPanel outputArea = new JPanel(new BorderLayout(4, 4));
+        outputArea.add(outputRow, BorderLayout.NORTH);
+        outputArea.add(linkedDestinationRow, BorderLayout.SOUTH);
+        form.add(outputArea, BorderLayout.NORTH);
         JPanel similarityRow = new JPanel(new BorderLayout(4, 4));
         sensitiveSimilarity.setToolTipText("Quanto maior, menos imagens diferentes serao borradas"); //$NON-NLS-1$
         similarityRow.add(new JLabel("Similaridade blur"), BorderLayout.NORTH); //$NON-NLS-1$
@@ -76,22 +128,38 @@ public class ChatCapturePanel extends JPanel {
         blurLevelRow.add(new JLabel("Blur censura"), BorderLayout.NORTH); //$NON-NLS-1$
         blurLevelRow.add(sensitiveBlurLevel, BorderLayout.CENTER);
 
-        JPanel options = new JPanel(new GridLayout(4, 1, 4, 4));
+        JPanel options = new JPanel(new GridLayout(5, 1, 4, 4));
         options.add(customNameRow);
         options.add(sensitiveRow);
         options.add(similarityRow);
         options.add(blurLevelRow);
+        annotationsToggle.setToolTipText(Messages.getString("ChatCapturePanel.IncludeAnnotations")); //$NON-NLS-1$
+        options.add(annotationsToggle);
         form.add(options, BorderLayout.SOUTH);
 
-        JPanel counters = new JPanel(new BorderLayout(4, 4));
-        counters.add(new JLabel(Messages.getString("ChatCapturePanel.Frames")), BorderLayout.WEST); //$NON-NLS-1$
-        counters.add(frames, BorderLayout.CENTER);
-        counters.add(new JLabel(Messages.getString("ChatCapturePanel.Attachments")), BorderLayout.EAST); //$NON-NLS-1$
+        JPanel counters = new JPanel(new GridLayout(2, 3, 4, 2));
+        counters.add(new JLabel(Messages.getString("ChatCapturePanel.Frames"))); //$NON-NLS-1$
+        counters.add(frames);
+        counters.add(new JLabel(Messages.getString("ChatCapturePanel.Attachments"))); //$NON-NLS-1$
+        counters.add(attachments);
+        notesLabel = new JLabel(Messages.getString("ChatCapturePanel.Notes")); //$NON-NLS-1$
+        counters.add(notesLabel);
+        counters.add(notesCounter);
+        linksCell = new JPanel(new BorderLayout(2, 0));
+        linksCell.add(new JLabel(Messages.getString("ChatCapturePanel.Links")), BorderLayout.WEST); //$NON-NLS-1$
+        linksCell.add(linksCounter, BorderLayout.CENTER);
+        linksCell.add(new JLabel(Messages.getString("ChatCapturePanel.OutOfRange")), BorderLayout.EAST); //$NON-NLS-1$
+        linksCell.add(outOfRangeCounter, BorderLayout.SOUTH);
+        counters.add(linksCell);
+        counters.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
+        countersPanel = counters;
 
         JPanel bottom = new JPanel(new BorderLayout(4, 4));
-        JPanel actions = new JPanel(new GridLayout(1, 2, 4, 4));
+        JPanel actions = new JPanel(new GridLayout(2, 2, 4, 4));
         actions.add(startStop);
         actions.add(recapture);
+        actions.add(annotateSaved);
+        actions.add(saveAnnotations);
 
         recaptureBatchProgress.setStringPainted(true);
         recaptureStepProgress.setStringPainted(true);
@@ -107,7 +175,7 @@ public class ChatCapturePanel extends JPanel {
         bottom.add(progress, BorderLayout.SOUTH);
 
         add(form, BorderLayout.NORTH);
-        add(counters, BorderLayout.CENTER);
+        add(buildCenter(), BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
 
         chooseFolder.addActionListener(e -> selectFolder());
@@ -117,13 +185,194 @@ public class ChatCapturePanel extends JPanel {
             if (viewer.isChatCaptureRunning()) {
                 viewer.stopChatCapture();
             } else {
-                String customName = customNameToggle.isSelected() ? customFolderName.getText() : null;
-                viewer.startChatCapture(new File(outputFolder.getText()), customName, getSensitiveImagesFolder(),
-                        getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+                viewer.startChatCapture(new File(outputFolder.getText()), getEffectiveCustomName(),
+                        getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
             }
         });
         recapture.addActionListener(e -> viewer.showRecaptureDialog(new File(outputFolder.getText()), getSensitiveImagesFolder(),
                 getSensitiveSimilarityPercent(), getSensitiveBlurPercent()));
+        annotateSaved.addActionListener(e -> viewer.annotateSavedChat());
+        saveAnnotations.addActionListener(e -> viewer.saveAnnotations());
+    }
+
+    public void setOutputFolder(java.io.File folder) {
+        if (folder != null) {
+            outputFolder.setText(folder.getAbsolutePath());
+        }
+    }
+
+    /**
+     * Centro do painel: os contadores da captura em cima e a lista de resultados
+     * da pesquisa abaixo. A busca fica visivel tambem na janela de chat vinculado,
+     * onde {@link #hideAnnotationsUi()} so remove os controles de anotacao.
+     */
+    private JComponent buildCenter() {
+        JPanel searchArea = new JPanel(new BorderLayout(4, 4));
+        searchArea.setBorder(BorderFactory.createTitledBorder(Messages.getString("ChatSearch.Title"))); //$NON-NLS-1$
+
+        searchField.setToolTipText(Messages.getString("ChatSearch.Hint")); //$NON-NLS-1$
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                scheduleSearch();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                scheduleSearch();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                scheduleSearch();
+            }
+        });
+
+        JPanel searchButtons = new JPanel(new GridLayout(1, 3, 2, 2));
+        searchButtons.add(searchPrevious);
+        searchButtons.add(searchNext);
+        searchButtons.add(searchClear);
+
+        JPanel searchTop = new JPanel(new BorderLayout(4, 4));
+        searchTop.add(searchField, BorderLayout.CENTER);
+        searchTop.add(searchButtons, BorderLayout.EAST);
+        searchTop.add(searchStatus, BorderLayout.SOUTH);
+
+        searchList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        searchList.setVisibleRowCount(8);
+        searchList.setCellRenderer(new SearchHitRenderer());
+        searchList.addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && searchList.getSelectedValue() != null) {
+                    viewer.gotoChatSearchHit(searchList.getSelectedIndex());
+                }
+            }
+        });
+        searchList.addKeyListener(new KeyAdapter() {
+
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER && searchList.getSelectedValue() != null) {
+                    e.consume();
+                    viewer.gotoChatSearchHit(searchList.getSelectedIndex());
+                }
+            }
+        });
+
+        searchArea.add(searchTop, BorderLayout.NORTH);
+        searchArea.add(new JScrollPane(searchList), BorderLayout.CENTER);
+        searchArea.setPreferredSize(new Dimension(290, 240));
+        updateSearchButtons();
+
+        searchPrevious.addActionListener(e -> viewer.previousChatSearchHit());
+        searchNext.addActionListener(e -> viewer.nextChatSearchHit());
+        searchClear.addActionListener(e -> clearSearch());
+        searchField.addKeyListener(new KeyAdapter() {
+
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    e.consume();
+                    searchDebounce.stop();
+                    viewer.searchChat(searchField.getText());
+                    if (searchList.getModel().getSize() > 0) {
+                        searchList.setSelectedIndex(0);
+                        viewer.gotoChatSearchHit(0);
+                    }
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    e.consume();
+                    clearSearch();
+                }
+            }
+        });
+
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, countersPanel, searchArea);
+        split.setResizeWeight(0.0);
+        split.setContinuousLayout(true);
+        split.setBorder(null);
+        // 0.25 mantem os contadores compactos e da o resto para os resultados
+        split.setDividerLocation(0.25);
+        return split;
+    }
+
+    private void scheduleSearch() {
+        searchDebounce.restart();
+        if (searchField.getText().trim().isEmpty()) {
+            searchDebounce.stop();
+            viewer.searchChat(""); //$NON-NLS-1$
+        }
+    }
+
+    private void clearSearch() {
+        searchDebounce.stop();
+        searchField.setText(""); //$NON-NLS-1$
+        viewer.searchChat(""); //$NON-NLS-1$
+    }
+
+    /** Recebe os resultados vindos da thread de busca. */
+    void setSearchResults(String query, int total, List<ChatSearchHit> hits) {
+        SwingUtilities.invokeLater(() -> {
+            searchResultTotal = total;
+            searchModel.clear();
+            for (ChatSearchHit hit : hits) {
+                searchModel.addElement(hit);
+            }
+            if (query == null || query.trim().isEmpty()) {
+                searchStatus.setText(" "); //$NON-NLS-1$
+            } else if (total == 0) {
+                searchStatus.setText(Messages.getString("ChatSearch.NoResults")); //$NON-NLS-1$
+            } else if (total > hits.size()) {
+                searchStatus.setText(Messages.getString("ChatSearch.Truncated") + " " + total); //$NON-NLS-1$
+            } else {
+                searchStatus.setText(Messages.getString("ChatSearch.Results") + " " + total); //$NON-NLS-1$
+            }
+            updateSearchButtons();
+        });
+    }
+
+    /** Destaca na lista o resultado para onde o chat foi rolado. */
+    void setCurrentSearchHit(int index, int size) {
+        SwingUtilities.invokeLater(() -> {
+            if (index >= 0 && index < searchModel.getSize()) {
+                searchList.setSelectedIndex(index);
+                searchList.ensureIndexIsVisible(index);
+            }
+            updateSearchButtons();
+        });
+    }
+
+    private void updateSearchButtons() {
+        boolean hasResults = searchModel.getSize() > 0;
+        searchPrevious.setEnabled(hasResults);
+        searchNext.setEnabled(hasResults);
+        searchClear.setEnabled(hasResults || !searchField.getText().trim().isEmpty());
+    }
+
+    /** Renderiza o resultado com o tipo em negrito e o trecho normal. */
+    private static class SearchHitRenderer extends DefaultListCellRenderer {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected,
+                boolean focused) {
+            java.awt.Component component = super.getListCellRendererComponent(list, value, index, selected, focused);
+            if (value instanceof ChatSearchHit) {
+                ChatSearchHit hit = (ChatSearchHit) value;
+                String label = ChatSearchHit.typeLabel(hit.type);
+                setText(label.isEmpty() ? hit.snippet : "<html><b>" + escape(label) + "</b> " + escape(hit.snippet) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        + "</html>"); //$NON-NLS-1$
+                setToolTipText(hit.snippet);
+            }
+            return component;
+        }
+
+        private static String escape(String value) {
+            return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        }
     }
 
     private void selectFolder() {
@@ -177,6 +426,81 @@ public class ChatCapturePanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             startStop.setText(Messages.getString(running ? "ChatCapturePanel.Stop" : "ChatCapturePanel.Start")); //$NON-NLS-1$ //$NON-NLS-2$
             recapture.setEnabled(!running);
+            annotationsToggle.setEnabled(!running);
+        });
+    }
+
+    public String getOutputFolderText() {
+        return outputFolder.getText() == null ? "" : outputFolder.getText().trim(); //$NON-NLS-1$
+    }
+
+    /**
+     * Modo captura de chat vinculado: nao ha escolha de pasta nem nome custom. A saida
+     * vai sempre para a pasta {@code vinculado} dentro da pasta do conteudo capturado
+     * de origem, em uma subpasta que identifica o chat e a mensagem.
+     */
+    public void setLinkedCaptureMode(File destination, String folderName) {
+        linkedCaptureMode = true;
+        outputFolder.setText(destination == null ? "" : destination.getAbsolutePath()); //$NON-NLS-1$
+        outputRow.setVisible(false);
+        customNameToggle.setVisible(false);
+        customFolderName.setVisible(false);
+        linkedCustomName = folderName;
+        linkedDestinationRow.setVisible(true);
+        linkedDestinationLabel.setText("<html>" + html(destination == null ? "" : destination.getAbsolutePath()) //$NON-NLS-1$ //$NON-NLS-2$
+                + "<br><small>" + html(Messages.getString("ChatCapturePanel.LinkedDestinationHint")) + "</small></html>"); //$NON-NLS-1$ //$NON-NLS-2$
+        revalidate();
+        repaint();
+    }
+
+    /**
+ * Esconde o controle de Notas e Links na captura de chat vinculado.
+ *
+ * Nao faz sentido anotar ou vincular de novo dentro do chat que ja foi vinculado:
+ * a anotacao pertence a mensagem de origem, e o manifesto desta captura ja
+ * registra o linkedFrom.
+ */
+    public void hideAnnotationsUi() {
+        annotationsToggle.setVisible(false);
+        notesLabel.setVisible(false);
+        notesCounter.setVisible(false);
+        linksCell.setVisible(false);
+        annotateSaved.setVisible(false);
+        saveAnnotations.setVisible(false);
+        // sobram apenas Imagens e Arquivos
+        countersPanel.setLayout(new GridLayout(1, 4, 4, 2));
+        setAnnotationsEnabled(false);
+        revalidate();
+        repaint();
+    }
+
+    private static String html(String value) {
+        if (value == null) {
+            return ""; //$NON-NLS-1$
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+    }
+
+    /** Nome custom usado quando a captura e de chat vinculado. */
+    public String getEffectiveCustomName() {
+        return linkedCaptureMode ? linkedCustomName
+                : (customNameToggle.isSelected() ? customFolderName.getText() : null);
+    }
+
+    public boolean isAnnotationsEnabled() {
+        return annotationsToggle.isSelected();
+    }
+
+    public void setAnnotationsEnabled(boolean enabled) {
+        SwingUtilities.invokeLater(() -> annotationsToggle.setSelected(enabled));
+    }
+
+    public void updateAnnotationCounters(int notes, int links, int outOfRange) {
+        SwingUtilities.invokeLater(() -> {
+            notesCounter.setText(Integer.toString(notes));
+            linksCounter.setText(Integer.toString(links));
+            outOfRangeCounter.setText(Integer.toString(outOfRange));
+            outOfRangeCounter.setForeground(outOfRange > 0 ? new java.awt.Color(0xC6, 0x28, 0x28) : outOfRangeCounter.getForeground());
         });
     }
 
