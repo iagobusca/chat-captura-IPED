@@ -4,16 +4,20 @@ Arquivo principal do instalador:
 
 ```text
 instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
-SHA-256: BCAF47998A620FFD501EF937038D9F9B44895C5118BC73A3BD62140DB70FA9C9
-Versao do plugin: 2.0.0
+SHA-256: F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1
+Versao do plugin: 2.2.1-beta
 ```
 
-Use este hash para confirmar se o JAR do pacote e o JAR instalado no IPED sao a mesma versao.
+Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no JAR instalado, portanto os hashes do pacote e da instalacao podem diferir; valide as entradas/classes com `validate-plugin-jar.ps1`.
 
 ## Historico
 
 | Versao | SHA-256 | Data | Mudanca |
 |---|---|---|---|
+| 2.2.1-beta | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | beta: selecao em massa no dialogo Re-Extrair |
+| 2.0.3 | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | botao alternavel Marcar/Desmarcar todos no Re-Extrair |
+| 2.0.2 | `60D1293FD45980977FB0FE11F8706995E076D2F714F0404BE34F43735CEC0C24` | 2026-10-29 | Messages recompilada com JDK 11 (--release 11) |
+| 2.0.1 | `6B11AE405B17A47366A2086A2B1FC9E5C0AD2285952C8AB4C0497B7B50AEC1AD` | 2026-10-29 | retorno seguro de chaves ausentes; validacao do instalador |
 | 2.0.0 | `4C8EDA288C27691F28F19BE205CE3EDCF61ABEC4CB51491133F3149937EB29A5` | 2026-10-09 | busca por texto tambem no `whatsapp.html` gerado |
 | 2.0.0 | `41A9D7B0D935381C08D428A864D16B5009F049C5E405258DB5E3DB2C98A153AB` | 2026-10-08 | pesquisa por texto no chat, com scroll ate a mensagem; tambem na janela vinculada |
 | 2.0.0 | `4C7B5C5816FCCB394012B17F6B7E7757CC43D28C52DACA9560576C56566A5B3D` | 2026-10-08 | anotacoes so na RAM; `anotacoes.json` e gravado apenas na captura |
@@ -28,6 +32,7 @@ Use este hash para confirmar se o JAR do pacote e o JAR instalado no IPED sao a 
 | 2.0.0 | `C42E4F050D1EF8368C4E6FE833E11AE33151A2AB9A944CAAFC9DBDBB4844E59B` | 2026-10-08 | notas/links com chats e janela de captura |
 | 2.0.0 | `AB243B99E180EEAAE8476656CF86B7114CBD0FC03BFFE222B84B20629BEB699F` | 2026-10-08 | primeira build com notas/links (vinculava contatos) |
 | 1.x | `727783D85FABB34AEFF65AEAC4902A58977D05209710DFFE842DF81D3F730EAC` | 2026-06-14 | captura por intervalo, re-extrair, censura por blur |
+
 
 ## Como verificar
 

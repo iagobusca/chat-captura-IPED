@@ -40,10 +40,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JLabel;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -1125,15 +1129,51 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         JPanel list = new JPanel(new GridLayout(0, 1, 4, 4));
         List<JCheckBox> checks = new ArrayList<>();
         for (RecaptureJob job : jobs) {
-JCheckBox check = new JCheckBox(job.displayLabel() + (job.legacyAnnotations ? "  [v1 - sem notas/links]" : "")); //$NON-NLS-1$ //$NON-NLS-2$
+            JCheckBox check = new JCheckBox(job.displayLabel() + (job.legacyAnnotations ? "  [v1 - sem notas/links]" : "")); //$NON-NLS-1$ //$NON-NLS-2$
             check.setEnabled(job.valid);
             checks.add(check);
             list.add(check);
         }
+        JButton selectAllButton = new JButton();
+        Runnable refreshSelectAllLabel = () -> {
+            boolean hasSelectableJob = false;
+            boolean allSelected = true;
+            for (JCheckBox check : checks) {
+                if (check.isEnabled()) {
+                    hasSelectableJob = true;
+                    allSelected = allSelected && check.isSelected();
+                }
+            }
+            selectAllButton.setText(allSelected && hasSelectableJob ? "Desmarcar todos" : "Marcar todos"); //$NON-NLS-1$ //$NON-NLS-2$
+            selectAllButton.setEnabled(hasSelectableJob);
+        };
+        selectAllButton.addActionListener(event -> {
+            boolean selectAll = false;
+            for (JCheckBox check : checks) {
+                if (check.isEnabled() && !check.isSelected()) {
+                    selectAll = true;
+                    break;
+                }
+            }
+            for (JCheckBox check : checks) {
+                if (check.isEnabled()) {
+                    check.setSelected(selectAll);
+                }
+            }
+            refreshSelectAllLabel.run();
+        });
+        for (JCheckBox check : checks) {
+            check.addItemListener(event -> refreshSelectAllLabel.run());
+        }
+        refreshSelectAllLabel.run();
+
         JScrollPane scroll = new JScrollPane(list);
         scroll.setPreferredSize(new java.awt.Dimension(720, Math.min(420, 34 * Math.max(3, jobs.size()))));
         JPanel panel = new JPanel(new BorderLayout(6, 6));
-        panel.add(new javax.swing.JLabel("Selecione as capturas que serao re-extraidas:"), BorderLayout.NORTH); //$NON-NLS-1$
+        JPanel listHeader = new JPanel(new BorderLayout(6, 0));
+        listHeader.add(new JLabel("Selecione as capturas que serao re-extraidas:"), BorderLayout.CENTER); //$NON-NLS-1$
+        listHeader.add(selectAllButton, BorderLayout.EAST);
+        panel.add(listHeader, BorderLayout.NORTH);
         panel.add(scroll, BorderLayout.CENTER);
         panel.add(buildRecaptureAnnotationsToggle(jobs), BorderLayout.SOUTH);
 
@@ -1196,6 +1236,13 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
             job.endMessageId = jsonField(content, "endMessageId"); //$NON-NLS-1$
             job.startAnchor = readAnchor(content, "startAnchor"); //$NON-NLS-1$
             job.endAnchor = readAnchor(content, "endAnchor"); //$NON-NLS-1$
+            // Capturas v2 nao gravam startMessageId/endMessageId; usa o id das ancoras.
+            if (job.startMessageId == null || job.startMessageId.isBlank()) {
+                job.startMessageId = job.startAnchor == null ? "" : safe(job.startAnchor.id); //$NON-NLS-1$
+            }
+            if (job.endMessageId == null || job.endMessageId.isBlank()) {
+                job.endMessageId = job.endAnchor == null ? "" : safe(job.endAnchor.id); //$NON-NLS-1$
+            }
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
             job.sourceName = jsonField(source, "nome"); //$NON-NLS-1$
             job.sourceTitle = jsonField(source, "title"); //$NON-NLS-1$
@@ -1274,9 +1321,13 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
             Matcher matcher = Pattern.compile("\"folder\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(content); //$NON-NLS-1$
             while (matcher.find()) {
                 String folder = unescapeJson(matcher.group(1));
-                if (!folder.isBlank() && !folders.contains(folder)) {
-                    folders.add(folder);
+                if (folder.isBlank() || folders.contains(folder)) {
+                    continue;
                 }
+                if (!Files.isDirectory(outputRoot.resolve(folder))) {
+                    continue;
+                }
+                folders.add(folder);
             }
         }
         if (folders.isEmpty() && Files.isDirectory(outputRoot)) {
@@ -1427,6 +1478,10 @@ activeRecaptureJob = job;
         if (job == null || job.luceneQueries == null || job.luceneQueries.isEmpty()) {
             return false;
         }
+        if (!job.startAnchor.isUsable() || !job.endAnchor.isUsable()) {
+            LOGGER.warn("Skipping recapture job without usable anchors: {}", job.folder); //$NON-NLS-1$
+            return false;
+        }
         for (String query : job.luceneQueries) {
             if (query == null || query.isBlank()) {
                 continue;
@@ -1436,7 +1491,7 @@ activeRecaptureJob = job;
             if (!attachSearcher.openItem(query, null, job.sourceName)) {
                 continue;
             }
-            if (waitUntilCaptureSourceMatches(job, 8000)) {
+            if (waitUntilCaptureSourceMatches(job, 3000)) {
                 return true;
             }
             LOGGER.info("Opened candidate for {}, but source did not match. Trying next query.", job.folder); //$NON-NLS-1$
@@ -1724,16 +1779,23 @@ activeRecaptureJob = job;
         if (item == null || job == null) {
             return false;
         }
-        if (job.sourceName != null && !job.sourceName.isBlank()) {
-            return job.sourceName.equals(item.getName());
-        }
-        if (job.sourcePath != null && !job.sourcePath.isBlank()) {
-            String expected = job.sourcePath.replace('\\', '/');
-            String actual = safe(item.getPath()).replace('\\', '/');
-            return expected.equalsIgnoreCase(actual);
-        }
-        if (job.sourceHash != null && !job.sourceHash.isBlank() && job.sourceHash.equalsIgnoreCase(safe(item.getHash()))) {
+        boolean nameMatch = job.sourceName != null && !job.sourceName.isBlank()
+                && job.sourceName.equals(item.getName());
+        String expected = job.sourcePath == null ? "" : job.sourcePath.replace('\\', '/');
+        String actual = safe(item.getPath()).replace('\\', '/');
+        boolean pathMatch = !expected.isBlank() && expected.equalsIgnoreCase(actual);
+        boolean hashMatch = job.sourceHash != null && !job.sourceHash.isBlank()
+                && job.sourceHash.equalsIgnoreCase(safe(item.getHash()));
+        if (nameMatch || pathMatch || hashMatch) {
             return true;
+        }
+        // Fallback para capturas legadas: tenta localizar pelo chatId/titulo no nome do item.
+        String needle = firstNonBlank(job.chatId, job.title, job.sourceTitle);
+        if (needle != null && !needle.isBlank()) {
+            String itemText = (safe(item.getName()) + " " + safe(item.getPath())).toLowerCase();
+            if (itemText.contains(needle.toLowerCase())) {
+                return true;
+            }
         }
         return false;
     }
@@ -2424,19 +2486,77 @@ private boolean isCaptureFolder(Path captureDir) {
 
     private List<CaptureAnchor> readCoordinateAnchors(String coordinatesJson) {
         List<CaptureAnchor> anchors = new ArrayList<>();
-        Matcher matcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
-                .matcher(safe(coordinatesJson));
-        while (matcher.find()) {
-            String object = matcher.group();
-            CaptureAnchor anchor = new CaptureAnchor();
-            anchor.id = jsonField(object, "id"); //$NON-NLS-1$
-            anchor.type = jsonField(object, "type"); //$NON-NLS-1$
-            anchor.text = jsonField(object, "text"); //$NON-NLS-1$
-            anchor.hash = jsonField(object, "hash"); //$NON-NLS-1$
-            anchor.date = extractMessageDate(anchor.text);
-            anchor.documentTop = jsonDoubleField(object, "documentTop", -1); //$NON-NLS-1$
-            anchor.documentBottom = jsonDoubleField(object, "documentBottom", -1); //$NON-NLS-1$
-            anchors.add(anchor.normalized());
+        String safe = safe(coordinatesJson);
+        // As ancoras reais ficam dentro de "frames[].blocks". startAnchor/endAnchor do
+        // topo do arquivo sao metadados e nao devem ser contados (evita +2 espurios).
+        // Usa parser JSON real para nao quebrar com texto contendo ']' ou braces.
+        try {
+            JSONObject root = new JSONObject(safe);
+            JSONArray frames = root.optJSONArray("frames"); //$NON-NLS-1$
+            if (frames != null) {
+                for (int i = 0; i < frames.length(); i++) {
+                    JSONObject frame = frames.optJSONObject(i);
+                    if (frame == null) {
+                        continue;
+                    }
+                    JSONArray blocks = frame.optJSONArray("blocks"); //$NON-NLS-1$
+                    if (blocks == null) {
+                        continue;
+                    }
+                    for (int j = 0; j < blocks.length(); j++) {
+                        JSONObject b = blocks.optJSONObject(j);
+                        if (b == null) {
+                            continue;
+                        }
+                        CaptureAnchor anchor = new CaptureAnchor();
+                        anchor.id = b.optString("id", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.type = b.optString("type", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.text = b.optString("text", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.hash = b.optString("hash", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.date = extractMessageDate(anchor.text);
+                        anchor.documentTop = b.optDouble("documentTop", -1); //$NON-NLS-1$
+                        anchor.documentBottom = b.optDouble("documentBottom", -1); //$NON-NLS-1$
+                        anchors.add(anchor.normalized());
+                    }
+                }
+            }
+            // Fallback: blocks no nivel raiz (formatos alternativos).
+            if (anchors.isEmpty()) {
+                JSONArray blocks = root.optJSONArray("blocks"); //$NON-NLS-1$
+                if (blocks != null) {
+                    for (int j = 0; j < blocks.length(); j++) {
+                        JSONObject b = blocks.optJSONObject(j);
+                        if (b == null) {
+                            continue;
+                        }
+                        CaptureAnchor anchor = new CaptureAnchor();
+                        anchor.id = b.optString("id", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.type = b.optString("type", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.text = b.optString("text", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.hash = b.optString("hash", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                        anchor.date = extractMessageDate(anchor.text);
+                        anchor.documentTop = b.optDouble("documentTop", -1); //$NON-NLS-1$
+                        anchor.documentBottom = b.optDouble("documentBottom", -1); //$NON-NLS-1$
+                        anchors.add(anchor.normalized());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Fallback para JSON malformado: regex original sobre o arquivo inteiro.
+            Matcher matcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
+                    .matcher(safe);
+            while (matcher.find()) {
+                String object = matcher.group();
+                CaptureAnchor anchor = new CaptureAnchor();
+                anchor.id = jsonField(object, "id"); //$NON-NLS-1$
+                anchor.type = jsonField(object, "type"); //$NON-NLS-1$
+                anchor.text = jsonField(object, "text"); //$NON-NLS-1$
+                anchor.hash = jsonField(object, "hash"); //$NON-NLS-1$
+                anchor.date = extractMessageDate(anchor.text);
+                anchor.documentTop = jsonDoubleField(object, "documentTop", -1); //$NON-NLS-1$
+                anchor.documentBottom = jsonDoubleField(object, "documentBottom", -1); //$NON-NLS-1$
+                anchors.add(anchor.normalized());
+            }
         }
         return anchors;
     }

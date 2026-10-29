@@ -854,9 +854,11 @@ Os badges sao `display:none` durante a captura (mesma regra de `.iped-capture-hi
 | `whatsapp.html` v1 | `DATA.annotations` ausente | JS cai no fluxo atual |
 | Leitor v1 do nosso `manifest.json` v2 | campos a mais | ignora campos desconhecidos; `version` so aparece em log |
 
+
+
 ### 13.1 Toggle no Re-Extrair
 
-Em `showRecaptureDialog()` (`:322`), acrescentar ao painel do dialogo:
+Em `showRecaptureDialog()` (`HtmlLinkViewer.java`, metodo `showRecaptureDialog`), o dialogo apresenta a lista de capturas e o toggle de notas/links:
 
 ```java
 JCheckBox annToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"));
@@ -872,6 +874,11 @@ if (allLegacy) {
 - Todos legados -> fixo em "Ignorar", **bloqueado** (decisao 3.3).
 - Mistura -> habilitado, default ligado, e a lista de checkboxes mostra `sem anotacoes` nas legadas.
 - Selecionar apenas legadas -> toggle e forcado a OFF no momento do `startRecaptureBatch`.
+
+### 13.1.1 Selecao em massa
+
+- Marcar todos seleciona apenas capturas validas; quando todas estao marcadas, o rotulo muda para Desmarcar todos.
+- A alteracao individual das caixas atualiza o rotulo imediatamente; capturas invalidas permanecem desabilitadas.
 
 `RecaptureJob` ganha `boolean legacyAnnotations;`, populado em `loadRecaptureJobs()` (`:383`)
 com `jsonLongField(content, "version", 1L) < 2L`.
@@ -1167,6 +1174,7 @@ Atualizar a lista "O que este plugin altera" e "Como usar no IPED".
 | Imagens: 0     Arquivos: 0   Notas: 0  Links: 0 <-NOVO|
 |                                                      |
 | [  Start  ] [ Re-Extrair ]                            |
+| Na lista: [Marcar todos] -> [Desmarcar todos]        |
 | Marque a mensagem inicial e final.                    |
 +------------------------------------------------------+
 ```
@@ -1312,4 +1320,3 @@ Atualizar a lista "O que este plugin altera" e "Como usar no IPED".
 - Captura vinculada com nome deterministico por chatRefId.
 - Modo de anotacao de chat salvo.
 - Botao Salvar Trecho-Notas.
-

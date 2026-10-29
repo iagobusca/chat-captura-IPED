@@ -4,7 +4,7 @@ Plugin/customizacao para o IPED 4.3.1 que adiciona captura visual avancada de co
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.0.0**
+Versao atual do plugin: **2.2.1-beta**
 
 ## O que este plugin altera
 
@@ -339,3 +339,10 @@ O fluxo esperado e:
 - Este plugin foi feito para IPED 4.3.1.
 - O JAR incluido neste pacote ja contem as classes compiladas modificadas.
 - O codigo-fonte alterado esta incluido para controle de versao e manutencao futura.
+
+
+## Versao beta 2.2.1-beta
+
+- O dialogo `Re-Extrair capturas` ganhou selecao em massa com o botao alternavel `Marcar todos` / `Desmarcar todos`; somente capturas validas podem ser selecionadas.
+- O viewer permanece compilado para Java 11 (`--release 11`), compativel com o runtime empacotado pelo IPED 4.3.1.
+- O instalador valida classes e bundles de idioma antes da troca e preserva backup do JAR instalado.
