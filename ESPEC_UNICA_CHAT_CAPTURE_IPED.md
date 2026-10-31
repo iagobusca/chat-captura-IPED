@@ -21,6 +21,7 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 | `ESPECIFICACAO_NOTAS_LINKS.md` | Parcialmente aplicado e revisado durante a implementação. Notas, vínculos, preflight, exportação e leitura legada têm código. O modelo antigo fala em vincular pessoas/contatos, enquanto o código atual vincula **chats** (`LinkedChatRef`, `chatRefId`). | A especificação pessoa/contato foi **substituída** por vínculo entre chats. Campos antigos como `contactId` continuam apenas como compatibilidade de leitura. A versão atual deste documento define o comportamento vigente. |
 | `ESPEC_ANOTAR_CHAT_SALVO.md` | Implementado com alterações de interface. Há seleção de chat salvo, carregamento das anotações e gravação explícita; o botão atual é `Salvar Trecho-Notas`. | Aplicado com o fluxo e rótulos atuais. A gravação não acontece a cada digitação: fica em memória até salvar explicitamente ou realizar captura. |
 | `ESPEC_COMPATIBILIDADE_JAVA11.md` | Correção aplicada. Nesta revisão, as 256 classes do JAR do plugin 2.3.0-beta foram lidas diretamente e todas têm major version 55. | Mantido como requisito permanente de build. Os hashes antigos de builds de teste foram substituídos pelos valores atuais em `CHECKSUMS.md`. |
+| `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md` | Núcleo aplicado: bundles dentro do JAR, mesclagem de chaves ausentes na localização externa do IPED, backups e fallback de chave. Os dois bundles distribuídos têm 160 chaves cada e seus conjuntos coincidem nesta revisão. O validador verifica classes e chaves representativas, mas não compara automaticamente o conjunto completo em builds futuros. | Manter o fluxo de idioma; registrar validação completa/paridade de chaves como parcial. O arquivo separado foi incorporado aqui. |
 | `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md` | **Parcial.** `mediaX/Y/Width/Height` e `textX/Y/Width/Height` são calculados e gravados nas coordenadas. O HTML ainda posiciona o botão `T` usando os limites gerais da mensagem; não consome os retângulos separados. | Não declarar posicionamento preciso dos botões como concluído. A parte de armazenamento está aplicada; a parte visual permanece incompleta, sem evidência de cancelamento explícito. |
 | `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md` | O núcleo está implementado: fingerprint, assinatura por mensagem/frame, inventário, atalho para captura inalterada, regeneração permitida de `whatsapp.html`, recaptura integral para outras divergências e auditoria. O `integridade.json` mantém inventário e eventos encadeados. | Consolidado nas seções 6 e 7. Similaridade visual não autoriza pular atualização. O histórico registra hashes, não arquiva os bytes antigos. |
 | `ESPEC_VERIFICADOR_INTEGRIDADE.md` | Verificador independente implementado como JAR e EXE, com modos local/público, seleção de capturas, hashes e relatórios. O fluxo de distribuição atual pede que a pessoa coloque o JAR ou EXE ao lado do índice. | O usuário pediu anteriormente que o plugin copie e valide automaticamente ambos os executáveis em cada raiz de captura, mas o código da 2.3.0-beta não entrega isso. É uma solicitação pendente, não uma funcionalidade implementada nem um pedido cancelado. O botão “Histórico de registro” no card do índice também não foi localizado no código atual. |
@@ -53,6 +54,11 @@ Não foi encontrada outra solicitação explicitamente cancelada pelo usuário n
 O analista marca o início e o fim do trecho, define a pasta de saída e inicia a captura. O plugin gera frames PNG, coordenadas/metadata, conteúdo HTML e relatórios. A opção de censura compara thumbnails com uma pasta de referência; os controles existentes incluem similaridade e intensidade do blur. No diálogo de `Re-Extrair`, o botão alterna entre `Marcar todos` e `Desmarcar todos` para as capturas selecionáveis.
 
 O fluxo-base está documentado no README e no viewer. Os valores atuais dos seletores e o comportamento do IPED continuam sendo fonte da verdade do código; esta especificação não cria uma nova opção visual.
+### 3.2 Idiomas e falha segura de recursos
+
+O pacote do instalador inclui bundles padrão em inglês e `pt_BR`. O instalador valida o JAR antes de substituir o instalado, cria backup, inclui bundles no JAR e mescla no diretório externo `iped/localization` apenas as chaves ausentes, preservando traduções já existentes e criando backups dos arquivos alterados. Se a instalação de idiomas falha, o BAT tenta restaurar o JAR anterior.
+
+A classe `iped.viewers.localization.Messages` tem fallback para chave ausente: registra aviso e devolve a própria chave em vez de deixar a construção Swing abortar com `MissingResourceException`. O validador atual exige classes/arquivos e checa chaves representativas (`ChatCapturePanel.IncludeAnnotations` e `HexViewerPlus.appName`); embora o par atualmente distribuído tenha 160 chaves em cada idioma, com conjuntos iguais nesta revisão, o script não compara automaticamente o conjunto completo nem comprova cobertura de toda chamada do código. A inicialização no IPED continua sendo uma verificação funcional necessária.
 
 ## 4. Anotações e vínculos entre chats
 
@@ -152,7 +158,8 @@ O hash de pasta legado do índice e a raiz de conteúdo do `integridade.json` us
 
 | Verificação | Evidência no projeto/release | Estado |
 |---|---|---|
-| Plugin e viewer em bytecode Java 11 | Versão distribuída e verificação de major version 55 documentada; JAR da versão identificado em `CHECKSUMS.md`. | Implementado; o histórico documenta validação do pacote. |
+| Plugin e viewer em bytecode Java 11 | JAR atual tem 256 classes com major version 55 e seu SHA-256 confere com `CHECKSUMS.md`. | Implementado e conferido nesta revisão. |
+| Instalação de idioma e fallback de chave | Bundle no JAR, merge externo de chaves ausentes, backups e fallback implementados; o BAT chama o script de instalação e restaura o JAR em erro. A paridade completa de chaves não é testada automaticamente. | Parcial: os bundles atuais têm paridade de 160 chaves; falta automatizar a comparação completa e comprovar cobertura de todas as chamadas. |
 | Anotações e vínculo entre chats | `ChatAnnotationStore`, diálogos, seleção de chat salvo, exportação no HTML/manifesto. | Implementado com o modelo de chat atual; especificação antiga de contatos substituída. |
 | Anotar chat salvo e salvar sem recaptura imediata | `SavedChatPickerDialog`, `annotateSavedChat()` e `saveAnnotations()`. | Implementado com botão atual `Salvar Trecho-Notas`. |
 | Coordenadas específicas de mídia/texto | Campos calculados e gravados; não usados na posição do botão `T`. | Parcial. |
@@ -186,16 +193,16 @@ O hash de pasta legado do índice e a raiz de conteúdo do `integridade.json` us
 | Verificador | Referência pública correta/incorreta, histórico colado, várias capturas | Comparar hash ou conteúdo completo e mostrar a referência usada; permitir copiar hashes/histórico. | UI/código presentes; canal de confiança continua externo. |
 | Verificador | Reexecução e duas instâncias do EXE | Substituir relatório somente ao terminar; runtimes temporários não colidem nem apagam instância ativa. | Rotina e autoteste do EXE registrados no histórico de release; não reexecutados nesta revisão. |
 | Distribuição | JAR/EXE/fontes e ZIP do instalador | Cinco assets publicados e checksums correspondentes em `CHECKSUMS.md`. | Conferido na release `v2.3.0-beta`. |
-## 11. Itens futuros sem compromisso de implementação
 
-Estes itens ficam registrados para evitar que propostas antigas sejam confundidas com recursos atuais. Não serão implementados automaticamente por constarem aqui:
+## 11. Pendências e requisitos não entregues
+
+Estes itens ficam registrados para separar o que foi pedido do que está no pacote 2.3.0-beta. Sua presença documenta a pendência; não significa que a implementação ocorreu nem cancela solicitações anteriores:
 
 1. Posicionar hotspots de áudio/vídeo e botão de transcrição usando os retângulos específicos já gravados.
-2. Decidir se o índice precisa de um atalho **Histórico de registro** e qual página/fluxo deve abrir.
+2. Implementar o atalho **Histórico de registro** no card do índice e definir a página/fluxo que deve abrir.
 3. Implementar a cópia e validação automáticas do JAR/EXE pelo plugin, conforme solicitação anterior; a versão atual ainda orienta cópia manual.
 4. Formalizar serialização canônica de `recordHash` com vetores de teste que possam ser reproduzidos fora da implementação Java atual.
 5. Testar Re-Extrair 2.3.0-beta em interface IPED real para captura intacta, arquivo ausente/alterado, regeneração de HTML e falha/rollback.
-
 ## 12. Documentos e evidências mantidos
 
-Esta especificação substitui os documentos `ESPECIFICACAO_NOTAS_LINKS.md`, `ESPEC_ANOTAR_CHAT_SALVO.md`, `ESPEC_COMPATIBILIDADE_JAVA11.md`, `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md`, `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md` e `ESPEC_VERIFICADOR_INTEGRIDADE.md`. As implementações e testes continuam nos diretórios `src/`, `tests/` e `verificador-integridade/`; este documento é a única especificação consolidada, não substitui código, changelog ou checksums.
+Esta especificação substitui os documentos `ESPECIFICACAO_NOTAS_LINKS.md`, `ESPEC_ANOTAR_CHAT_SALVO.md`, `ESPEC_COMPATIBILIDADE_JAVA11.md`, `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md`, `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md`, `ESPEC_VERIFICADOR_INTEGRIDADE.md` e `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md`. As implementações e testes continuam nos diretórios `src/`, `tests/` e `verificador-integridade/`; este documento é a única especificação consolidada, não substitui código, changelog ou checksums.
