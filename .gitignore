@@ -14,3 +14,17 @@ tmp/
 temp/
 *.log
 
+
+# Build outputs and release assets
+/build/
+/release-assets/
+/verificador-integridade/build-native/
+/verificador-integridade/build-single-exe/
+/verificador-integridade/dist/
+/verificador-integridade/dist-exe/
+/verificador-integridade/publish-single/
+/verificador-integridade/launcher/bin/
+/verificador-integridade/launcher/obj/
+/verificador-integridade/launcher/publish/
+/verificador-integridade/launcher/payload.zip
+/verificador-integridade/launcher/payload.sha256

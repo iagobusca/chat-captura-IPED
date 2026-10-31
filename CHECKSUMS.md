@@ -4,8 +4,8 @@ Arquivo principal do instalador:
 
 ```text
 instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
-SHA-256: F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1
-Versao do plugin: 2.2.1-beta
+SHA-256: FCA50E2E458F0A3F77C8C87081AF9A6A7A438F1AFF315E31EF904BE77632FE74
+Versao do plugin: 2.3.0-beta
 ```
 
 Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no JAR instalado, portanto os hashes do pacote e da instalacao podem diferir; valide as entradas/classes com `validate-plugin-jar.ps1`.
@@ -14,6 +14,7 @@ Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no
 
 | Versao | SHA-256 | Data | Mudanca |
 |---|---|---|---|
+| 2.3.0-beta | `FCA50E2E458F0A3F77C8C87081AF9A6A7A438F1AFF315E31EF904BE77632FE74` | 2026-10-30 | Re-Extrair incremental, assinaturas por frame e auditoria de restauracao |
 | 2.2.1-beta | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | beta: selecao em massa no dialogo Re-Extrair |
 | 2.0.3 | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | botao alternavel Marcar/Desmarcar todos no Re-Extrair |
 | 2.0.2 | `60D1293FD45980977FB0FE11F8706995E076D2F714F0404BE34F43735CEC0C24` | 2026-10-29 | Messages recompilada com JDK 11 (--release 11) |
@@ -49,3 +50,13 @@ Get-FileHash -Algorithm SHA256 `
 ```
 
 Os dois hashes devem ser iguais.
+
+## Arquivos da release 2.3.0-beta
+
+| Arquivo | Tamanho | SHA-256 |
+|---|---:|---|
+| instalador-chat-captura-IPED-2.3.0-beta.zip | 564.071 bytes | AABB031676ED1EC781C20E383BBBF1736C462136934FC62DBE31B2050DBEB3EE |
+| integridade-verifier.jar | 96.466 bytes | A5415A32F1F9423AB0A187675A38BF71DB640FD346F6846F55510F4856CE3345 |
+| integridade-verifier.exe | 78.345.769 bytes | FA04E2DB2A9EC35A6A53DC2713FF4DAC55B8253ECAAC32104F9612612196665F |
+
+O ZIP contém o instalador autocontido, o JAR 2.3.0-beta, os arquivos de idioma e o validador do pacote. O JAR e EXE do verificador são assets separados para download independente.
