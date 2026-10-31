@@ -14,13 +14,17 @@ Arquivos principais alterados:
 src/iped/viewers/HtmlLinkViewer.java
 src/iped/viewers/CaptureIntegrity.java
 src/iped/viewers/ChatCapturePanel.java
+src/iped/viewers/ChatCaptureLinkedWindow.java
 src/iped/viewers/ChatAnnotation.java
 src/iped/viewers/ChatAnnotationSet.java
 src/iped/viewers/ChatAnnotationStore.java
-src/iped/viewers/ChatContactRef.java
+src/iped/viewers/ChatAnnotationActionDialog.java
 src/iped/viewers/ChatNoteDialog.java
-src/iped/viewers/ChatContactPickerDialog.java
+src/iped/viewers/LinkedChatRef.java
+src/iped/viewers/LinkedChatPickerDialog.java
+src/iped/viewers/SavedChatPickerDialog.java
 src/iped/viewers/ChatPreflightDialog.java
+src/iped/viewers/ChatSearchHit.java
 src/iped/viewers/AnnotationEligibility.java
 src/iped/viewers/AnnotationPreflight.java
 ```
@@ -34,7 +38,7 @@ instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
 Especificacao tecnica completa:
 
 ```text
-ESPECIFICACAO_NOTAS_LINKS.md
+ESPEC_UNICA_CHAT_CAPTURE_IPED.md
 ```
 
 As alteracoes incluem:
@@ -91,7 +95,7 @@ Os dois itens ficam **visiveis e desabilitados** (com o motivo no proprio rotulo
 Ao clicar `Start` com anotacoes presentes, aparece um popup com:
 
 - quantas notas e quantas mensagens com link;
-- total de contatos vinculados;
+- total de chats vinculados;
 - quantas anotacoes estao **dentro** do intervalo;
 - quantas estao **fora** e serao **ignoradas**;
 - quantas nao tem correspondencia no chat atual.
@@ -171,25 +175,15 @@ Importante: o indice vem do que foi capturado. Mensagens **fora** do intervalo
 capturado nao aparecem na busca do HTML. Para pesquisar o chat inteiro, use a
 busca do painel no IPED (secao acima), que le o DOM do chat carregado.
 
-### Onde as anotacoes ficam
+### Onde as anotações ficam
 
-As anotacoes **so existem na RAM** enquanto o IPED esta aberto. Nada e gravado no
-`anotacoes.json` a cada nota ou link:
+As anotações são mantidas por chat em `anotacoes.json`. Durante a edição, as mudanças ficam na RAM para não sobrescrever o arquivo salvo com dados ainda não gravados.
 
-- adicionar, editar ou apagar marca o armazenamento como alterado;
-- o `anotacoes.json` e escrito **na hora da captura**, junto com o manifesto, o
-  `texto.txt` e o `whatsapp.html`;
-- captura sem anotacoes selecionadas nao grava o arquivo, preservando o
-  manifesto `version: 1` e a ausencia de anotacoes no resultado.
-
-Ao abrir uma pasta de saida que ja tenha `anotacoes.json`, o arquivo e apenas
-**carregado e exibido**. Alteracoes feitas na sessao ficam na RAM e nao apagam o
-que estava gravado: para mudar o resultado e preciso refazer a captura ou usar
-`Re-Extrair`. Se houver alteracao nao salva, o plugin nunca relê o arquivo do
-disco, porque a RAM e sempre mais nova.
-
-Se o IPED for fechado sem capturar, as anotacoes da sessao se perdem. Por isso a
-captura e o momento de consolidação do trabalho.
+- Uma captura persiste as anotações aplicáveis junto aos artefatos gerados.
+- Em **Anotar chat salvo**, o botão **Salvar Trecho-Notas** grava as alterações sem exigir uma nova captura. Use `Re-Extrair` depois para atualizar o HTML derivado quando necessário.
+- Ao abrir uma pasta com `anotacoes.json`, o plugin carrega os dados existentes. Alterações ainda não salvas não substituem o arquivo.
+- Fechar o IPED descarta somente as alterações que não foram salvas nem incluídas em uma captura.
+- Sem anotações, a captura não precisa criar o bloco opcional de anotações.
 
 Todas as janelas do plugin abrem com no minimo **640x640**.
 
@@ -211,7 +205,7 @@ isolada. Nada e gravado dentro do caso.
 chat-captura IPED/
   README.md
   CHECKSUMS.md
-  ESPECIFICACAO_NOTAS_LINKS.md
+  ESPEC_UNICA_CHAT_CAPTURE_IPED.md
   src/
     iped/
       viewers/
@@ -380,4 +374,4 @@ O manifesto registra a versao do plugin, versao dos geradores, fingerprint da ca
 
 Se somente whatsapp.html estiver ausente/alterado ou seu gerador precisar de atualizacao, o viewer pode recria-lo usando whatsapp-coordinates.json valido. Para arquivos de origem, frames, anexos e demais divergencias sem migracao especifica, Re-Extrair usa o fluxo completo e registra no reextracao-auditoria.jsonl os hashes esperados e recuperados. Transcricoes de IA nao entram na identidade de audio/video; sem hash da midia original a assinatura fica incompleta e nao autoriza ignorar a captura.
 
-A especificacao e o plano detalhado estao em ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md.
+A especificacao e o plano detalhado estao em ESPEC_UNICA_CHAT_CAPTURE_IPED.md.

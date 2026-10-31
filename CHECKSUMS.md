@@ -58,7 +58,7 @@ Os dois hashes devem ser iguais.
 | instalador-chat-captura-IPED-2.3.0-beta.zip | 564.071 bytes | AABB031676ED1EC781C20E383BBBF1736C462136934FC62DBE31B2050DBEB3EE |
 | integridade-verifier.jar | 96.466 bytes | A5415A32F1F9423AB0A187675A38BF71DB640FD346F6846F55510F4856CE3345 |
 | integridade-verifier.exe | 78.345.769 bytes | FA04E2DB2A9EC35A6A53DC2713FF4DAC55B8253ECAAC32104F9612612196665F |
-| src-plugin-2.3.0-beta.zip | 153.769 bytes | 1A2678C3345BFF6653393B318E2BF5F036DD9983213E6CED09B3F01F7417812D |
+| src-plugin-2.3.0-beta.zip | 118.010 bytes | 57EB55DF2B3F3FDF0442ACF61323F87911C64E0A780F186F2A1D383EEEDA20B9 |
 | src-integridade-verifier-1.2.1.zip | 21.537 bytes | 03AD384642F54D2C197BB2EF26DA9D09F2532C58DEE1882A25723B8233870D14 |
 
 O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes de código-fonte são assets separados para download independente.
