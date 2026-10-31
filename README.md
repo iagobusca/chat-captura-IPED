@@ -243,15 +243,17 @@ chat-captura IPED/
 
 ## Downloads da versão beta 2.3.0
 
-Na página de releases, baixe os três arquivos publicados:
+Na página de releases, baixe os três arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
 
 | Arquivo | Para que serve |
 |---|---|
 | instalador-chat-captura-IPED-2.3.0-beta.zip | Instalador completo, JAR do plugin e arquivos de idioma |
 | integridade-verifier.jar | Verificador independente com Java 11 ou superior |
 | integridade-verifier.exe | Mesmo verificador para Windows x64, sem Java instalado |
+| src-plugin-2.3.0-beta.zip | Código-fonte separado do plugin, testes e especificações |
+| src-integridade-verifier-1.2.1.zip | Código-fonte separado do verificador, testes e scripts de compilação |
 
-Os verificadores também podem ser baixados separadamente. Seus SHA-256 e o hash do ZIP estão em CHECKSUMS.md.
+Os dois códigos-fonte são downloads independentes e também permanecem organizados no repositório. Os SHA-256 dos cinco arquivos estão em CHECKSUMS.md.
 
 ## Como instalar
 
