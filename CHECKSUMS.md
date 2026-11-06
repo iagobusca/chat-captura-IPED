@@ -67,10 +67,10 @@ O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes
 
 | Arquivo | Tamanho | SHA-256 |
 |---|---:|---|
-| instalador-chat-captura-IPED-2.3.0-beta.zip | 568.020 bytes | `2B5F9787D2B1E49835B4A542C7E2BECCEACE917E11F3FB8714EC5B92144F5529` |
-| iped-viewers-impl-4.3.1.jar | 593.910 bytes | `5DB61A15FDC9599F0B9364C94C54BDC8299936304D2C69B3BB73155A7F69AD2F` |
-| integridade-verifier.jar (1.2.4) | 103.941 bytes | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` |
-| integridade-verifier.exe (1.2.4) | 77.806.121 bytes | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` |
+| instalador-chat-captura-IPED-2.3.0-beta-verificador-1.2.4.zip | 568.020 bytes | `2B5F9787D2B1E49835B4A542C7E2BECCEACE917E11F3FB8714EC5B92144F5529` |
+| iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar | 593.910 bytes | `5DB61A15FDC9599F0B9364C94C54BDC8299936304D2C69B3BB73155A7F69AD2F` |
+| integridade-verifier-1.2.4.jar | 103.941 bytes | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` |
+| integridade-verifier-1.2.4.exe | 77.806.121 bytes | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` |
 | src-integridade-verifier-1.2.4.zip | 24.830 bytes | `1BDBE0C4FDE88F148150690A34C7973C888295E35587A34C7A5ACD242A486B72` |
 
 Os hashes das versões anteriores do verificador estão em [versao_hash.md](versao_hash.md).

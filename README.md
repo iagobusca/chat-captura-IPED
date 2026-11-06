@@ -2,7 +2,7 @@
 
 Plugin/customizacao para o IPED 4.3.1 que adiciona captura visual avancada de conversas WhatsApp no viewer HTML.
 
-Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
+Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar` sem precisar recompilar o IPED.
 
 Versao atual do plugin: **2.3.0-beta**
 
@@ -48,7 +48,7 @@ src/iped/viewers/AnnotationPreflight.java
 JAR gerado para instalacao:
 
 ```text
-instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
+instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar
 ```
 
 Especificacao tecnica completa:
@@ -244,7 +244,7 @@ chat-captura IPED/
     install-localization.ps1
     validate-plugin-jar.ps1
     iped-viewer-messages*.properties
-    iped-viewers-impl-4.3.1.jar
+    iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar
   verificador-integridade/
     src/IntegrityVerifier.java
     integridade-verifier.jar
@@ -257,10 +257,10 @@ Na página de releases, baixe os quatro arquivos de execução ou, se quiser aud
 
 | Arquivo | Para que serve |
 |---|---|
-| instalador-chat-captura-IPED-2.3.0-beta.zip | Instalador completo, JAR do plugin e arquivos de idioma |
-| iped-viewers-impl-4.3.1.jar | JAR compilado do plugin para instalação manual |
-| integridade-verifier.jar | Verificador independente com Java 11 ou superior |
-| integridade-verifier.exe | Mesmo verificador para Windows x64, sem Java instalado |
+| instalador-chat-captura-IPED-2.3.0-beta-verificador-1.2.4.zip | Instalador completo, JAR do plugin e arquivos de idioma |
+| iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar | JAR compilado do plugin para instalação manual |
+| integridade-verifier-1.2.4.jar | Verificador independente com Java 11 ou superior |
+| integridade-verifier-1.2.4.exe | Mesmo verificador para Windows x64, sem Java instalado |
 | src-plugin-2.3.0-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
 | src-integridade-verifier-1.2.4.zip | Código-fonte separado do verificador, testes e scripts de compilação |
 
@@ -276,7 +276,7 @@ O histórico de hashes das versões do verificador está em [versao_hash.md](ver
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia instalador-chat-captura-IPED-2.3.0-beta.zip.
+2. Baixe e extraia instalador-chat-captura-IPED-2.3.0-beta-verificador-1.2.4.zip.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
@@ -296,7 +296,7 @@ O `instalar_captura_chat_zap.bat` faz os seguintes passos:
 O backup fica ao lado do JAR original, com nome parecido com:
 
 ```text
-iped-viewers-impl-4.3.1.jar.bak-YYYYMMDD-HHMMSS
+iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar.bak-YYYYMMDD-HHMMSS
 ```
 
 ## Verificador independente
