@@ -1,6 +1,6 @@
 # Plugin Chat Captura IPED
 
-**Versão:** 2.3.0-beta | Data: 06/11/2026.
+**Versão:** 2.3.1-beta | Data: 06/11/2026.
 **Base:** IPED 4.3.1; Java 11.
 
 Este documento descreve o plugin Java que amplia o viewer HTML do IPED para capturar conversas WhatsApp, gerar evidências navegáveis, anotar mensagens e verificar/reextrair capturas.

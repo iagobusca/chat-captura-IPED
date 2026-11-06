@@ -6,8 +6,8 @@ Os hashes abaixo são SHA-256 dos binários oficiais. Compare o hash do arquivo 
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
-| 1.2.4 | `integridade-verifier.jar` | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` | Build desta versão |
-| 1.2.4 | `integridade-verifier.exe` | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` | Build desta versão |
+| 1.2.4 | `integridade-verifier.jar` | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` | Asset da release v2.3.1-beta |
+| 1.2.4 | `integridade-verifier.exe` | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` | Asset da release v2.3.1-beta |
 | 1.2.3 | `integridade-verifier.jar` | `61E4544D1723392C5DC918E771F69EBFAC9ACF136EF6BABA098EE1AF8A152072` | Asset publicado na release `v2.3.0-beta` |
 | 1.2.3 | `integridade-verifier.exe` | `9439A1BD27D7C81EBFC334EC161096FD915E84EF347527EDC504129BA94A51E1` | Asset publicado na release `v2.3.0-beta` |
 

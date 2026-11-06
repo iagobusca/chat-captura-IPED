@@ -2,9 +2,9 @@
 
 Plugin/customizacao para o IPED 4.3.1 que adiciona captura visual avancada de conversas WhatsApp no viewer HTML.
 
-Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar` sem precisar recompilar o IPED.
+Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.3.0-beta**
+Versao atual do plugin: **2.3.1-beta**
 
 ## About
 
@@ -48,7 +48,7 @@ src/iped/viewers/AnnotationPreflight.java
 JAR gerado para instalacao:
 
 ```text
-instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar
+instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
 ```
 
 Especificacao tecnica completa:
@@ -244,24 +244,24 @@ chat-captura IPED/
     install-localization.ps1
     validate-plugin-jar.ps1
     iped-viewer-messages*.properties
-    iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar
+    iped-viewers-impl-4.3.1.jar
   verificador-integridade/
     src/IntegrityVerifier.java
     integridade-verifier.jar
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Downloads da versão beta 2.3.0
+## Downloads da versão beta 2.3.1
 
 Na página de releases, baixe os quatro arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
 
 | Arquivo | Para que serve |
 |---|---|
-| instalador-chat-captura-IPED-2.3.0-beta-verificador-1.2.4.zip | Instalador completo, JAR do plugin e arquivos de idioma |
-| iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar | JAR compilado do plugin para instalação manual |
+| instalador-chat-captura-IPED-2.3.1-beta-verificador-1.2.4.zip | Instalador completo, JAR do plugin e arquivos de idioma |
+| iped-viewers-impl-4.3.1-2.3.1-beta.jar | JAR compilado do plugin para instalação manual |
 | integridade-verifier-1.2.4.jar | Verificador independente com Java 11 ou superior |
 | integridade-verifier-1.2.4.exe | Mesmo verificador para Windows x64, sem Java instalado |
-| src-plugin-2.3.0-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
+| src-plugin-2.3.1-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
 | src-integridade-verifier-1.2.4.zip | Código-fonte separado do verificador, testes e scripts de compilação |
 
 Os pacotes de código-fonte são downloads independentes e também permanecem organizados no repositório. O JAR do plugin e os dois formatos do verificador também são publicados como arquivos separados. Os SHA-256 de cada artefato estão em [CHECKSUMS.md](CHECKSUMS.md).
@@ -276,11 +276,11 @@ O histórico de hashes das versões do verificador está em [versao_hash.md](ver
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia instalador-chat-captura-IPED-2.3.0-beta-verificador-1.2.4.zip.
+2. Baixe e extraia instalador-chat-captura-IPED-2.3.1-beta-verificador-1.2.4.zip.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP é autocontido: inclui o JAR 2.3.0-beta, o instalador, o validador do pacote e os dois bundles de idioma.
+O ZIP é autocontido: inclui o JAR 2.3.1-beta, o instalador, o validador do pacote e os dois bundles de idioma.
 
 ## O que o BAT faz
 
@@ -296,7 +296,7 @@ O `instalar_captura_chat_zap.bat` faz os seguintes passos:
 O backup fica ao lado do JAR original, com nome parecido com:
 
 ```text
-iped-viewers-impl-4.3.1-2.3.0-beta-verificador-1.2.4.jar.bak-YYYYMMDD-HHMMSS
+iped-viewers-impl-4.3.1.jar.bak-YYYYMMDD-HHMMSS
 ```
 
 ## Verificador independente
@@ -385,14 +385,14 @@ O fluxo esperado e:
 - O instalador valida classes e bundles de idioma antes da troca e preserva backup do JAR instalado.
 
 
-## Versao beta 2.3.0-beta
+## Versao beta 2.3.1-beta
 
 - Assinatura semantica por mensagem/frame e SHA-256 separado do PNG.
 - Fingerprint de origem/intervalo/configuracao e inventario dos artefatos no manifesto.
 - Re-Extrair ignora captura inalterada com inventario valido e pode regenerar whatsapp.html a partir das coordenadas salvas.
 - Arquivos ausentes/alterados sao auditados com hashes esperado e recuperado; sem migracao seletiva segura, usa reextracao completa.
 
-## Re-Extrair incremental e auditavel (2.3.0-beta)
+## Re-Extrair incremental e auditavel (2.3.1-beta)
 
 O manifesto registra a versao do plugin, versao dos geradores, fingerprint da captura, assinatura por mensagem/frame, hash SHA-256 do PNG e inventario dos arquivos de saida. Uma captura so e ignorada quando a origem, o intervalo, as configuracoes, os geradores e todos os hashes conferem.
 

@@ -16,7 +16,7 @@ A janela exibida em `VerifierIntegrity.showAlertIfNeeded` (chamada em Start e Re
 >
 > Para ter certeza da validade:
 > - Baixe o verificador do repositório oficial: https://github.com/iagobusca/chat-captura-IPED
-> - Compare o hash SHA-256 do arquivo existente com o hash publicado no repositório (release v2.3.0-beta).
+> - Compare o hash SHA-256 do arquivo existente com o hash publicado no repositório (release v2.3.1-beta).
 > - Se quiser validar com máxima garantia, use o modo "Integridade Público" do verificador, informando a hash obtida de uma fonte em que você confie.
 >
 > Esta mensagem é apenas informativa: a captura/re-extração continuará normalmente. Nenhum arquivo foi alterado.

@@ -21,7 +21,7 @@ set "TARGET_JAR=%IPED_ROOT%\lib\iped-viewers-impl-4.3.1.jar"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.3.0-beta
+echo Versao do plugin: 2.3.1-beta
 echo ------------------------------------------------
 echo.
 

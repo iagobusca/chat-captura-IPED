@@ -55,7 +55,7 @@ Mensagem (profissional, informativa, exibida uma vez por sessão):
 Botão: "Fechar" (único). Janela modal simples (`JOptionPane.showMessageDialog` ou JDialog customizado), não bloqueia a captura.
 
 Referência dos hashes válidos (repositório oficial):
-- https://github.com/.../chat-captura-IPED (release v2.3.0-beta) — integridade-verifier.jar/exe.
+- https://github.com/.../chat-captura-IPED (release v2.3.1-beta) — integridade-verifier.jar/exe.
 
 ## 7. Implementação proposta
 

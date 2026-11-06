@@ -4,6 +4,20 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.3.1-beta] - 2026-11-06
+
+### Adicionado
+
+- Release beta separada com instalador ZIP, JAR compilado do plugin e código-fonte versionados.
+- Verificador de Integridade 1.2.4 disponível como JAR e EXE; hashes publicados no README, CHECKSUMS.md e versao_hash.md.
+
+### Corrigido
+
+- Cópia de hashes e histórico executada em segundo plano, evitando travamento da janela.
+- Plugin aceita somente os hashes SHA-256 dos binários oficiais 1.2.4.
+
+
+
 ## [2.3.0-beta] - 2026-11-06
 
 ### Adicionado

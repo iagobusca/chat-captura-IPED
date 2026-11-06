@@ -1,8 +1,8 @@
 # Especificação consolidada — Chat Captura IPED
 
 **Versão deste documento:** 1.0  
-**Estado de referência:** plugin `2.3.0-beta`; verificador independente `1.2.1`  
-**Base da revisão:** código, testes e documentação presentes no repositório em 2026-10-31.
+**Estado de referência:** plugin `2.3.1-beta`; verificador independente `1.2.4`
+**Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-06.
 
 Este documento substitui as especificações dispersas do projeto. Ele descreve o comportamento confirmado no código, registra as diferenças em relação às propostas antigas e separa o que ainda não está implementado. “Implementado” significa que há código correspondente; não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.
 
@@ -10,7 +10,7 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 
 - **Implementado:** comportamento presente no código distribuído.
 - **Parcial:** existe parte da estrutura, mas falta o comportamento de ponta a ponta descrito.
-- **Fora da versão 2.3.0-beta:** consta de proposta anterior, mas não foi entregue nesta versão. Não deve ser anunciado como recurso disponível.
+- **Fora da versão 2.3.1-beta:** consta de proposta anterior, mas não foi entregue nesta versão. Não deve ser anunciado como recurso disponível.
 - **Substituído:** uma decisão posterior mudou a forma de atender ao requisito antigo.
 - **Decisão futura:** não há evidência suficiente de que o requisito foi cancelado pelo usuário. Mantê-lo aqui como item não entregue, sem tratá-lo como compromisso ativo.
 
@@ -20,11 +20,11 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 |---|---|---|
 | `ESPECIFICACAO_NOTAS_LINKS.md` | Parcialmente aplicado e revisado durante a implementação. Notas, vínculos, preflight, exportação e leitura legada têm código. O modelo antigo fala em vincular pessoas/contatos, enquanto o código atual vincula **chats** (`LinkedChatRef`, `chatRefId`). | A especificação pessoa/contato foi **substituída** por vínculo entre chats. Campos antigos como `contactId` continuam apenas como compatibilidade de leitura. A versão atual deste documento define o comportamento vigente. |
 | `ESPEC_ANOTAR_CHAT_SALVO.md` | Implementado com alterações de interface. Há seleção de chat salvo, carregamento das anotações e gravação explícita; o botão atual é `Salvar Trecho-Notas`. | Aplicado com o fluxo e rótulos atuais. A gravação não acontece a cada digitação: fica em memória até salvar explicitamente ou realizar captura. |
-| `ESPEC_COMPATIBILIDADE_JAVA11.md` | Correção aplicada. Nesta revisão, as 256 classes do JAR do plugin 2.3.0-beta foram lidas diretamente e todas têm major version 55. | Mantido como requisito permanente de build. Os hashes antigos de builds de teste foram substituídos pelos valores atuais em `CHECKSUMS.md`. |
+| `ESPEC_COMPATIBILIDADE_JAVA11.md` | Correção aplicada. Nesta revisão, as 256 classes do JAR do plugin 2.3.1-beta foram lidas diretamente e todas têm major version 55. | Mantido como requisito permanente de build. Os hashes antigos de builds de teste foram substituídos pelos valores atuais em `CHECKSUMS.md`. |
 | `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md` | Núcleo aplicado: bundles dentro do JAR, mesclagem de chaves ausentes na localização externa do IPED, backups e fallback de chave. Os dois bundles distribuídos têm 160 chaves cada e seus conjuntos coincidem nesta revisão. O validador verifica classes e chaves representativas, mas não compara automaticamente o conjunto completo em builds futuros. | Manter o fluxo de idioma; registrar validação completa/paridade de chaves como parcial. O arquivo separado foi incorporado aqui. |
 | `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md` | **Parcial.** `mediaX/Y/Width/Height` e `textX/Y/Width/Height` são calculados e gravados nas coordenadas. O HTML ainda posiciona o botão `T` usando os limites gerais da mensagem; não consome os retângulos separados. | Não declarar posicionamento preciso dos botões como concluído. A parte de armazenamento está aplicada; a parte visual permanece incompleta, sem evidência de cancelamento explícito. |
 | `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md` | O núcleo está implementado: fingerprint, assinatura por mensagem/frame, inventário, atalho para captura inalterada, regeneração permitida de `whatsapp.html`, recaptura integral para outras divergências e auditoria. O `integridade.json` mantém inventário e eventos encadeados. | Consolidado nas seções 6 e 7. Similaridade visual não autoriza pular atualização. O histórico registra hashes, não arquiva os bytes antigos. |
-| `ESPEC_VERIFICADOR_INTEGRIDADE.md` | Verificador independente implementado como JAR e EXE, com modos local/público, seleção de capturas, hashes e relatórios. O fluxo de distribuição atual pede que a pessoa coloque o JAR ou EXE ao lado do índice. | O usuário pediu anteriormente que o plugin copie e valide automaticamente ambos os executáveis em cada raiz de captura, mas o código da 2.3.0-beta não entrega isso. É uma solicitação pendente, não uma funcionalidade implementada nem um pedido cancelado. O botão “Histórico de registro” no card do índice também não foi localizado no código atual. |
+| `ESPEC_VERIFICADOR_INTEGRIDADE.md` | Verificador independente implementado como JAR e EXE, com modos local/público, seleção de capturas, hashes e relatórios. O plugin procura os binários em pastas conhecidas, verifica os hashes aceitos e copia os arquivos oficiais para a saída da captura. Se não estiverem disponíveis, o usuário pode copiá-los ao lado do índice. O botão “Histórico de registro” no card do índice também não foi localizado no código atual. |
 
 Não foi encontrada outra solicitação explicitamente cancelada pelo usuário nas especificações analisadas. Requisitos ausentes do código são chamados de “fora da versão”, “parciais” ou “decisão futura”, em vez de serem atribuídos como rejeitados pelo usuário.
 
@@ -35,17 +35,17 @@ Não foi encontrada outra solicitação explicitamente cancelada pelo usuário n
 | Vincular contatos/pessoas à mensagem e abrir conversa por identidade do contato. | Substituído por referência a chats e trechos de captura; a identidade pessoal não é inferida pelo vínculo. |
 | Anotações só persistem quando se captura. | Ampliado: o fluxo de chat salvo tem ação explícita `Salvar Trecho-Notas`; as alterações não salvas continuam em RAM. |
 | Fazer a página local calcular todos os hashes diretamente no JavaScript. | Substituído pelo verificador Java independente, que lê os arquivos; o HTML apresenta o resultado. |
-| O plugin copiar automaticamente JAR/EXE para cada raiz capturada. | Não entregue na 2.3.0-beta; README orienta cópia manual. Não há registro explícito de cancelamento pelo usuário. |
+| O plugin copiar automaticamente JAR/EXE para cada raiz capturada. | Implementado na 2.3.1-beta: procura binários conhecidos, valida SHA-256 e copia somente versões aceitas. |
 | Guardar somente JSONL como registro de auditoria. | Evoluiu: `integridade.json` contém o inventário atual e cadeia cumulativa; JSONL continua como log operacional de Re-Extrair. |
 | Hash local como prova de imutabilidade/autoria. | Corrigido: hash local verifica consistência com a referência local; hash público externo permite comparação com um checkpoint compartilhado, sem assinar autoria. |
-| Versão 2.0.0 e hashes de builds de teste no documento antigo. | Substituídos por plugin 2.3.0-beta/verificador 1.2.1 e hashes oficiais registrados em `CHECKSUMS.md`. |
+| Versão 2.0.0 e hashes de builds de teste no documento antigo. | Substituídos por plugin 2.3.1-beta/verificador 1.2.4 e hashes oficiais registrados em `CHECKSUMS.md`. |
 
 ## 3. Compatibilidade e distribuição
 
 - Plugin: IPED `4.3.1`, Java `11` como alvo mínimo. O JAR indicado em `CHECKSUMS.md` tem 256 classes, todas com major version `55` nesta revisão.
 - Verificador JAR: Java `11` ou superior.
 - Verificador EXE: Windows x64; contém os runtimes necessários e não exige Java instalado na máquina de execução.
-- A release beta contém cinco downloads: ZIP do instalador, JAR e EXE do verificador, ZIP `src-plugin` e ZIP `src-integridade-verifier`.
+- A release beta contém seis downloads: ZIP do instalador, JAR e EXE do verificador, ZIP `src-plugin` e ZIP `src-integridade-verifier`.
 - Tamanhos e SHA-256 dos artefatos publicados ficam em `CHECKSUMS.md`. Qualquer rebuild precisa recalcular e atualizar esses valores.
 - O instalador distribui o JAR modificado, bundles de idioma e validador. Ele cria backup antes de substituir o JAR instalado.
 
@@ -167,11 +167,11 @@ O hash de pasta legado do índice e a raiz de conteúdo do `integridade.json` us
 | Re-Extrair sem mudança | Comparação de fingerprint/inventário e registro de captura ignorada. | Implementado no código. |
 | Regenerar somente `whatsapp.html` | Regeneração a partir das coordenadas salvas. | Implementado para esse artefato; demais divergências usam recaptura completa. |
 | Histórico em `integridade.json` | Eventos, `previousRecordHash`, `recordHash`, alterações e inventário; verificador valida a cadeia. | Implementado localmente; não é assinatura e a serialização requer formalização para interoperabilidade. |
-| Verificador JAR/EXE e modos Local/Público | Código, CHANGELOG, binários publicados e checksums. | Implementado na versão 1.2.1. |
+| Verificador JAR/EXE e modos Local/Público | Código, CHANGELOG, binários publicados e checksums. | Implementado na versão 1.2.4. |
 | Comparação pública e cópia de histórico/hash | UI Java e relatório HTML gerado pelo programa. | Implementado; depende de referência obtida externamente para confiança externa. |
 | Copiar JAR/EXE automaticamente pelo plugin | Não há rotina nos fontes do plugin. | Fora da versão entregue; fluxo atual é cópia manual. |
 | Botão “Histórico de registro” no card do índice | Não localizado no HTML do índice gerado. | Não implementado na versão entregue. |
-| Teste completo de Re-Extrair pela UI 2.3.0-beta | A especificação anterior registra compilação/testes utilitários e declara que não reproduziu toda a reextração em GUI real. | Não comprovado aqui; não alegar validação integral. |
+| Teste completo de Re-Extrair pela UI 2.3.1-beta | A especificação anterior registra compilação/testes utilitários e declara que não reproduziu toda a reextração em GUI real. | Não comprovado aqui; não alegar validação integral. |
 
 
 ### 10.1 Cenários de aceite que devem continuar cobertos
@@ -192,17 +192,17 @@ O hash de pasta legado do índice e a raiz de conteúdo do `integridade.json` us
 | Verificador | Captura íntegra, arquivo alterado, ausente, extra e registro inválido | Classificar cada caso sem modificar os arquivos. | Testes/utilitários e verificação de capturas foram registrados antes do release; não repetidos nesta revisão. |
 | Verificador | Referência pública correta/incorreta, histórico colado, várias capturas | Comparar hash ou conteúdo completo e mostrar a referência usada; permitir copiar hashes/histórico. | UI/código presentes; canal de confiança continua externo. |
 | Verificador | Reexecução e duas instâncias do EXE | Substituir relatório somente ao terminar; runtimes temporários não colidem nem apagam instância ativa. | Rotina e autoteste do EXE registrados no histórico de release; não reexecutados nesta revisão. |
-| Distribuição | JAR/EXE/fontes e ZIP do instalador | Cinco assets publicados e checksums correspondentes em `CHECKSUMS.md`. | Conferido na release `v2.3.0-beta`. |
+| Distribuição | JAR/EXE/fontes e ZIP do instalador | Cinco assets publicados e checksums correspondentes em `CHECKSUMS.md`. | Conferido na release `v2.3.1-beta`. |
 
 ## 11. Pendências e requisitos não entregues
 
-Estes itens ficam registrados para separar o que foi pedido do que está no pacote 2.3.0-beta. Sua presença documenta a pendência; não significa que a implementação ocorreu nem cancela solicitações anteriores:
+Estes itens ficam registrados para separar o que foi pedido do que está no pacote 2.3.1-beta. Sua presença documenta a pendência; não significa que a implementação ocorreu nem cancela solicitações anteriores:
 
 1. Posicionar hotspots de áudio/vídeo e botão de transcrição usando os retângulos específicos já gravados.
 2. Implementar o atalho **Histórico de registro** no card do índice e definir a página/fluxo que deve abrir.
 3. Implementar a cópia e validação automáticas do JAR/EXE pelo plugin, conforme solicitação anterior; a versão atual ainda orienta cópia manual.
 4. Formalizar serialização canônica de `recordHash` com vetores de teste que possam ser reproduzidos fora da implementação Java atual.
-5. Testar Re-Extrair 2.3.0-beta em interface IPED real para captura intacta, arquivo ausente/alterado, regeneração de HTML e falha/rollback.
+5. Testar Re-Extrair 2.3.1-beta em interface IPED real para captura intacta, arquivo ausente/alterado, regeneração de HTML e falha/rollback.
 ## 12. Documentos e evidências mantidos
 
 Esta especificação substitui os documentos `ESPECIFICACAO_NOTAS_LINKS.md`, `ESPEC_ANOTAR_CHAT_SALVO.md`, `ESPEC_COMPATIBILIDADE_JAVA11.md`, `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md`, `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md`, `ESPEC_VERIFICADOR_INTEGRIDADE.md` e `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md`. As implementações e testes continuam nos diretórios `src/`, `tests/` e `verificador-integridade/`; este documento é a única especificação consolidada, não substitui código, changelog ou checksums.
