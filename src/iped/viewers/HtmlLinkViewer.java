@@ -15,6 +15,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -117,7 +118,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.3.1-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.3.2-beta"; //$NON-NLS-1$
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
     private static final int HTML_GENERATOR_VERSION = 2;
@@ -904,7 +905,7 @@ private void clearChatCaptureMarks() {
         String sourcePath = "";
         try {
             if (manifest.isFile()) {
-                String content = java.nio.file.Files.readString(manifest.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                String content = CaptureIntegrity.readUtf8Limited(manifest.toPath());
                 title = ChatAnnotationStore.field(content, "title");
                 if (title.isEmpty()) {
                     title = ChatAnnotationStore.field(content, "chatTitle");
@@ -1231,7 +1232,7 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
                 jobs.add(job);
                 continue;
             }
-            String content = Files.readString(manifest);
+            String content = CaptureIntegrity.readUtf8Limited(manifest);
             JSONObject savedManifest = new JSONObject(content);
             job.captureFingerprint = savedManifest.optJSONObject("captureFingerprint");
             job.artifactGenerators = savedManifest.optJSONObject("artifactGenerators");
@@ -1260,7 +1261,7 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
             // (versao 1) nao trouxe sourceMetadata completo.
             Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
             if (Files.isRegularFile(coordinates)) {
-                String coordinateContent = Files.readString(coordinates);
+                String coordinateContent = CaptureIntegrity.readUtf8Limited(coordinates);
                 CaptureAnchor coordinateStartAnchor = firstBlockAnchor(coordinateContent, job.startMessageId);
                 CaptureAnchor coordinateEndAnchor = lastBlockAnchor(coordinateContent, job.endMessageId);
                 if (!job.startAnchor.isUsable()) {
@@ -1323,7 +1324,7 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
         List<String> folders = new ArrayList<>();
         Path index = outputRoot.resolve("capturas-index.json"); //$NON-NLS-1$
         if (Files.isRegularFile(index)) {
-            String content = Files.readString(index);
+            String content = CaptureIntegrity.readUtf8Limited(index);
             Matcher matcher = Pattern.compile("\"folder\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(content); //$NON-NLS-1$
             while (matcher.find()) {
                 String folder = unescapeJson(matcher.group(1));
@@ -1451,7 +1452,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder, false);
             updateRecaptureProgress(job, batchCurrent, batchTotal, 5, "Validando resultado temporario da re-extracao...", false); //$NON-NLS-1$
             Path manifest = result.captureDir.resolve("manifest.json"); //$NON-NLS-1$
-            String status = Files.isRegularFile(manifest) ? jsonField(Files.readString(manifest), "status") : result.status; //$NON-NLS-1$
+            String status = Files.isRegularFile(manifest) ? jsonField(CaptureIntegrity.readUtf8Limited(manifest), "status") : result.status; //$NON-NLS-1$
             if (!"completed".equals(status)) { //$NON-NLS-1$
                 deleteDirectoryIfExists(result.captureDir);
                 throw new IOException("Re-extração nao completou: " + status); //$NON-NLS-1$
@@ -1609,7 +1610,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
         if (!Files.isRegularFile(coordinates)) {
             return false;
         }
-        String content = Files.readString(coordinates, StandardCharsets.UTF_8);
+        String content = CaptureIntegrity.readUtf8Limited(coordinates);
         JSONObject data;
         try {
             data = new JSONObject(content);
@@ -1625,12 +1626,11 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
         Path temporary = uniqueSibling(html.resolveSibling("whatsapp.html.__migration_tmp")); //$NON-NLS-1$
         Path backup = uniqueSibling(job.folderPath.resolveSibling(job.folderPath.getFileName().toString() + ".__migration_html_backup")); //$NON-NLS-1$
         Path manifestPath = job.folderPath.resolve("manifest.json"); //$NON-NLS-1$
-        Path manifestTemp = uniqueSibling(manifestPath.resolveSibling("manifest.json.__migration_tmp")); //$NON-NLS-1$
-        String oldManifest = Files.readString(manifestPath, StandardCharsets.UTF_8);
+        String oldManifest = CaptureIntegrity.readUtf8Limited(manifestPath);
         boolean backedUpHtml = false;
         try {
             writeWhatsAppHtml(temporary, content);
-            String generated = Files.readString(temporary, StandardCharsets.UTF_8);
+            String generated = CaptureIntegrity.readUtf8Limited(temporary);
             if (!generated.contains("id=\"coords\"") || !generated.contains("</html>")) { //$NON-NLS-1$ //$NON-NLS-2$
                 return false;
             }
@@ -1648,8 +1648,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             manifest.put("artifactGenerators", generators); //$NON-NLS-1$
             manifest.put("pluginVersion", CHAT_CAPTURE_PLUGIN_VERSION); //$NON-NLS-1$
             manifest.put("artifacts", CaptureIntegrity.artifactInventory(job.folderPath)); //$NON-NLS-1$
-            Files.writeString(manifestTemp, manifest.toString(2) + System.lineSeparator(), StandardCharsets.UTF_8);
-            moveReplacing(manifestTemp, manifestPath);
+            CaptureIntegrity.writeAtomically(job.folderPath, manifestPath, manifest.toString(2) + System.lineSeparator());
             recordHtmlMigrationAudit(job, html);
             if (backedUpHtml) {
                 Files.deleteIfExists(backup);
@@ -1660,11 +1659,10 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             if (backedUpHtml && Files.exists(backup)) {
                 Files.move(backup, html);
             }
-            Files.writeString(manifestPath, oldManifest, StandardCharsets.UTF_8);
+            CaptureIntegrity.writeAtomically(job.folderPath, manifestPath, oldManifest);
             throw e;
         } finally {
             Files.deleteIfExists(temporary);
-            Files.deleteIfExists(manifestTemp);
         }
     }
 
@@ -2252,7 +2250,7 @@ createReportThumbnails(captureDir, exported);
         String chronologicalStart = ""; //$NON-NLS-1$
         String chronologicalEnd = ""; //$NON-NLS-1$
 if (Files.isRegularFile(manifest)) {
-            String content = Files.readString(manifest);
+            String content = CaptureIntegrity.readUtf8Limited(manifest);
 
             entry.legacyAnnotations = jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
@@ -2274,14 +2272,14 @@ if (Files.isRegularFile(manifest)) {
 
         Path coordinates = captureDir.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
         if ((entry.title == null || entry.title.isBlank()) && Files.isRegularFile(coordinates)) {
-            String content = Files.readString(coordinates);
+            String content = CaptureIntegrity.readUtf8Limited(coordinates);
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
             entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$
             entry.chatId = inferChatId(entry.title);
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
         }
         if ((chronologicalStart.isBlank() || chronologicalEnd.isBlank()) && Files.isRegularFile(coordinates)) {
-            String content = Files.readString(coordinates);
+            String content = CaptureIntegrity.readUtf8Limited(coordinates);
             chronologicalStart = nonBlank(chronologicalStart, readAnchor(content, "startAnchor").date); //$NON-NLS-1$
             chronologicalEnd = nonBlank(chronologicalEnd, readAnchor(content, "endAnchor").date); //$NON-NLS-1$
         }
@@ -2499,20 +2497,34 @@ private boolean isCaptureFolder(Path captureDir) {
     private FolderHash calculateFolderHash(Path folder) throws IOException {
         List<Path> files = new ArrayList<>();
         try (Stream<Path> stream = Files.walk(folder)) {
-            stream.filter(Files::isRegularFile).forEach(files::add);
+            java.util.Iterator<Path> iterator = stream.iterator();
+            while (iterator.hasNext()) {
+                Path path = iterator.next();
+                if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    if (files.size() >= CaptureIntegrity.MAX_INVENTORY_FILES) {
+                        throw new IOException("A captura excede o limite de " + CaptureIntegrity.MAX_INVENTORY_FILES + " arquivos.");
+                    }
+                    files.add(path);
+                }
+            }
         }
         files.sort(Comparator.comparing(path -> folder.relativize(path).toString().replace('\\', '/').toLowerCase()));
-        StringBuilder canonical = new StringBuilder();
         FolderHash result = new FolderHash();
+        MessageDigest canonical;
+        try {
+            canonical = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
         for (Path file : files) {
             String relative = folder.relativize(file).toString().replace('\\', '/');
             long size = Files.size(file);
             String sha256 = digest(file, "SHA-256"); //$NON-NLS-1$
-            canonical.append(relative).append('|').append(size).append('|').append(sha256).append('\n');
+            canonical.update((relative + '|' + size + '|' + sha256 + '\n').getBytes(StandardCharsets.UTF_8));
             result.fileCount++;
             result.sizeBytes += size;
         }
-        result.hash = sha256Text(canonical.toString());
+        result.hash = toHex(canonical.digest());
         return result;
     }
 
@@ -3445,26 +3457,14 @@ out.println("{"); //$NON-NLS-1$
 
     private void writeArtifactInventory(Path captureDir) throws IOException {
         Path manifestPath = captureDir.resolve("manifest.json"); //$NON-NLS-1$
-        JSONObject manifest = new JSONObject(Files.readString(manifestPath, StandardCharsets.UTF_8));
+        JSONObject manifest = new JSONObject(CaptureIntegrity.readUtf8Limited(manifestPath));
         manifest.put("artifactGenerators", new JSONObject(artifactGeneratorsJson()));
         JSONArray artifacts = CaptureIntegrity.artifactInventory(captureDir);
         manifest.put("artifacts", artifacts);
-        Path temporary = manifestPath.resolveSibling("manifest.json.__inventory_tmp"); //$NON-NLS-1$
-        Files.writeString(temporary, manifest.toString(2) + System.lineSeparator(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, manifestPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(temporary, manifestPath, StandardCopyOption.REPLACE_EXISTING);
-        }
+        CaptureIntegrity.writeAtomically(captureDir, manifestPath, manifest.toString(2) + System.lineSeparator());
         JSONObject integrity = CaptureIntegrity.integrityRecord(captureDir, null, "capture_created", CHAT_CAPTURE_PLUGIN_VERSION);
         Path integrityPath = captureDir.resolve("integridade.json"); //$NON-NLS-1$
-        Path integrityTemporary = integrityPath.resolveSibling("integridade.json.__tmp"); //$NON-NLS-1$
-        Files.writeString(integrityTemporary, integrity.toString(2) + System.lineSeparator(), StandardCharsets.UTF_8);
-        try {
-            Files.move(integrityTemporary, integrityPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(integrityTemporary, integrityPath, StandardCopyOption.REPLACE_EXISTING);
-        }
+        CaptureIntegrity.writeAtomically(captureDir, integrityPath, integrity.toString(2) + System.lineSeparator());
     }
 
     private void appendIntegrityHistory(Path newCapture, Path previousCapture) throws IOException {
@@ -3472,20 +3472,14 @@ out.println("{"); //$NON-NLS-1$
         JSONObject previous = null;
         if (Files.isRegularFile(oldPath)) {
             try {
-                previous = new JSONObject(Files.readString(oldPath, StandardCharsets.UTF_8));
+                previous = new JSONObject(CaptureIntegrity.readUtf8Limited(oldPath));
             } catch (RuntimeException e) {
                 LOGGER.warn("Previous integrity history is invalid for {}; keeping a new local history", previousCapture, e); //$NON-NLS-1$
             }
         }
         JSONObject next = CaptureIntegrity.integrityRecord(newCapture, previous, "recapture_completed", CHAT_CAPTURE_PLUGIN_VERSION);
         Path target = newCapture.resolve("integridade.json"); //$NON-NLS-1$
-        Path temporary = target.resolveSibling("integridade.json.__history_tmp"); //$NON-NLS-1$
-        Files.writeString(temporary, next.toString(2) + System.lineSeparator(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        CaptureIntegrity.writeAtomically(newCapture, target, next.toString(2) + System.lineSeparator());
     }
     private void writeText(Path path, String content) throws IOException {
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
@@ -4653,7 +4647,7 @@ private void setCaptureInteractionEnabled(boolean enabled) {
         }
         String wanted = hash.trim().toUpperCase();
         try {
-            String content = Files.readString(coordinates);
+            String content = CaptureIntegrity.readUtf8Limited(coordinates);
             Matcher blockMatcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
                     .matcher(content);
             while (blockMatcher.find()) {

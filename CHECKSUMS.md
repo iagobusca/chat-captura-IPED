@@ -5,7 +5,7 @@ Arquivo principal do instalador:
 ```text
 instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
 SHA-256: 7DAEEF3C3E8C046806AAD96C66182EE2C26CC366F8D38009B533DAABEC54B7D8
-Versao do plugin: 2.3.1-beta
+Versao do plugin: 2.3.2-beta
 ```
 
 Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no JAR instalado, portanto os hashes do pacote e da instalacao podem diferir; valide as entradas/classes com `validate-plugin-jar.ps1`.
@@ -63,7 +63,7 @@ Os dois hashes devem ser iguais.
 
 O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes de código-fonte são assets separados para download independente.
 
-## Artefatos da nova release v2.3.1-beta
+## Artefatos da nova release v2.3.2-beta
 
 | Arquivo | Tamanho | SHA-256 |
 |---|---:|---|
@@ -75,3 +75,10 @@ O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes
 | src-integridade-verifier-1.2.4.zip | 24.830 bytes | `1BDBE0C4FDE88F148150690A34C7973C888295E35587A34C7A5ACD242A486B72` |
 
 Os hashes das versões anteriores do verificador estão em [versao_hash.md](versao_hash.md).
+
+| instalador-chat-captura-IPED-2.3.2-beta-verificador-1.2.5.zip | 656.213 bytes | 313A06540395539A6F946DA4BC650B5F54E45BA94D1BC3CDE6C9A5BDB7E25DA0 |
+| iped-viewers-impl-4.3.1-2.3.2-beta.jar | 595.899 bytes | 99086435683240FBE54F40C678E6288D27970686A7C02BECD241952B8B949FBE |
+| integridade-verifier-1.2.5.jar | 111.960 bytes | 5386859AE3127CB85BB666DBCD19C57836D0797C48A7CBF96957B5103E3AE9CB |
+| integridade-verifier-1.2.5.exe | 78.361.129 bytes | DA7D172765E80E02101B540CA0212F33490897C946CFE4FEEC17731E365C027F |
+| src-plugin-2.3.2-beta.zip | 113.469 bytes | CE3F67D847794AD3735B225B90C4AB4A1F4861F75E7D14B145E3EB587212ABDD |
+| src-integridade-verifier-1.2.5.zip | 22.922 bytes | 537840B0C768B5D1EE260F9CDFEB24B75AC3AA9619A52F7A649EBD43E2B40A3E |

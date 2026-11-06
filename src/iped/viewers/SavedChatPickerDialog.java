@@ -81,7 +81,7 @@ class SavedChatPickerDialog extends JDialog {
                 String title = "";
                 String sourceName = "";
                 try {
-                    String content = Files.readString(manifest, java.nio.charset.StandardCharsets.UTF_8);
+                    String content = CaptureIntegrity.readUtf8Limited(manifest);
                     title = ChatAnnotationStore.field(content, "title");
                     if (title.isEmpty()) {
                         title = ChatAnnotationStore.field(content, "chatTitle");

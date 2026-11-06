@@ -4,7 +4,7 @@ Plugin/customizacao para o IPED 4.3.1 que adiciona captura visual avancada de co
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.3.1-beta**
+Versao atual do plugin: **2.3.2-beta**
 
 ## About
 
@@ -251,36 +251,36 @@ chat-captura IPED/
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Downloads da versão beta 2.3.1
+## Downloads da versão beta 2.3.2
 
 Na página de releases, baixe os quatro arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
 
 | Arquivo | Para que serve |
 |---|---|
-| instalador-chat-captura-IPED-2.3.1-beta-verificador-1.2.4.zip | Instalador completo, JAR do plugin e arquivos de idioma |
-| iped-viewers-impl-4.3.1-2.3.1-beta.jar | JAR compilado do plugin para instalação manual |
-| integridade-verifier-1.2.4.jar | Verificador independente com Java 11 ou superior |
-| integridade-verifier-1.2.4.exe | Mesmo verificador para Windows x64, sem Java instalado |
-| src-plugin-2.3.1-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
-| src-integridade-verifier-1.2.4.zip | Código-fonte separado do verificador, testes e scripts de compilação |
+| instalador-chat-captura-IPED-2.3.2-beta-verificador-1.2.5.zip | Instalador, JAR do plugin, biblioteca JSON corrigida e arquivos de idioma |
+| iped-viewers-impl-4.3.1-2.3.2-beta.jar | JAR compilado do plugin para instalação manual |
+| integridade-verifier-1.2.5.jar | Verificador independente com Java 11 ou superior |
+| integridade-verifier-1.2.5.exe | Mesmo verificador para Windows x64, sem Java instalado |
+| src-plugin-2.3.2-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
+| src-integridade-verifier-1.2.5.zip | Código-fonte separado do verificador, testes e scripts de compilação |
 
 Os pacotes de código-fonte são downloads independentes e também permanecem organizados no repositório. O JAR do plugin e os dois formatos do verificador também são publicados como arquivos separados. Os SHA-256 de cada artefato estão em [CHECKSUMS.md](CHECKSUMS.md).
 
 
-### Hashes do verificador de integridade 1.2.4
+### Hashes do verificador de integridade 1.2.5
 
-JAR — SHA-256: `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E`<br>
-EXE — SHA-256: `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9`
+JAR — SHA-256: `5386859AE3127CB85BB666DBCD19C57836D0797C48A7CBF96957B5103E3AE9CB`<br>
+EXE — SHA-256: `DA7D172765E80E02101B540CA0212F33490897C946CFE4FEEC17731E365C027F`
 
 O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia instalador-chat-captura-IPED-2.3.1-beta-verificador-1.2.4.zip.
+2. Baixe e extraia instalador-chat-captura-IPED-2.3.2-beta-verificador-1.2.5.zip.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP é autocontido: inclui o JAR 2.3.1-beta, o instalador, o validador do pacote e os dois bundles de idioma.
+O ZIP inclui o JAR 2.3.2-beta, o instalador, o validador, `org.json` 20260719 e os dois bundles de idioma. Ao instalar, o BAT preserva em backup o `json-20250517.jar` e uma eventual cópia anterior do `json-20260719.jar`.
 
 ## O que o BAT faz
 
@@ -290,8 +290,9 @@ O `instalar_captura_chat_zap.bat` faz os seguintes passos:
 2. Localiza o JAR original dentro do IPED.
 3. Cria um backup automatico do JAR atual antes de substituir.
 4. Copia o JAR modificado para a pasta lib do IPED.
-5. Instala os bundles de idioma do plugin.
-6. Confere os hashes do pacote e do JAR instalado e mostra o resultado.
+5. Substitui `json-20250517.jar` por `json-20260719.jar`, preservando as versões anteriores com sufixo `.bak`.
+6. Instala os bundles de idioma do plugin.
+7. Confere os hashes do pacote e do JAR instalado e mostra o resultado.
 
 O backup fica ao lado do JAR original, com nome parecido com:
 
@@ -300,6 +301,8 @@ iped-viewers-impl-4.3.1.jar.bak-YYYYMMDD-HHMMSS
 ```
 
 ## Verificador independente
+
+O verificador 1.2.5 rejeita metadados JSON acima de 16 MiB e capturas com mais de 25.010 arquivos. Ele grava relatórios com temporários exclusivos e calcula hashes canônicos em fluxo. A biblioteca corrigida `org.json` 20260719 também é instalada pelo pacote do plugin. Consulte [versao_hash.md](versao_hash.md) para hashes das versões antigas.
 
 O verificador não é necessário para instalar o plugin. Durante a captura, o plugin tenta localizar verificadores em pastas conhecidas e copiar os arquivos com hashes reconhecidos para a pasta de saída. Se não encontrar os binários, baixe o JAR ou EXE da release e copie-os manualmente para a pasta raiz das capturas, ao lado de index.html e relatorio.htm.
 
@@ -384,6 +387,13 @@ O fluxo esperado e:
 - O viewer permanece compilado para Java 11 (`--release 11`), compativel com o runtime empacotado pelo IPED 4.3.1.
 - O instalador valida classes e bundles de idioma antes da troca e preserva backup do JAR instalado.
 
+
+## Versao beta 2.3.2-beta
+
+- Corrige a leitura de entradas JSON grandes e atualiza `org.json` para 20260719, corrigindo o CVE-2026-59171.
+- Limita arquivos JSON a 16 MiB e inventários/capturas a 25.000/25.010 arquivos.
+- Usa hash em fluxo e temporários exclusivos; recusa links simbólicos nos destinos de relatórios e auditoria.
+- Atualiza o Verificador de Integridade para 1.2.5 e sincroniza os hashes aceitos pelo plugin.
 
 ## Versao beta 2.3.1-beta
 

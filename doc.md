@@ -1,6 +1,6 @@
 # Plugin Chat Captura IPED
 
-**Versão:** 2.3.1-beta | Data: 06/11/2026.
+**Versão:** 2.3.2-beta | Data: 06/11/2026.
 **Base:** IPED 4.3.1; Java 11.
 
 Este documento descreve o plugin Java que amplia o viewer HTML do IPED para capturar conversas WhatsApp, gerar evidências navegáveis, anotar mensagens e verificar/reextrair capturas.
@@ -31,7 +31,7 @@ graph TD
     Plugin --> Verifier[Verificador JAR/EXE]
 ```
 
-O artefato do plugin substitui `iped-viewers-impl-4.3.1.jar` no IPED. A captura opera no viewer Java/Swing e gera HTML, JSON, texto, imagens e hashes para cada conversa. O verificador de integridade é um aplicativo independente.
+O artefato do plugin substitui `iped-viewers-impl-4.3.1.jar` no IPED. A captura opera no viewer Java/Swing e gera HTML, JSON, texto, imagens e hashes para cada conversa. O verificador de integridade é um aplicativo independente. O instalador atualiza `org.json` para 20260719 e mantém cópias de segurança da biblioteca substituída.
 
 ## Recursos
 
@@ -56,7 +56,7 @@ O modo de chat salvo permite adicionar ou editar anotações sem uma nova captur
 
 Feche o IPED antes de instalar. Extraia o ZIP do instalador e execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat`. O instalador valida o JAR, cria um backup, substitui o arquivo do plugin e instala os bundles de idioma. Consulte [README.md](README.md) para downloads e instruções detalhadas.
 
-O JAR do plugin é compilado para Java 11. O verificador tem fonte e documentação próprias em `verificador-integridade/`; consulte [`verificador-integridade/README.md`](verificador-integridade/README.md). A versão-fonte do verificador e os binários distribuídos podem divergir até a próxima compilação e atualização dos hashes do plugin; use `CHECKSUMS.md` para conferir cada artefato publicado.
+O JAR do plugin é compatível com Java 11. O verificador 1.2.5 tem fonte e documentação próprias em `verificador-integridade/`; consulte [`verificador-integridade/README.md`](verificador-integridade/README.md). O plugin aceita somente os hashes SHA-256 dos binários 1.2.5 registrados em `CHECKSUMS.md`.
 
 ## Arquivos gerados
 
@@ -74,6 +74,8 @@ O JAR do plugin é compilado para Java 11. O verificador tem fonte e documentaç
 ## Integridade e segurança
 
 Hashes SHA-256 identificam o conteúdo comparado; não são assinatura digital nem provam autoria. Para comparação pública, obtenha a referência por um canal separado e confiável. O histórico encadeia eventos e mantém os hashes e inventários, mas não arquiva versões antigas dos bytes substituídos.
+
+Metadados JSON são limitados a 16 MiB e os inventários a 25.000 arquivos. O verificador limita cada captura a 25.010 arquivos para incluir os metadados de controle. O limite impede consumo desproporcional de memória; capturas maiores são encerradas com erro legível. Escritas de registros usam temporários exclusivos e recusam links simbólicos nos diretórios de saída.
 
 O instalador cria uma cópia de segurança antes de substituir o JAR. Os hashes dos binários publicados ficam em `CHECKSUMS.md`.
 

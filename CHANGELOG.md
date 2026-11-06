@@ -4,6 +4,20 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.3.2-beta] - 2026-11-06
+
+### Segurança
+
+- Atualizada a dependência `org.json` para 20260719, corrigindo o processamento de números JSON sem limite associado ao CVE-2026-59171.
+- Verificador e plugin limitam arquivos JSON a 16 MiB e inventários a 25.000 arquivos; hashes canônicos são calculados em fluxo.
+- Gravações de relatórios, inventários e auditoria rejeitam links simbólicos e usam arquivos temporários exclusivos.
+- Instalador substitui a biblioteca JSON antiga por uma versão corrigida e mantém backups para reversão.
+
+### Corrigido
+
+- Leituras de manifestos e anotações limitadas para impedir consumo excessivo de memória.
+- Hashes dos binários permitidos pelo plugin sincronizados com o Verificador 1.2.5.
+
 ## [2.3.1-beta] - 2026-11-06
 
 ### Adicionado

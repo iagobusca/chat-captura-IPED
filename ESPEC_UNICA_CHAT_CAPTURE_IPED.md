@@ -1,7 +1,7 @@
 # Especificação consolidada — Chat Captura IPED
 
 **Versão deste documento:** 1.0  
-**Estado de referência:** plugin `2.3.1-beta`; verificador independente `1.2.4`
+**Estado de referência:** plugin `2.3.2-beta`; verificador independente `1.2.5`
 **Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-06.
 
 Este documento substitui as especificações dispersas do projeto. Ele descreve o comportamento confirmado no código, registra as diferenças em relação às propostas antigas e separa o que ainda não está implementado. “Implementado” significa que há código correspondente; não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.

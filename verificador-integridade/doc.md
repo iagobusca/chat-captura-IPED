@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.2.4
+# Verificador de Integridade 1.2.5
 
-**Versão:** 1.2.4 | Data: 06/11/2026.
+**Versão:** 1.2.5 | Data: 06/11/2026.
 
 ## Índice
 
@@ -45,7 +45,7 @@ As ações de copiar hashes e histórico enviam o conteúdo à área de transfer
 
 Para abrir a interface, execute `integridade-verifier.exe` ao lado de `index.html`. O verificador usa essa pasta para localizar as capturas.
 
-O JAR pode ser executado com Java 11 ou superior:
+O JAR pode ser executado com Java 11 ou superior. Metadados JSON acima de 16 MiB e capturas com mais de 25.010 arquivos são rejeitados com erro controlado. Os hashes canônicos são atualizados em fluxo, sem montar toda a sequência na memória:
 
 ```powershell
 java -jar .\integridade-verifier.jar
@@ -63,6 +63,7 @@ Na inicialização, o EXE verifica se há outro processo do verificador em execu
 - Uso do EXE: Windows x64; não requer Java nem .NET instalados.
 - Build: JDK 11, JDK com `jpackage`, .NET SDK 10 e PowerShell.
 - O aplicativo Java usa `java.base`, `java.desktop` e a biblioteca JSON embutida no JAR standalone.
+- A biblioteca embutida é `org.json` 20260719, incluindo a correção de consumo de CPU por números JSON longos (CVE-2026-59171; CWE-400/CWE-770).
 
 ## Codigos de saida e erros
 
@@ -75,7 +76,7 @@ Em falhas do lançador, uma janela informa o erro. O processo Java pode apresent
 
 ## Limitacoes e migracao
 
-A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. As versões 1.2.x acrescentam os modos local/público e um registro público determinístico. A comparação pública depende de uma referência obtida fora da pasta verificada.
+A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. As versões 1.2.x acrescentam os modos local/público e um registro público determinístico. A comparação pública depende de uma referência obtida fora da pasta verificada. A gravação de relatórios cria temporários exclusivos e rejeita diretórios de saída com links simbólicos.
 
 
 

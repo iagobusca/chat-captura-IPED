@@ -1,4 +1,4 @@
-// Versão 1.2.4 — cópia assíncrona para a área de transferência e instâncias isoladas.
+// Versão 1.2.5 — mitigação de DoS JSON, limites de entrada e gravação temporária segura.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

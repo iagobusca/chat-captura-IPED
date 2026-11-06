@@ -4,6 +4,15 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.2.5] - 2026-11-06
+
+### Segurança
+
+- Atualizada a biblioteca `org.json` embutida para 20260719, corrigindo o processamento custoso de números JSON longos (CVE-2026-59171, CWE-400/CWE-770).
+- Entradas JSON limitadas a 16 MiB e capturas limitadas a 25.010 arquivos para encerrar entradas excessivas com erro controlado.
+- Hash canônico calculado em fluxo para evitar acumular a concatenação completa na memória.
+- Relatórios gravados com temporários exclusivos; diretórios com links simbólicos são rejeitados.
+
 ## [1.2.4] - 2026-11-06
 
 ### Corrigido

@@ -4,10 +4,12 @@ import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -24,6 +26,8 @@ final class CaptureIntegrity {
     static final int SIGNATURE_VERSION = 1;
     static final String HASH_ALGORITHM = "SHA-256";
     static final String AUDIT_FILE = "reextracao-auditoria.jsonl";
+    static final int MAX_INVENTORY_FILES = 25000;
+    static final long MAX_JSON_BYTES = 16L * 1024L * 1024L;
 
     private CaptureIntegrity() {
     }
@@ -98,12 +102,19 @@ final class CaptureIntegrity {
         JSONArray inventory = new JSONArray();
         List<Path> files = new ArrayList<>();
         try (java.util.stream.Stream<Path> stream = Files.walk(root)) {
-            stream.filter(path -> !path.equals(root))
-                    .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-                    .filter(path -> !AUDIT_FILE.equals(path.getFileName().toString()))
-                    .filter(path -> !"manifest.json".equals(path.getFileName().toString()))
-                    .filter(path -> !"integridade.json".equals(path.getFileName().toString()))
-                    .forEach(files::add);
+            java.util.Iterator<Path> iterator = stream.iterator();
+            while (iterator.hasNext()) {
+                Path path = iterator.next();
+                if (!path.equals(root) && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                        && !AUDIT_FILE.equals(path.getFileName().toString())
+                        && !"manifest.json".equals(path.getFileName().toString())
+                        && !"integridade.json".equals(path.getFileName().toString())) {
+                    if (files.size() >= MAX_INVENTORY_FILES) {
+                        throw new IOException("Capture exceeds the inventory limit of " + MAX_INVENTORY_FILES + " files");
+                    }
+                    files.add(path);
+                }
+            }
         }
         files.sort(Comparator.comparing(path -> relative(root, path)));
         for (Path file : files) {
@@ -113,6 +124,20 @@ final class CaptureIntegrity {
                     .put("sha256", sha256(file)));
         }
         return inventory;
+    }
+
+    static String readUtf8Limited(Path path) throws IOException {
+        long size = Files.size(path);
+        if (size > MAX_JSON_BYTES) {
+            throw new IOException("JSON metadata exceeds the limit of " + MAX_JSON_BYTES + " bytes: " + path);
+        }
+        try (InputStream input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] bytes = input.readNBytes((int) MAX_JSON_BYTES + 1);
+            if (bytes.length > MAX_JSON_BYTES || input.read() != -1) {
+                throw new IOException("JSON metadata exceeds the limit of " + MAX_JSON_BYTES + " bytes: " + path);
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     static JSONObject integrityRecord(Path captureRoot, JSONObject previous, String action, String pluginVersion) throws IOException {
@@ -235,14 +260,59 @@ final class CaptureIntegrity {
     static void appendAudit(Path captureRoot, JSONObject event) throws IOException {
         Path root = captureRoot.toAbsolutePath().normalize();
         Files.createDirectories(root);
+        ensureNoSymbolicLinkComponents(root, root);
         JSONObject record = new JSONObject(event == null ? new JSONObject().toMap() : event.toMap());
         record.put("recordedAtUtc", Instant.now().toString());
         record.put("auditSchemaVersion", 1);
         Path log = root.resolve(AUDIT_FILE);
         try (BufferedWriter writer = Files.newBufferedWriter(log, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
+                LinkOption.NOFOLLOW_LINKS)) {
             writer.write(record.toString());
             writer.newLine();
+        }
+    }
+
+    static void writeAtomically(Path captureRoot, Path destination, String content) throws IOException {
+        Path root = captureRoot.toAbsolutePath().normalize();
+        Path target = destination.toAbsolutePath().normalize();
+        if (!target.startsWith(root) || target.equals(root)) {
+            throw new IOException("Output path escapes capture root");
+        }
+        Path parent = target.getParent();
+        if (parent == null) {
+            throw new IOException("Output path has no parent directory");
+        }
+        Files.createDirectories(parent);
+        ensureNoSymbolicLinkComponents(root, parent);
+        Path temporary = Files.createTempFile(parent, "." + target.getFileName() + ".", ".tmp");
+        try {
+            try (OutputStream output = Files.newOutputStream(temporary, StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS)) {
+                output.write(content.getBytes(StandardCharsets.UTF_8));
+            }
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    static void ensureNoSymbolicLinkComponents(Path root, Path target) throws IOException {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalizedTarget = target.toAbsolutePath().normalize();
+        if (!normalizedTarget.startsWith(normalizedRoot)) {
+            throw new IOException("Output directory escapes capture root");
+        }
+        Path current = normalizedRoot.getRoot();
+        for (Path part : current.relativize(normalizedTarget)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) {
+                throw new IOException("Symbolic links are not allowed in capture output paths");
+            }
         }
     }
 

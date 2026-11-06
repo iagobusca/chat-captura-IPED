@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.2.4
+# Verificador de Integridade 1.2.5
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.2.4 mantém o JAR e o EXE alinhados e executa as cópias para a área de transferência sem bloquear a janela.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.2.5 atualiza a biblioteca JSON para corrigir processamento custoso de números longos, limita os metadados a 16 MiB e as capturas a 25.010 arquivos, calcula hashes em fluxo e protege as gravações contra links simbólicos.
 
 ## Getting Started
 

@@ -26,6 +26,8 @@ import org.slf4j.LoggerFactory;
  */
 class ChatAnnotationStore {
 
+    private static final long MAX_STORE_BYTES = 8L * 1024L * 1024L;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatAnnotationStore.class);
 
     static final String FILE_NAME = "anotacoes.json"; //$NON-NLS-1$
@@ -103,9 +105,25 @@ class ChatAnnotationStore {
         if (storeFile == null || !Files.isRegularFile(storeFile)) {
             return;
         }
+        try {
+            if (Files.size(storeFile) > MAX_STORE_BYTES) {
+                LOGGER.warn("Ignoring oversized annotation store {} (limit: {} bytes)", storeFile, MAX_STORE_BYTES);
+                return;
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Unable to inspect {}, keeping annotations in memory only", storeFile, e); //$NON-NLS-1$
+            return;
+        }
         String content;
         try {
-            content = Files.readString(storeFile, StandardCharsets.UTF_8);
+            try (java.io.InputStream input = Files.newInputStream(storeFile, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                byte[] bytes = input.readNBytes((int) MAX_STORE_BYTES + 1);
+                if (bytes.length > MAX_STORE_BYTES) {
+                    LOGGER.warn("Ignoring oversized annotation store {} (limit: {} bytes)", storeFile, MAX_STORE_BYTES);
+                    return;
+                }
+                content = new String(bytes, StandardCharsets.UTF_8);
+            }
         } catch (IOException e) {
             LOGGER.warn("Unable to read {}, keeping annotations in memory only", storeFile, e); //$NON-NLS-1$
             return;
@@ -321,13 +339,17 @@ class ChatAnnotationStore {
         if (storeFile == null) {
             return;
         }
+        Path tmp = null;
         try {
             Path parent = storeFile.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Path tmp = storeFile.resolveSibling(FILE_NAME + ".tmp"); //$NON-NLS-1$
-            try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(tmp, StandardCharsets.UTF_8))) {
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(parent, parent);
+            tmp = Files.createTempFile(parent, "." + FILE_NAME + ".", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
+            try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(tmp, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS))) {
                 out.println("{"); //$NON-NLS-1$
                 out.println("  \"version\": " + SCHEMA_VERSION + ","); //$NON-NLS-1$
                 out.println("  \"updatedAt\": \"" + Instant.now() + "\","); //$NON-NLS-1$
@@ -346,11 +368,23 @@ class ChatAnnotationStore {
                 out.println("  }"); //$NON-NLS-1$
                 out.println("}"); //$NON-NLS-1$
             }
-            Files.move(tmp, storeFile, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tmp, storeFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, storeFile, StandardCopyOption.REPLACE_EXISTING);
+            }
             dirty = false;
             loadedStamp = lastModifiedOf(storeFile);
         } catch (Exception e) {
             LOGGER.warn("Unable to write {}", storeFile, e); //$NON-NLS-1$
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException e) {
+                    LOGGER.debug("Unable to remove temporary annotation file {}", tmp, e); //$NON-NLS-1$
+                }
+            }
         }
     }
 
