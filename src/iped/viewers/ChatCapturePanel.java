@@ -21,6 +21,7 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -185,12 +186,18 @@ public class ChatCapturePanel extends JPanel {
             if (viewer.isChatCaptureRunning()) {
                 viewer.stopChatCapture();
             } else {
+                VerifierIntegrity.installVerifierFiles(new File(outputFolder.getText()).toPath());
+                VerifierIntegrity.showAlertIfNeeded(this, new File(outputFolder.getText()).toPath());
                 viewer.startChatCapture(new File(outputFolder.getText()), getEffectiveCustomName(),
                         getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
             }
         });
-        recapture.addActionListener(e -> viewer.showRecaptureDialog(new File(outputFolder.getText()), getSensitiveImagesFolder(),
-                getSensitiveSimilarityPercent(), getSensitiveBlurPercent()));
+        recapture.addActionListener(e -> {
+            VerifierIntegrity.installVerifierFiles(new File(outputFolder.getText()).toPath());
+            VerifierIntegrity.showAlertIfNeeded(this, new File(outputFolder.getText()).toPath());
+            viewer.showRecaptureDialog(new File(outputFolder.getText()), getSensitiveImagesFolder(),
+                    getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+        });
         annotateSaved.addActionListener(e -> viewer.annotateSavedChat());
         saveAnnotations.addActionListener(e -> viewer.saveAnnotations());
     }

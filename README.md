@@ -6,6 +6,22 @@ Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstala
 
 Versao atual do plugin: **2.3.0-beta**
 
+## About
+
+Plugin Java para IPED 4.3.1 que captura intervalos de conversas WhatsApp e gera arquivos navegáveis, anotações, coordenadas, inventários e hashes para revisão forense.
+
+## Getting Started
+
+Feche o IPED, extraia o ZIP do instalador e execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat`. Reabra o IPED e abra uma conversa WhatsApp no viewer HTML.
+
+## Usage
+
+Marque o início e o fim do trecho pelo menu de contexto, escolha a pasta de saída e inicie a captura. Para instruções detalhadas, consulte [doc.md](doc.md) e [ESPEC_UNICA_CHAT_CAPTURE_IPED.md](ESPEC_UNICA_CHAT_CAPTURE_IPED.md).
+
+## License
+
+Este repositório não contém um arquivo `LICENSE`; a licença do projeto não está especificada aqui.
+
 ## O que este plugin altera
 
 Arquivos principais alterados:
@@ -237,18 +253,26 @@ chat-captura IPED/
 
 ## Downloads da versão beta 2.3.0
 
-Na página de releases, baixe os três arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
+Na página de releases, baixe os quatro arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
 
 | Arquivo | Para que serve |
 |---|---|
 | instalador-chat-captura-IPED-2.3.0-beta.zip | Instalador completo, JAR do plugin e arquivos de idioma |
+| iped-viewers-impl-4.3.1.jar | JAR compilado do plugin para instalação manual |
 | integridade-verifier.jar | Verificador independente com Java 11 ou superior |
 | integridade-verifier.exe | Mesmo verificador para Windows x64, sem Java instalado |
 | src-plugin-2.3.0-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
-| src-integridade-verifier-1.2.1.zip | Código-fonte separado do verificador, testes e scripts de compilação |
+| src-integridade-verifier-1.2.4.zip | Código-fonte separado do verificador, testes e scripts de compilação |
 
-Os dois códigos-fonte são downloads independentes e também permanecem organizados no repositório. Os SHA-256 dos cinco arquivos estão em CHECKSUMS.md.
+Os pacotes de código-fonte são downloads independentes e também permanecem organizados no repositório. O JAR do plugin e os dois formatos do verificador também são publicados como arquivos separados. Os SHA-256 de cada artefato estão em [CHECKSUMS.md](CHECKSUMS.md).
 
+
+### Hashes do verificador de integridade 1.2.4
+
+JAR — SHA-256: `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E`<br>
+EXE — SHA-256: `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9`
+
+O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 ## Como instalar
 
 1. Feche o IPED.
@@ -277,7 +301,7 @@ iped-viewers-impl-4.3.1.jar.bak-YYYYMMDD-HHMMSS
 
 ## Verificador independente
 
-O verificador não é necessário para instalar o plugin. Baixe o JAR ou o EXE separadamente na release e copie o arquivo escolhido para a pasta raiz das capturas, ao lado de index.html e relatorio.htm.
+O verificador não é necessário para instalar o plugin. Durante a captura, o plugin tenta localizar verificadores em pastas conhecidas e copiar os arquivos com hashes reconhecidos para a pasta de saída. Se não encontrar os binários, baixe o JAR ou EXE da release e copie-os manualmente para a pasta raiz das capturas, ao lado de index.html e relatorio.htm.
 
 - Execute integridade-verifier.exe no Windows, sem instalar Java; ou
 - execute java -jar integridade-verifier.jar com Java 11 ou superior.

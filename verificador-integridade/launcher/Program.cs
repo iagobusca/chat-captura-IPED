@@ -1,4 +1,4 @@
-// Versão 1.2.1 — instâncias isoladas e limpeza segura de temporários.
+// Versão 1.2.4 — cópia assíncrona para a área de transferência e instâncias isoladas.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
@@ -38,11 +38,16 @@ internal static class Program
                     string destination = Path.GetFullPath(Path.Combine(tempRoot, entry.FullName));
                     if (!destination.StartsWith(Path.GetFullPath(tempRoot) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException("O pacote contém um caminho inválido.");
-                    if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) Directory.CreateDirectory(destination);
+                    bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\") || entry.Length == 0;
+                    string destPath = destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    if (isDir)
+                    {
+                        Directory.CreateDirectory(destPath);
+                    }
                     else
                     {
-                        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                        entry.ExtractToFile(destination, true);
+                        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                        entry.ExtractToFile(destPath, true);
                     }
                 }
             }
@@ -64,8 +69,9 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
-                "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Console.WriteLine("ERRO: " + ex);
+            try { MessageBox.Show("Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
+                "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
             return 1;
         }
         finally

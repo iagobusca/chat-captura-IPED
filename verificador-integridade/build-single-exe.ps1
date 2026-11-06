@@ -18,10 +18,15 @@ New-Item -ItemType Directory -Force -Path $Classes,$Input,$Output | Out-Null
 if (!(Test-Path -LiteralPath $JsonJar)) { throw "Biblioteca JSON não encontrada: $JsonJar" }
 & (Join-Path $Java11 'bin\javac.exe') -encoding UTF-8 --release 11 -cp $JsonJar -d $Classes (Join-Path $Base 'src\IntegrityVerifier.java')
 if ($LASTEXITCODE) { throw 'Falha ao compilar o verificador Java 11.' }
+$Icon = Join-Path $Base 'imagem doc\verificador-icon.png'
+if (Test-Path -LiteralPath $Icon) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $Classes 'imagem doc') | Out-Null
+    Copy-Item -LiteralPath $Icon -Destination (Join-Path $Classes 'imagem doc\verificador-icon.png') -Force
+}
 $Jar = Join-Path $Input 'integridade-verifier.jar'
 $Manifest = Join-Path $Work 'MANIFEST.MF'
-@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.2.1','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
-& (Join-Path $Java11 'bin\jar.exe') --create --file $Jar --manifest $Manifest -C $Classes IntegrityVerifier.class -C $Classes 'IntegrityVerifier$Capture.class' -C $Classes 'IntegrityVerifier$Item.class'
+@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.2.4','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
+& (Join-Path $Java11 'bin\jar.exe') --create --file $Jar --manifest $Manifest -C $Classes .
 if ($LASTEXITCODE) { throw 'Falha ao montar o JAR Java.' }
 $JsonClasses = Join-Path $Work 'json-classes'
 New-Item -ItemType Directory -Force -Path $JsonClasses | Out-Null
@@ -33,10 +38,10 @@ Copy-Item $Jar (Join-Path $Base 'integridade-verifier.jar') -Force
 & (Join-Path $Java11 'bin\jlink.exe') --module-path (Join-Path $Java11 'jmods') --add-modules java.base,java.desktop --strip-debug --no-header-files --no-man-pages --output $Runtime
 if ($LASTEXITCODE) { throw 'Falha ao criar runtime Java 11 reduzido.' }
 New-Item -ItemType Directory -Force -Path $AppImage | Out-Null
-& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.2.1
+& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.2.4
 if ($LASTEXITCODE) { throw 'Falha ao criar imagem Java empacotada.' }
 $Rows = Get-ChildItem -LiteralPath $PayloadDir -File -Recurse | ForEach-Object {
-    $Relative = [IO.Path]::GetRelativePath($PayloadDir, $_.FullName).Replace('\','/')
+    $Relative = $_.FullName.Substring($PayloadDir.Length).TrimStart('\','/').Replace('\','/')
     $Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$Hash|$Relative"
 }

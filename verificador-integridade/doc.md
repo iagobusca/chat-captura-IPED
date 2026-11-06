@@ -1,20 +1,22 @@
-# Verificador de Integridade 1.2.1
+# Verificador de Integridade 1.2.4
 
-**Versão:** 1.2.1 | Data: 31/10/2026.
+**Versão:** 1.2.4 | Data: 06/11/2026.
 
 ## Índice
 
 - [Visao geral](#visao-geral)
 - [Arquitetura e funcionamento](#arquitetura-e-funcionamento)
+- [Janelas e controles](#janelas-e-controles)
 - [Execucao](#execucao)
 - [Pastas temporarias](#pastas-temporarias)
 - [Dependencias](#dependencias)
 - [Codigos de saida e erros](#codigos-de-saida-e-erros)
 - [Limitacoes e migracao](#limitacoes-e-migracao)
+- [Referência pública do histórico](#referência-pública-do-histórico)
 
 ## Visao geral
 
-Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). Depois, lê capturas existentes, recalcula hashes e grava relatórios. O pacote oferece um JAR Java 11 e um EXE Windows de arquivo único. O EXE contém o runtime Java e o runtime .NET necessários; o usuário não precisa instalar Java ou .NET.
+Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). Depois, lê capturas existentes, recalcula hashes e grava relatórios. O pacote oferece um JAR Java 11 e um EXE Windows de arquivo único. O EXE contém o runtime Java e o runtime .NET necessários; o usuário não precisa instalar Java ou .NET. As telas principais são janelas nativas com ícone próprio, permanecem sempre no topo e têm entrada na barra de tarefas do Windows.
 
 ## Arquitetura e funcionamento
 
@@ -30,6 +32,14 @@ graph TD
 ```
 
 Cada execução cria uma pasta `instance-<pid>-<id>` dentro de `%TEMP%\Avilla\IntegridadeVerifier`. Dentro dela ficam `app`, `runtime` e um bloqueio de uso exclusivo. Execuções simultâneas usam pastas diferentes. O EXE valida os SHA-256 do pacote depois de extraí-lo.
+
+## Janelas e controles
+
+As telas de seleção de modo, seleção de capturas, resultado e comparação pública são `JFrame` nativos. Por isso, aparecem na barra de tarefas, podem ser minimizadas pelo botão nativo da barra de título e restauradas pelo clique na barra de tarefas. Todas permanecem fixas sobre as demais janelas (`always-on-top`), sem botão para alternar esse comportamento.
+
+O ícone do verificador é embutido no JAR e aplicado a todas as janelas, inclusive quando o EXE extrai o aplicativo para uma pasta temporária. Fechar pelo **X** ou por **Cancelar** encerra o processo Java de forma controlada, permitindo que o lançador aguarde o término e remova a pasta temporária. Na tela de resultado, **Fechar** libera o fluxo e o processo termina normalmente; o aviso de "Nenhuma captura" também encerra o processo ao ser fechado.
+
+As ações de copiar hashes e histórico enviam o conteúdo à área de transferência em uma thread de trabalho separada, para que uma demora do Windows não congele os controles da janela. A confirmação é exibida como diálogo associado à janela que iniciou a cópia.
 
 ## Execucao
 
@@ -58,14 +68,14 @@ Na inicialização, o EXE verifica se há outro processo do verificador em execu
 
 | Código | Significado |
 | --- | --- |
-| `0` | Interface fechada normalmente ou teste interno de extração concluído. |
+| `0` | Interface encerrada por **Fechar**, **X** ou **Cancelar**, ou teste interno de extração concluído. |
 | `1` | Falha ao preparar, extrair ou validar o pacote do EXE. |
 
 Em falhas do lançador, uma janela informa o erro. O processo Java pode apresentar mensagens próprias da interface.
 
 ## Limitacoes e migracao
 
-A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. A versão 1.2.1 acrescenta os modos local/público e um registro público determinístico. A comparação pública depende de uma referência obtida fora da pasta verificada.
+A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. As versões 1.2.x acrescentam os modos local/público e um registro público determinístico. A comparação pública depende de uma referência obtida fora da pasta verificada.
 
 
 

@@ -4,7 +4,7 @@ Arquivo principal do instalador:
 
 ```text
 instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
-SHA-256: FCA50E2E458F0A3F77C8C87081AF9A6A7A438F1AFF315E31EF904BE77632FE74
+SHA-256: 5DB61A15FDC9599F0B9364C94C54BDC8299936304D2C69B3BB73155A7F69AD2F
 Versao do plugin: 2.3.0-beta
 ```
 
@@ -14,7 +14,7 @@ Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no
 
 | Versao | SHA-256 | Data | Mudanca |
 |---|---|---|---|
-| 2.3.0-beta | `FCA50E2E458F0A3F77C8C87081AF9A6A7A438F1AFF315E31EF904BE77632FE74` | 2026-10-30 | Re-Extrair incremental, assinaturas por frame e auditoria de restauracao |
+| 2.3.0-beta | `5DB61A15FDC9599F0B9364C94C54BDC8299936304D2C69B3BB73155A7F69AD2F` | 2026-10-30 | Re-Extrair incremental, assinaturas por frame e auditoria de restauracao |
 | 2.2.1-beta | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | beta: selecao em massa no dialogo Re-Extrair |
 | 2.0.3 | `F3D940E0235AD3B5EDBB984104168604B55B4E7E48BD7072FEB5931411755EA1` | 2026-10-29 | botao alternavel Marcar/Desmarcar todos no Re-Extrair |
 | 2.0.2 | `60D1293FD45980977FB0FE11F8706995E076D2F714F0404BE34F43735CEC0C24` | 2026-10-29 | Messages recompilada com JDK 11 (--release 11) |
@@ -62,3 +62,15 @@ Os dois hashes devem ser iguais.
 | src-integridade-verifier-1.2.1.zip | 21.537 bytes | 03AD384642F54D2C197BB2EF26DA9D09F2532C58DEE1882A25723B8233870D14 |
 
 O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes de código-fonte são assets separados para download independente.
+
+## Artefatos atualizados da release v2.3.0-beta
+
+| Arquivo | Tamanho | SHA-256 |
+|---|---:|---|
+| instalador-chat-captura-IPED-2.3.0-beta.zip | 568.020 bytes | `2B5F9787D2B1E49835B4A542C7E2BECCEACE917E11F3FB8714EC5B92144F5529` |
+| iped-viewers-impl-4.3.1.jar | 593.910 bytes | `5DB61A15FDC9599F0B9364C94C54BDC8299936304D2C69B3BB73155A7F69AD2F` |
+| integridade-verifier.jar (1.2.4) | 103.941 bytes | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` |
+| integridade-verifier.exe (1.2.4) | 77.806.121 bytes | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` |
+| src-integridade-verifier-1.2.4.zip | 24.830 bytes | `1BDBE0C4FDE88F148150690A34C7973C888295E35587A34C7A5ACD242A486B72` |
+
+Os hashes das versões anteriores do verificador estão em [versao_hash.md](versao_hash.md).

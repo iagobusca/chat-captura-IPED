@@ -1,5 +1,8 @@
 import java.awt.Desktop;
+import java.awt.Dimension;
 import java.awt.Toolkit;
+import java.awt.Image;
+import javax.swing.ImageIcon;
 import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -7,6 +10,7 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.regex.*;
 import javax.swing.*;
 import org.json.JSONArray;
@@ -15,6 +19,36 @@ import org.json.JSONObject;
 /** Independent, read-only checker for Chat Capture folders (Java 11). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
+    private static final String VERIFIER_VERSION = "1.2.4";
+    private static Image verifierIcon() {
+        // tenta carregar de "imagem doc/verificador-icon.png" relativo ao jar/dir de execucao
+        String[] candidates = new String[] {
+            "imagem doc/verificador-icon.png",
+            "verificador-icon.png",
+            "../imagem doc/verificador-icon.png" };
+        for (String c : candidates) {
+            try {
+                java.io.File f = new java.io.File(c);
+                if (f.isFile()) return Toolkit.getDefaultToolkit().getImage(f.getAbsolutePath());
+            } catch (Exception ignored) { }
+        }
+        try {
+            java.net.URL u = IntegrityVerifier.class.getResource("/imagem doc/verificador-icon.png");
+            if (u != null) return Toolkit.getDefaultToolkit().getImage(u);
+            u = IntegrityVerifier.class.getResource("/verificador-icon.png");
+            if (u != null) return Toolkit.getDefaultToolkit().getImage(u);
+        } catch (Exception ignored) { }
+        return null;
+    }
+    private static JFrame newWindow(String title, boolean resizable) {
+        JFrame frame = new JFrame(title);
+        Image ic = verifierIcon();
+        if (ic != null) frame.setIconImage(ic);
+        frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+        frame.setAlwaysOnTop(true);
+        frame.setResizable(resizable);
+        return frame;
+    }
     private static final class Item {
         String path, expected; long size, bytes; String actual, state;
     }
@@ -29,7 +63,7 @@ public final class IntegrityVerifier {
         Path root = args.length > (verifyOnly || exportHistory ? 1 : 0) ? Paths.get(args[verifyOnly || exportHistory ? 1 : 0]) : applicationFolder();
         root = root.toAbsolutePath().normalize();
         List<Capture> captures = discover(root);
-        if (captures.isEmpty()) { JOptionPane.showMessageDialog(null, "Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root, "Integridade", JOptionPane.INFORMATION_MESSAGE); return; }
+        if (captures.isEmpty()) { JOptionPane pane=new JOptionPane("Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,JOptionPane.INFORMATION_MESSAGE);JDialog notice=pane.createDialog(null,"Integridade");Image ic=verifierIcon();if(ic!=null)notice.setIconImage(ic);notice.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){System.exit(0);}});notice.setVisible(true);System.exit(0);return; }
         if (verifyOnly) {
             boolean ok=true;
             for(Capture c:captures){verify(c);System.out.println(c.name+" | "+c.historyStatus+" | content="+c.hash+" | history="+c.historyHash);ok &= c.historyStatus.startsWith("consistente com registro local");}
@@ -38,9 +72,9 @@ public final class IntegrityVerifier {
         }
         if(exportHistory){for(Capture c:captures)verify(c);String report=historyReport(captures,setHash(captures));Path out=root.resolve("integridade");Files.createDirectories(out);atomic(out.resolve("historico-capturas.txt"),report);System.out.println(out.resolve("historico-capturas.txt"));System.out.println("SHA-256_PUBLICO="+hashText(normalizePublicRecord(report)));return;}
         int mode=chooseMode();
-        if(mode<0)return;
+        if(mode<0){System.exit(0);return;}
         List<Capture> selected = chooseCaptures(captures);
-        if (selected.isEmpty()) return;
+        if (selected.isEmpty()) { System.exit(0); return; }
         for (Capture c : selected) verify(c);
         String setHash = setHash(selected);
         String generated = OffsetDateTime.now().toString();
@@ -51,8 +85,9 @@ public final class IntegrityVerifier {
         Path historyFile=root.resolve("integridade").resolve("historico-capturas.txt");
         if(mode==1)comparePublicHistory(history,historyPublicHash);
         showSummaryDialog(root,selected,setHash,history,historyPublicHash,hashList,historyFile,mode);
+        System.exit(0);
     }
-    private static void showSummaryDialog(Path root,List<Capture> selected,String setHash,String history,String historyPublicHash,String hashList,Path historyFile,int mode){
+    private static void showSummaryDialog(Path root,List<Capture> selected,String setHash,String history,String historyPublicHash,String hashList,Path historyFile,int mode) throws Exception {
         JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
         panel.add(new JLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada."));
         panel.add(new JLabel("Capturas verificadas: "+selected.size()));panel.add(Box.createVerticalStrut(10));
@@ -61,26 +96,42 @@ public final class IntegrityVerifier {
         panel.add(hashValueRow("SHA-256 do histórico completo",historyPublicHash,"Hash SHA-256 do histórico completo copiado."));
         panel.add(Box.createVerticalStrut(8));
         JPanel actions=new JPanel(new java.awt.GridLayout(0,2,6,6));
-        JButton copyList=new JButton("Copiar lista de hashes");copyList.addActionListener(e->copyToClipboard(hashList,"Lista de hashes copiada."));
-        JButton copyHistory=new JButton("Copiar histórico completo");copyHistory.addActionListener(e->copyToClipboard(history,"Histórico completo copiado."));
+        JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Resultado",true);
+        JButton copyList=new JButton("Copiar lista de hashes");copyList.addActionListener(e->copyToClipboard(frame,hashList,"Lista de hashes copiada."));
+        JButton copyHistory=new JButton("Copiar histórico completo");copyHistory.addActionListener(e->copyToClipboard(frame,history,"Histórico completo copiado."));
         JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(historyFile));
         JButton openHtml=new JButton("Abrir relatório HTML");openHtml.addActionListener(e->openInBrowser(root.resolve("integridade.html")));
-        JButton close=new JButton("Fechar");close.addActionListener(e->{java.awt.Window w=SwingUtilities.getWindowAncestor(close);if(w!=null)w.dispose();});
+        final CountDownLatch latch=new CountDownLatch(1);
+        JButton close=new JButton("Fechar");close.addActionListener(e->latch.countDown());
         actions.add(copyList);actions.add(copyHistory);actions.add(openHistory);actions.add(openHtml);actions.add(close);panel.add(actions);
-        JOptionPane option=new JOptionPane(panel,JOptionPane.PLAIN_MESSAGE,JOptionPane.DEFAULT_OPTION);JDialog dialog=option.createDialog(null,"Resultado da verificação");dialog.setResizable(true);dialog.setVisible(true);
+        frame.setContentPane(panel);
+        frame.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){latch.countDown();}});
+        frame.pack();frame.setLocationRelativeTo(null);frame.setVisible(true);
+        latch.await();
+        frame.dispose();
     }
     private static JPanel hashValueRow(String label,String value,String copyMessage){
         JPanel block=new JPanel();block.setLayout(new BoxLayout(block,BoxLayout.Y_AXIS));block.add(new JLabel(label+":"));
-        JPanel row=new JPanel(new java.awt.BorderLayout(8,0));JButton copy=new JButton("Copiar");copy.addActionListener(e->copyToClipboard(value,copyMessage));
+        JPanel row=new JPanel(new java.awt.BorderLayout(8,0));JButton copy=new JButton("Copiar");copy.addActionListener(e->copyToClipboard(SwingUtilities.getWindowAncestor(row),value,copyMessage));
         JTextArea text=new JTextArea(value,2,38);text.setEditable(false);text.setLineWrap(true);text.setWrapStyleWord(true);text.setOpaque(false);text.setFocusable(true);
         row.add(copy,java.awt.BorderLayout.WEST);row.add(text,java.awt.BorderLayout.CENTER);block.add(row);return block;
     }
-    private static int chooseMode(){
-        JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");final int[] selected={-1};
-        local.addActionListener(e->{selected[0]=0;((java.awt.Window)SwingUtilities.getWindowAncestor(local)).dispose();});
-        external.addActionListener(e->{selected[0]=1;((java.awt.Window)SwingUtilities.getWindowAncestor(external)).dispose();});
-        JPanel panel=new JPanel();panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Escolha a referência para verificar:"));panel.add(Box.createVerticalStrut(10));panel.add(new JLabel("Local: compara os arquivos com o integridade.json da captura."));panel.add(new JLabel("Público: compara com hash ou histórico recebido de fora."));panel.add(Box.createVerticalStrut(12));JPanel buttons=new JPanel();buttons.add(local);buttons.add(external);panel.add(buttons);
-        JOptionPane option=new JOptionPane(panel,JOptionPane.PLAIN_MESSAGE,JOptionPane.DEFAULT_OPTION);JDialog dialog=option.createDialog(null,"Verificar integridade");dialog.setModal(true);dialog.setVisible(true);return selected[0];
+    private static int chooseMode() throws Exception {
+        final int[] selected={-1};
+        final CountDownLatch latch=new CountDownLatch(1);
+        JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");
+        JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Escolha a referência para verificar:"));panel.add(Box.createVerticalStrut(10));panel.add(new JLabel("Local: compara os arquivos com o integridade.json da captura."));panel.add(new JLabel("Público: compara com hash ou histórico recebido de fora."));panel.add(Box.createVerticalStrut(12));JPanel buttons=new JPanel();buttons.add(local);buttons.add(external);panel.add(buttons);
+        JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" ("+System.getProperty("os.name")+")",false);
+        local.addActionListener(e->{selected[0]=0;frame.dispose();latch.countDown();});
+        external.addActionListener(e->{selected[0]=1;frame.dispose();latch.countDown();});
+        frame.setContentPane(panel);
+        frame.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){System.exit(0);}});
+        frame.pack();
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+        latch.await();
+        frame.dispose();
+        return selected[0];
     }
     private static Path applicationFolder() throws Exception {
         Path location=Paths.get(IntegrityVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize();
@@ -98,27 +149,73 @@ public final class IntegrityVerifier {
         }
     }
     private static void openFile(Path file) { try { if(!Desktop.isDesktopSupported())throw new IOException("A abertura de arquivos não está disponível.");Desktop.getDesktop().open(file.toFile()); } catch(Exception e){JOptionPane.showMessageDialog(null,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);} }
-    private static void comparePublicHistory(String localHistory,String localHash) {
+    private static void comparePublicHistory(String localHistory,String localHash) throws Exception {
         JTextField publicHash=new JTextField(36);JTextArea publicRecord=new JTextArea(14,44);publicRecord.setLineWrap(false);JLabel result=new JLabel("Cole o SHA-256 público ou o histórico completo recebido por canal confiável.");
         JButton compareHash=new JButton("Comparar hash público");compareHash.addActionListener(e->{String supplied=publicHash.getText().trim();boolean match=supplied.matches("(?i)[0-9a-f]{64}")&&supplied.equalsIgnoreCase(localHash);result.setText(supplied.isEmpty()?"Informe o hash público.":!supplied.matches("(?i)[0-9a-f]{64}")?"Formato inválido: informe 64 caracteres hexadecimais.":match?"CONFERE: o hash público corresponde ao histórico completo calculado.":"DIVERGE: o hash público não corresponde ao histórico calculado.");result.setForeground(supplied.isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
         JButton compareRecord=new JButton("Comparar histórico completo");compareRecord.addActionListener(e->{String supplied=publicRecord.getText();boolean match=!supplied.trim().isEmpty()&&normalizePublicRecord(supplied).equals(normalizePublicRecord(localHistory));result.setText(supplied.trim().isEmpty()?"Cole o histórico público completo.":match?"CONFERE: o registro público corresponde integralmente ao histórico calculado.":"DIVERGE: o registro público não corresponde ao histórico calculado.");result.setForeground(supplied.trim().isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
-        JButton copyHash=new JButton("Copiar hash calculado");copyHash.addActionListener(e->copyToClipboard(localHash,"SHA-256 público do histórico copiado."));
+        JButton copyHash=new JButton("Copiar hash calculado");
         JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Cole o hash público ou copie o hash calculado:"));JPanel hashRow=new JPanel(new java.awt.BorderLayout(8,0));hashRow.add(copyHash,java.awt.BorderLayout.WEST);hashRow.add(publicHash,java.awt.BorderLayout.CENTER);panel.add(hashRow);panel.add(compareHash);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Ou cole abaixo o arquivo completo historico-capturas.txt:"));panel.add(new JScrollPane(publicRecord));panel.add(compareRecord);panel.add(result);
-        JOptionPane.showMessageDialog(null,panel,"Integridade Público — comparar referência",JOptionPane.PLAIN_MESSAGE);
+        final CountDownLatch latch=new CountDownLatch(1);
+        JFrame frame2=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Integridade Público",true);
+        copyHash.addActionListener(e->copyToClipboard(frame2,localHash,"SHA-256 público do histórico copiado."));
+        frame2.setContentPane(panel);
+        frame2.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){latch.countDown();}});
+        frame2.pack();frame2.setLocationRelativeTo(null);frame2.setVisible(true);
+        latch.await();
+        frame2.dispose();
     }
     private static String normalizePublicRecord(String s){String n=s.replace("\r\n","\n").replace('\r','\n');while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
     private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(c.name).append('|').append(c.hash).append('\n');return out.toString();}
-    private static void copyToClipboard(String value,String message){try{Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(value),null);JOptionPane.showMessageDialog(null,message,"Hashes",JOptionPane.INFORMATION_MESSAGE);}catch(Exception e){JOptionPane.showMessageDialog(null,"Não foi possível copiar automaticamente.\n"+e.getMessage(),"Cópia",JOptionPane.ERROR_MESSAGE);}}
+    private static void copyToClipboard(java.awt.Component owner,String value,String message){
+        Thread worker=new Thread(()->{
+            String error=null;
+            try{Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(value),null);}
+            catch(Exception e){error=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();}
+            final String failure=error;
+            SwingUtilities.invokeLater(()->JOptionPane.showMessageDialog(owner,failure==null?message:"Não foi possível copiar automaticamente.\n"+failure,failure==null?"Hashes":"Cópia",failure==null?JOptionPane.INFORMATION_MESSAGE:JOptionPane.ERROR_MESSAGE));
+        },"integridade-verifier-clipboard");
+        worker.setDaemon(true);worker.start();
+    }
     private static List<Capture> discover(Path root) throws IOException {
         List<Capture> out=new ArrayList<>();
         try(java.util.stream.Stream<Path> s=Files.list(root)) { s.filter(Files::isDirectory).forEach(p->{String n=p.getFileName().toString();if(n.startsWith("_backup_chat_capture_")||n.equals("vinculado")||n.equals(".iped-reextract-trash")||n.contains(".__old_")||n.contains(".__reextract_tmp_")||n.contains(".__reextract_failed_"))return;if(Files.isRegularFile(p.resolve("manifest.json"))||Files.isRegularFile(p.resolve("whatsapp.html"))||Files.isRegularFile(p.resolve("relatorio.htm"))||Files.isRegularFile(p.resolve("texto.txt"))){Capture c=new Capture();c.dir=p;c.name=n;out.add(c);} }); }
         out.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT))); return out;
     }
-    private static List<Capture> chooseCaptures(List<Capture> captures) {
+    private static List<Capture> chooseCaptures(List<Capture> captures) throws Exception {
         JPanel panel=new JPanel();panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));JCheckBox all=new JCheckBox("Desmarcar todas",true);panel.add(all);List<JCheckBox> boxes=new ArrayList<>();
         for(Capture c:captures){JCheckBox b=new JCheckBox(c.name,true);boxes.add(b);panel.add(b);} all.addActionListener(e->{boolean selected=all.isSelected();boxes.forEach(b->b.setSelected(selected));all.setText(selected?"Desmarcar todas":"Marcar todas");});
-        int r=JOptionPane.showConfirmDialog(null,new JScrollPane(panel),"Selecione as capturas",JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE);if(r!=JOptionPane.OK_OPTION)return Collections.emptyList();
-        List<Capture> out=new ArrayList<>();for(int i=0;i<boxes.size();i++)if(boxes.get(i).isSelected())out.add(captures.get(i));return out;
+        // Dimensoes adaptativas ao monitor (altura maxima = 65% da tela), minimo 640.
+        Dimension screen=Toolkit.getDefaultToolkit().getScreenSize();
+        int margin=80;
+        int minWidth=640, minHeight=640;
+        int maxWidth=Math.max(minWidth, screen.width-margin);
+        int maxHeight=Math.max(minHeight, (int)(screen.height*0.65));
+        int width=Math.min(maxWidth, Math.max(minWidth, 640));
+        int height=Math.min(maxHeight, Math.max(minHeight, 640));
+        JScrollPane scroll=new JScrollPane(panel);
+        scroll.setPreferredSize(new Dimension(width-40, height-120));
+        scroll.setMinimumSize(new Dimension(minWidth-40, minHeight-120));
+        scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        final CountDownLatch latch=new CountDownLatch(1);
+        final List<Capture> out=new ArrayList<>();
+        JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Selecione as capturas",true);
+        JButton ok=new JButton("Verificar selecionadas");JButton cancel=new JButton("Cancelar");
+        ok.addActionListener(e->{out.clear();for(int i=0;i<boxes.size();i++)if(boxes.get(i).isSelected())out.add(captures.get(i));frame.dispose();latch.countDown();});
+        cancel.addActionListener(e->{out.clear();frame.dispose();latch.countDown();});
+        JPanel bottom=new JPanel();bottom.setLayout(new BoxLayout(bottom,BoxLayout.Y_AXIS));
+        JPanel buttonsRow=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,6,0));buttonsRow.add(cancel);buttonsRow.add(ok);bottom.add(buttonsRow);
+        JPanel content=new JPanel(new java.awt.BorderLayout());content.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));content.add(scroll,java.awt.BorderLayout.CENTER);content.add(bottom,java.awt.BorderLayout.SOUTH);
+        frame.setContentPane(content);
+        frame.setMinimumSize(new Dimension(minWidth, minHeight));
+        frame.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){System.exit(0);}});
+        frame.pack();
+        if(frame.getWidth()<minWidth||frame.getHeight()<minHeight)frame.setSize(Math.max(frame.getWidth(),minWidth),Math.max(frame.getHeight(),minHeight));
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+        latch.await();
+        frame.dispose();
+        return out;
     }
     private static void verify(Capture c) throws Exception {
         Path integrityPath=c.dir.resolve("integridade.json");
