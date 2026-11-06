@@ -71,7 +71,7 @@ O ZIP do instalador é autocontido. O JAR e EXE do verificador e os dois pacotes
 | iped-viewers-impl-4.3.1-2.3.1-beta.jar | 594.192 bytes | `7DAEEF3C3E8C046806AAD96C66182EE2C26CC366F8D38009B533DAABEC54B7D8` |
 | integridade-verifier-1.2.4.jar | 103.941 bytes | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` |
 | integridade-verifier-1.2.4.exe | 77.806.121 bytes | `DFA25E34339D79D6A844B78BF7611B581CA478408394610E659CD6097BD8AAF9` |
-| src-plugin-2.3.1-beta.zip | 216.721 bytes | `EA8C181F914AD4D36E3D5447CB8CDC5B66E3F5B9BD6F3C5622D6EAF7E37DDEB4` |
+| src-plugin-2.3.1-beta.zip | 214.051 bytes | `EA8C181F914AD4D36E3D5447CB8CDC5B66E3F5B9BD6F3C5622D6EAF7E37DDEB4` |
 | src-integridade-verifier-1.2.4.zip | 24.830 bytes | `1BDBE0C4FDE88F148150690A34C7973C888295E35587A34C7A5ACD242A486B72` |
 
 Os hashes das versões anteriores do verificador estão em [versao_hash.md](versao_hash.md).
