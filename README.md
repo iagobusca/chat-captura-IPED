@@ -261,8 +261,7 @@ Na página de releases, baixe os quatro arquivos de execução ou, se quiser aud
 | iped-viewers-impl-4.3.1-2.3.6-beta.jar | JAR compilado do plugin para instalação manual |
 | integridade-verifier-1.2.8.jar | Verificador independente com Java 8 (1.8) ou superior |
 | integridade-verifier-1.2.8.exe | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
-| src-plugin-2.3.2-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
-| src-integridade-verifier-1.2.5.zip | Código-fonte separado do verificador, testes e scripts de compilação |
+| Código-fonte ZIP/TAR.GZ | Arquivos-fonte gerados automaticamente pelo Gitea a partir da tag `v2.3.6-beta` |
 
 Os pacotes de código-fonte são downloads independentes e também permanecem organizados no repositório. O JAR do plugin e os dois formatos do verificador também são publicados como arquivos separados. Os SHA-256 de cada artefato estão em [CHECKSUMS.md](CHECKSUMS.md).
 
@@ -272,8 +271,8 @@ Os pacotes de código-fonte são downloads independentes e também permanecem or
 JAR — SHA-256: `906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96`<br>
 EXE — SHA-256: `4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF`
 
-JAR do plugin — SHA-256: `35C557E418F26D793CD8F529C0AE53D7DE30A36BEB2AB89E3D8451851738433A`<br>
-ZIP do instalador — SHA-256: `E991DB752FDC48D1B7B39FD77CE0F520194B43378A7E8282EDA7E1169BD1E026`
+JAR do plugin — SHA-256: `832E2CF887357CC0074625BB3A595C33B7D9DB0D11BD9582D8DAA1C5C3A2C9F7`<br>
+ZIP do instalador — SHA-256: `6434DC5F4954D7CAD2E476E14F67BDF59CCD4E3C9F3332FAA1578E797E887D08`
 
 O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 ## Como instalar
