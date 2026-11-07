@@ -20,8 +20,8 @@ public final class IndexHashParityTest {
             String actual=(String)setHash.invoke(null,captures);
             String expected=pluginRootHash(root,captures);
             if(!expected.equals(actual))throw new AssertionError("Verifier root hash differs from index formula: expected="+expected+" actual="+actual);
-            Method write=IntegrityVerifier.class.getDeclaredMethod("writeReports",Path.class,List.class,String.class,String.class);write.setAccessible(true);
-            write.invoke(null,root,captures,actual,"2026-10-31T12:00:00Z");
+            Method write=IntegrityVerifier.class.getDeclaredMethod("writeReports",Path.class,List.class,String.class,String.class,String.class);write.setAccessible(true);
+            write.invoke(null,root,captures,actual,"2026-10-31T12:00:00Z","HISTORICO_PUBLICO_V1\nSHA256|"+actual+"\n");
             String html=new String(Files.readAllBytes(root.resolve("integridade.html")),StandardCharsets.UTF_8);
             for(String expectedText:new String[]{"Diverge do hash geral calculado.","Diverge do hash da captura calculado.","#8b0000","TODAS_AS_CAPTURAS","compareList()","function copyValue","data-capture=","out=row.querySelector('.cmp')"})
                 if(!html.contains(expectedText))throw new AssertionError("Missing HTML behavior/text: "+expectedText);

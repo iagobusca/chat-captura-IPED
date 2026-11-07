@@ -6,6 +6,12 @@ Os hashes abaixo são SHA-256 dos binários oficiais. Compare o hash do arquivo 
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.2.8 | `integridade-verifier.jar` | `906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96` | Build local com JDK 8; bytecode 52 |
+| 1.2.8 | `integridade-verifier.exe` | `4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF` | Build local Windows x64 autocontido; runtime .NET 10.0.14 |
+| 1.2.7 | `integridade-verifier.jar` | `D16D0BA8EDD722DE810DE5A7E5B458271E216961CAF0DAD9BEBDA9B0F715097D` | Build com JDK 8; bytecode 52 |
+| 1.2.7 | `integridade-verifier.exe` | `AB85C3B2C55E2A727378BD5973ACF64CED2E16D1AC32198B11670DB48C8744A5` | EXE Windows x64 com runtime incluído |
+| 1.2.6 | `integridade-verifier.jar` | `880F7ACB2332BB73DF24A59A290704A22F7AD9E39F7F17A9627739ED41EEC56F` | Build local da versão 1.2.6 para paginação |
+| 1.2.6 | `integridade-verifier.exe` | `3EF8E9BEA0C5EC58B8522ED2C2C8E18CD0E10198F0EF1887EB9E250FC709D950` | Build local da versão 1.2.6 para paginação |
 | 1.2.5 | `integridade-verifier.jar` | `5386859AE3127CB85BB666DBCD19C57836D0797C48A7CBF96957B5103E3AE9CB` | Build local da release v2.3.2-beta |
 | 1.2.5 | `integridade-verifier.exe` | `DA7D172765E80E02101B540CA0212F33490897C946CFE4FEEC17731E365C027F` | Build local da release v2.3.2-beta |
 | 1.2.4 | `integridade-verifier.jar` | `211D8AA0043CA587C80225572A14A6345B3CB2CB3E3CCFF6F2A955665EF8C01E` | Asset da release v2.3.1-beta |
@@ -23,4 +29,4 @@ Os arquivos preservados para as versões 1.2.1 e 1.2.2 são pacotes de código-f
 | 1.2.2 | `src-integridade-verifier-1.2.2.zip` (código-fonte) | `8C5413C833093136DDAA2A080B8339FE464CCF19E3F4A7DCF98BAC9ED80529BA` |
 | 1.2.3 | `src-integridade-verifier-1.2.3.zip` (código-fonte) | `83CD34A66C46C1ED0EF6D34C0E6A5B1E54EB3376B500D60F56F0668569D674EF` |
 
-A versão 1.2.5 é a atual e atualiza a biblioteca JSON para corrigir a falha de consumo de recursos. Os hashes das versões anteriores são mantidos para consulta histórica.
+A versão 1.2.8 é a atual; o JAR foi compilado para Java 8. Os hashes das versões anteriores são mantidos para consulta histórica.

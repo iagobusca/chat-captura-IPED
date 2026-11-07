@@ -4,6 +4,31 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.2.8] - 2026-11-06
+
+### Segurança
+
+- Substituído o parser regex do inventário por leitura JSON limitada a 16 MiB e profundidade 64; caminhos acima de 4.096 caracteres são rejeitados antes de resolução. Corrige o `StackOverflowError` reproduzido em caminhos de 1.536 caracteres.
+- Validação de tipo/tamanho/hash, rejeição de caminhos e entradas duplicadas e limite global de 25.000 itens/32 MiB de metadados selecionados.
+- Limite de 10.000 capturas descobertas e orçamento de 4 Mi caracteres estimados para relatórios; lotes acima do limite falham antes da escrita em vez de esgotar o heap.
+- Os cinco relatórios são preparados em temporários, promovidos após a preparação completa e restaurados se uma promoção falhar.
+
+### Corrigido
+
+- Descoberta interativa em worker cancelável com contagem de capturas, mantendo a interface responsiva durante a enumeração.
+- Corrigidos escaping JSON de nomes/caminhos e tratamento de falhas de verificação por limite.
+- Atualizado o launcher EXE para .NET 10.0.14; o JAR continua compilado para Java 8.
+
+## [1.2.7] - 2026-11-06
+
+- JAR compilado com JDK 8, compatível com Java 8 (1.8) ou superior.
+- Mantém o EXE Windows com runtime incluído e a interface paginada da versão 1.2.6.
+
+## [1.2.6] - 2026-11-06
+
+- Lista capturas em páginas de até 100 itens, com navegação e seleção persistente por identificador.
+- `Marcar todas` mantém estado global compacto; edição manual preserva os IDs já selecionados.
+
 ## [1.2.5] - 2026-11-06
 
 ### Segurança

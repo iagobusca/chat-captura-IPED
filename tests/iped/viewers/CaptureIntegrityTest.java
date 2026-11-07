@@ -16,6 +16,9 @@ public final class CaptureIntegrityTest {
         signaturesChangeWhenIdentityFieldsChange();
         inventoryDetectsMissingAndModifiedFiles();
         unsafePathsAreRejected();
+        longPathsAreRejected();
+        deeplyNestedJsonIsRejected();
+        oversizedMetadataPreservesPreviousFile();
         frameSignaturesTrackSequenceAndCompleteness();
         auditLogIsExcludedFromArtifactInventory();
         System.out.println("CaptureIntegrityTest: PASS");
@@ -116,9 +119,77 @@ public final class CaptureIntegrityTest {
                 rejected = true;
             }
             check(rejected, "parent components must be rejected even when normalized inside root");
+            for (String unsafe : new String[] { root.resolve("outside.txt").toString(), "C:\\outside.txt", "\\\\server\\share\\outside.txt", "." }) {
+                rejected = false;
+                try {
+                    CaptureIntegrity.resolveContained(root, unsafe);
+                } catch (java.io.IOException expected) {
+                    rejected = true;
+                }
+                check(rejected, "absolute, UNC, drive, and ambiguous dot paths must be rejected: " + unsafe);
+            }
         } finally {
             deleteTree(root);
         }
+    }
+
+    private static void longPathsAreRejected() throws Exception {
+        Path root = Files.createTempDirectory("capture-long-path-test");
+        try {
+            boolean rejected = false;
+            try {
+                CaptureIntegrity.resolveContained(root, repeat('a', CaptureIntegrity.MAX_RELATIVE_PATH_CHARS + 1));
+            } catch (java.io.IOException expected) {
+                rejected = true;
+            }
+            check(rejected, "relative paths over the configured limit must be rejected");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static void deeplyNestedJsonIsRejected() throws Exception {
+        Path root = Files.createTempDirectory("capture-json-depth-test");
+        Path json = root.resolve("manifest.json");
+        try {
+            String nested = repeat('[', 65) + "0" + repeat(']', 65);
+            Files.write(json, ("{\"nested\":" + nested + "}").getBytes(StandardCharsets.UTF_8));
+            boolean rejected = false;
+            try {
+                CaptureIntegrity.readJsonUtf8Limited(json);
+            } catch (java.io.IOException expected) {
+                rejected = expected.getMessage().contains("depth");
+            }
+            check(rejected, "JSON nesting beyond the configured limit must fail before parsing");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static void oversizedMetadataPreservesPreviousFile() throws Exception {
+        Path root = Files.createTempDirectory("capture-metadata-limit-test");
+        Path target = root.resolve("integridade.json");
+        try {
+            Files.write(target, "previous-record".getBytes(StandardCharsets.UTF_8));
+            boolean rejected = false;
+            try {
+                CaptureIntegrity.writeAtomically(root, target,
+                        repeat('x', (int) CaptureIntegrity.MAX_JSON_BYTES + 1));
+            } catch (java.io.IOException expected) {
+                rejected = true;
+            }
+            check(rejected, "metadata beyond the configured limit must be rejected");
+            equal("previous-record", new String(Files.readAllBytes(target), StandardCharsets.UTF_8),
+                    "rejected metadata must preserve the previous file");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static String repeat(char value, int count) {
+        char[] chars = new char[count];
+        java.util.Arrays.fill(chars, value);
+        return new String(chars);
     }
 
     private static void deleteTree(Path root) throws Exception {

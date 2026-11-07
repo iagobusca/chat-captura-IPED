@@ -118,7 +118,8 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.3.2-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.3.6-beta"; //$NON-NLS-1$
+    private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
     private static final int HTML_GENERATOR_VERSION = 2;
@@ -905,7 +906,7 @@ private void clearChatCaptureMarks() {
         String sourcePath = "";
         try {
             if (manifest.isFile()) {
-                String content = CaptureIntegrity.readUtf8Limited(manifest.toPath());
+                String content = CaptureIntegrity.readJsonUtf8Limited(manifest.toPath());
                 title = ChatAnnotationStore.field(content, "title");
                 if (title.isEmpty()) {
                     title = ChatAnnotationStore.field(content, "chatTitle");
@@ -1114,85 +1115,71 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             return;
         }
         Path outputRoot = outputFolder.toPath();
-        List<RecaptureJob> jobs;
+        List<String> folders;
         try {
-            jobs = loadRecaptureJobs(outputRoot);
+            folders = runRecaptureLoad("Re-Extrair — procurando capturas", progress -> readCaptureFolders(outputRoot, progress));
         } catch (Exception e) {
             LOGGER.warn("Unable to load recapture jobs from {}", outputRoot, e); //$NON-NLS-1$
             JOptionPane.showMessageDialog(chatCapturePanel, e.getMessage() == null ? e.toString() : e.getMessage(),
                     "Re-Extrair", JOptionPane.ERROR_MESSAGE); //$NON-NLS-1$
             return;
         }
-        if (jobs.isEmpty()) {
+        if (folders.isEmpty()) {
             JOptionPane.showMessageDialog(chatCapturePanel, "Nenhuma captura valida encontrada para re-extrair.", //$NON-NLS-1$
                     "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$
             return;
         }
 
-        JPanel list = new JPanel(new GridLayout(0, 1, 4, 4));
-        List<JCheckBox> checks = new ArrayList<>();
-        for (RecaptureJob job : jobs) {
-            JCheckBox check = new JCheckBox(job.displayLabel() + (job.legacyAnnotations ? "  [v1 - sem notas/links]" : "")); //$NON-NLS-1$ //$NON-NLS-2$
-            check.setEnabled(job.valid);
-            checks.add(check);
-            list.add(check);
-        }
-        JButton selectAllButton = new JButton();
-        Runnable refreshSelectAllLabel = () -> {
-            boolean hasSelectableJob = false;
-            boolean allSelected = true;
-            for (JCheckBox check : checks) {
-                if (check.isEnabled()) {
-                    hasSelectableJob = true;
-                    allSelected = allSelected && check.isSelected();
-                }
+        final int pageSize = 100;
+        int page = 0;
+        final boolean[] allFuture = {false};
+        boolean accepted = false;
+        Set<String> selectedIds = new HashSet<>();
+        boolean annotationsEnabled = true;
+        List<String> selectedFolders = new ArrayList<>();
+        while (!accepted) {
+            int start = page * pageSize;
+            List<String> pageFolders = folders.subList(start, Math.min(folders.size(), start + pageSize));
+            List<RecaptureJob> jobs;
+            try { jobs = runRecaptureLoad("Re-Extrair — validando página", progress -> loadRecaptureJobs(outputRoot, pageFolders, true, progress)); }
+            catch (Exception e) { JOptionPane.showMessageDialog(chatCapturePanel, e.getMessage(), "Re-Extrair", JOptionPane.ERROR_MESSAGE); return; }
+            JPanel list = new JPanel();
+            list.setLayout(new javax.swing.BoxLayout(list, javax.swing.BoxLayout.Y_AXIS));
+            List<JCheckBox> checks = new ArrayList<>();
+            for (RecaptureJob job : jobs) {
+                String normalizedFolder = job.folder == null ? "" : job.folder.replace('\\', '/'); //$NON-NLS-1$
+                int separator = normalizedFolder.lastIndexOf('/');
+                String label = separator >= 0 ? normalizedFolder.substring(separator + 1) : normalizedFolder;
+                JCheckBox check = new JCheckBox(label, allFuture[0] || selectedIds.contains(job.folder));
+                check.setEnabled(job.valid);
+                check.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+                checks.add(check); list.add(check);
+                list.add(javax.swing.Box.createVerticalStrut(2));
+                // The selection page needs only light descriptors. Drop full inventory JSON now.
+                job.expectedArtifacts = null; job.captureFingerprint = null; job.artifactGenerators = null;
             }
-            selectAllButton.setText(allSelected && hasSelectableJob ? "Desmarcar todos" : "Marcar todos"); //$NON-NLS-1$ //$NON-NLS-2$
-            selectAllButton.setEnabled(hasSelectableJob);
-        };
-        selectAllButton.addActionListener(event -> {
-            boolean selectAll = false;
-            for (JCheckBox check : checks) {
-                if (check.isEnabled() && !check.isSelected()) {
-                    selectAll = true;
-                    break;
-                }
-            }
-            for (JCheckBox check : checks) {
-                if (check.isEnabled()) {
-                    check.setSelected(selectAll);
-                }
-            }
-            refreshSelectAllLabel.run();
-        });
-        for (JCheckBox check : checks) {
-            check.addItemListener(event -> refreshSelectAllLabel.run());
+            JLabel count = new JLabel("Exibindo " + (start + 1) + "–" + (start + jobs.size()) + " de " + folders.size() + " capturas");
+            JButton bulk = new JButton(allFuture[0] ? "Desmarcar todos" : "Marcar todos");
+            bulk.addActionListener(e -> { allFuture[0] = !allFuture[0]; selectedIds.clear(); for(int i=0;i<checks.size();i++) if(checks.get(i).isEnabled())checks.get(i).setSelected(allFuture[0]); bulk.setText(allFuture[0] ? "Desmarcar todos" : "Marcar todos"); });
+            for (int i=0;i<checks.size();i++) { final String id=jobs.get(i).folder; checks.get(i).addActionListener(e -> { boolean checked=((JCheckBox)e.getSource()).isSelected();if(allFuture[0]){for(String existing:folders)if(!existing.equals(id))selectedIds.add(existing);allFuture[0]=false;bulk.setText("Marcar todos");}if(checked)selectedIds.add(id);else selectedIds.remove(id); }); }
+            JButton prev = new JButton("Anterior"); prev.setEnabled(page > 0);
+            JButton next = new JButton("Próximo"); next.setEnabled(start + pageSize < folders.size());
+            JPanel header = new JPanel(new BorderLayout()); header.add(count,BorderLayout.CENTER); header.add(bulk,BorderLayout.EAST);
+            JScrollPane captureScroll = new JScrollPane(list);
+            java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+            captureScroll.setPreferredSize(new java.awt.Dimension(Math.min(850, Math.max(480, screen.width - 100)), Math.min(520, Math.max(300, screen.height - 220))));
+            JPanel panel = new JPanel(new BorderLayout(6,6)); panel.add(header,BorderLayout.NORTH); panel.add(captureScroll,BorderLayout.CENTER); panel.add(buildRecaptureAnnotationsToggle(jobs),BorderLayout.SOUTH);
+            Object[] options = {prev,next,"Confirmar","Cancelar"};
+            int option=JOptionPane.showOptionDialog(chatCapturePanel,panel,"Re-Extrair capturas — página "+(page+1),JOptionPane.DEFAULT_OPTION,JOptionPane.PLAIN_MESSAGE,null,options,options[2]);
+            for(int i=0;i<checks.size();i++){String id=jobs.get(i).folder;if(checks.get(i).isSelected())selectedIds.add(id);else selectedIds.remove(id);}
+            if(option==0){page=Math.max(0,page-1);continue;}
+            if(option==1){page=Math.min((folders.size()-1)/pageSize,page+1);continue;}
+            if(option!=2)return;
+            accepted=true;
         }
-        refreshSelectAllLabel.run();
-
-        JScrollPane scroll = new JScrollPane(list);
-        scroll.setPreferredSize(new java.awt.Dimension(720, Math.min(420, 34 * Math.max(3, jobs.size()))));
-        JPanel panel = new JPanel(new BorderLayout(6, 6));
-        JPanel listHeader = new JPanel(new BorderLayout(6, 0));
-        listHeader.add(new JLabel("Selecione as capturas que serao re-extraidas:"), BorderLayout.CENTER); //$NON-NLS-1$
-        listHeader.add(selectAllButton, BorderLayout.EAST);
-        panel.add(listHeader, BorderLayout.NORTH);
-        panel.add(scroll, BorderLayout.CENTER);
-        panel.add(buildRecaptureAnnotationsToggle(jobs), BorderLayout.SOUTH);
-
-        int option = JOptionPane.showConfirmDialog(chatCapturePanel, panel, "Re-Extrair capturas", //$NON-NLS-1$
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (option != JOptionPane.OK_OPTION) {
-            return;
-        }
-        List<RecaptureJob> selected = new ArrayList<>();
-        boolean annotationsEnabled = recaptureAnnotationsToggle != null && recaptureAnnotationsToggle.isSelected();
-        for (int i = 0; i < jobs.size(); i++) {
-            if (checks.get(i).isSelected() && jobs.get(i).valid) {
-                selected.add(jobs.get(i));
-            }
-        }
-        if (selected.isEmpty()) {
+        for (String folder : folders) if (allFuture[0] || selectedIds.contains(folder)) selectedFolders.add(folder);
+        annotationsEnabled = recaptureAnnotationsToggle != null && recaptureAnnotationsToggle.isSelected();
+        if (selectedFolders.isEmpty()) {
             JOptionPane.showMessageDialog(chatCapturePanel, "Nenhuma captura selecionada.", "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
             return;
         }
@@ -1200,7 +1187,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 : sensitiveImagesFolder.toPath();
         this.sensitiveSimilarityPercent = normalizeSimilarityPercent(sensitiveSimilarityPercent);
         this.sensitiveBlurPercent = normalizeBlurPercent(sensitiveBlurPercent);
-startRecaptureBatch(outputRoot, selected, annotationsEnabled);
+startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
     }
 
     private JPanel buildRecaptureAnnotationsToggle(List<RecaptureJob> jobs) {
@@ -1219,20 +1206,47 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
     }
 
     private List<RecaptureJob> loadRecaptureJobs(Path outputRoot) throws IOException {
-        List<String> folders = readCaptureFolders(outputRoot);
+        return loadRecaptureJobs(outputRoot, readCaptureFolders(outputRoot));
+    }
+
+    private List<RecaptureJob> loadRecaptureJobs(Path outputRoot, List<String> folders) throws IOException {
+        return loadRecaptureJobs(outputRoot, folders, false);
+    }
+
+    private List<RecaptureJob> loadRecaptureJobs(Path outputRoot, List<String> folders, boolean descriptorOnly) throws IOException {
+        return loadRecaptureJobs(outputRoot, folders, descriptorOnly, null);
+    }
+
+    private List<RecaptureJob> loadRecaptureJobs(Path outputRoot, List<String> folders, boolean descriptorOnly,
+            java.util.function.IntConsumer progress) throws IOException {
         List<RecaptureJob> jobs = new ArrayList<>();
+        long pageMetadataBytes = 0;
         for (String folder : folders) {
-            Path folderPath = outputRoot.resolve(folder);
-            Path manifest = folderPath.resolve("manifest.json"); //$NON-NLS-1$
             RecaptureJob job = new RecaptureJob();
             job.folder = folder;
+            Path folderPath;
+            try {
+                folderPath = CaptureIntegrity.resolveContained(outputRoot, folder);
+            } catch (IOException unsafe) {
+                job.invalidReason = "caminho da captura inválido"; //$NON-NLS-1$
+                jobs.add(job);
+                continue;
+            }
+            Path manifest = folderPath.resolve("manifest.json"); //$NON-NLS-1$
             job.folderPath = folderPath;
-            if (!Files.isRegularFile(manifest)) {
+            if (!Files.isDirectory(folderPath, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)) {
                 job.invalidReason = "manifest.json nao encontrado"; //$NON-NLS-1$
                 jobs.add(job);
                 continue;
             }
-            String content = CaptureIntegrity.readUtf8Limited(manifest);
+            pageMetadataBytes += Files.size(manifest);
+            Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
+            if (Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) pageMetadataBytes += Files.size(coordinates);
+            if (pageMetadataBytes > 16L * 1024L * 1024L) {
+                throw new IOException("Os metadados desta página excedem o orçamento seguro de 16 MiB; selecione uma página menor.");
+            }
+            String content = CaptureIntegrity.readJsonUtf8Limited(manifest);
             JSONObject savedManifest = new JSONObject(content);
             job.captureFingerprint = savedManifest.optJSONObject("captureFingerprint");
             job.artifactGenerators = savedManifest.optJSONObject("artifactGenerators");
@@ -1259,9 +1273,8 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
             // Compatibilidade com capturas legadas: tenta recuperar dados de origem
             // a partir de whatsapp-coordinates.json e texto.txt quando o manifest
             // (versao 1) nao trouxe sourceMetadata completo.
-            Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-            if (Files.isRegularFile(coordinates)) {
-                String coordinateContent = CaptureIntegrity.readUtf8Limited(coordinates);
+            if (Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) {
+                String coordinateContent = CaptureIntegrity.readJsonUtf8Limited(coordinates);
                 CaptureAnchor coordinateStartAnchor = firstBlockAnchor(coordinateContent, job.startMessageId);
                 CaptureAnchor coordinateEndAnchor = lastBlockAnchor(coordinateContent, job.endMessageId);
                 if (!job.startAnchor.isUsable()) {
@@ -1284,7 +1297,7 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
             }
 
             Path text = folderPath.resolve("texto.txt"); //$NON-NLS-1$
-            if (Files.isRegularFile(text)) {
+            if (Files.isRegularFile(text, LinkOption.NOFOLLOW_LINKS)) {
                 CaptureTextHeader textHeader = readCaptureTextHeader(text);
                 job.sourceName = firstNonBlank(job.sourceName, textHeader.title, textHeader.chatId);
                 job.sourceTitle = firstNonBlank(job.sourceTitle, textHeader.title);
@@ -1315,37 +1328,135 @@ startRecaptureBatch(outputRoot, selected, annotationsEnabled);
                 job.invalidReason = "dados insuficientes para localizar chat/inicio/fim por assinatura"; //$NON-NLS-1$
             }
             jobs.add(job);
+            if (descriptorOnly) {
+                job.startAnchorLabel = job.startAnchor == null ? "(âncora inicial indisponível)" : job.startAnchor.display(); //$NON-NLS-1$
+                job.endAnchorLabel = job.endAnchor == null ? "(âncora final indisponível)" : job.endAnchor.display(); //$NON-NLS-1$
+                job.captureFingerprint = null;
+                job.artifactGenerators = null;
+                job.expectedArtifacts = null;
+                job.startAnchor = null;
+                job.endAnchor = null;
+                job.luceneQueries = java.util.Collections.emptyList();
+                job.luceneQuery = "";
+                job.sourceName = boundedDescriptor(job.sourceName);
+                job.sourceTitle = boundedDescriptor(job.sourceTitle);
+                job.title = boundedDescriptor(job.title);
+                job.sourcePath = boundedDescriptor(job.sourcePath);
+            }
+            if (progress != null) progress.accept(jobs.size());
         }
         return jobs;
     }
 
+    private interface RecaptureLoad<T> { T load(java.util.function.IntConsumer progress) throws Exception; }
+
+    private <T> T runRecaptureLoad(String title, RecaptureLoad<T> operation) throws Exception {
+        final javax.swing.SwingWorker<T, Integer>[] holder = new javax.swing.SwingWorker[1];
+        Runnable show = () -> {
+            javax.swing.JDialog dialog = new javax.swing.JDialog((java.awt.Frame) null, title, true);
+            JLabel status = new JLabel("Procurando… 0 processados");
+            JButton cancel = new JButton("Cancelar");
+            JPanel content = new JPanel(new BorderLayout(8, 8));
+            content.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 14, 12, 14));
+            content.add(status, BorderLayout.CENTER);
+            content.add(cancel, BorderLayout.SOUTH);
+            dialog.setContentPane(content);
+            dialog.pack();
+            dialog.setLocationRelativeTo(chatCapturePanel);
+            javax.swing.SwingWorker<T, Integer> worker = new javax.swing.SwingWorker<T, Integer>() {
+                protected T doInBackground() throws Exception { return operation.load(value -> publish(value)); }
+                protected void process(List<Integer> values) { if (!values.isEmpty()) status.setText("Procurando… " + values.get(values.size() - 1) + " processados"); }
+                protected void done() { dialog.dispose(); }
+            };
+            cancel.addActionListener(event -> { worker.cancel(true); dialog.dispose(); });
+            holder[0] = worker;
+            worker.execute();
+            dialog.setVisible(true);
+        };
+        if (SwingUtilities.isEventDispatchThread()) show.run();
+        else SwingUtilities.invokeAndWait(show);
+        try { return holder[0].get(); }
+        catch (java.util.concurrent.CancellationException e) { throw new IOException("Operação de busca/validação cancelada.", e); }
+        catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception) throw (Exception) cause;
+            throw new IOException("Falha durante busca/validação de capturas.", cause);
+        }
+    }
+
+    private static String boundedDescriptor(String value) {
+        if (value == null || value.length() <= 512) return value;
+        return value.substring(0, 512);
+    }
+
 
     private List<String> readCaptureFolders(Path outputRoot) throws IOException {
+        return readCaptureFolders(outputRoot, null);
+    }
+
+    private List<String> readCaptureFolders(Path outputRoot, java.util.function.IntConsumer progress) throws IOException {
         List<String> folders = new ArrayList<>();
+        Set<String> seen = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Path normalizedRoot = outputRoot.toAbsolutePath().normalize();
+        if (!Files.isDirectory(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("A pasta de capturas não existe ou não é um diretório válido: " + normalizedRoot);
+        }
         Path index = outputRoot.resolve("capturas-index.json"); //$NON-NLS-1$
-        if (Files.isRegularFile(index)) {
-            String content = CaptureIntegrity.readUtf8Limited(index);
-            Matcher matcher = Pattern.compile("\"folder\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"").matcher(content); //$NON-NLS-1$
-            while (matcher.find()) {
-                String folder = unescapeJson(matcher.group(1));
-                if (folder.isBlank() || folders.contains(folder)) {
+        if (Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) {
+            String content = CaptureIntegrity.readJsonUtf8Limited(index);
+            JSONArray indexedCaptures;
+            try { indexedCaptures = new JSONObject(content).optJSONArray("captures"); }
+            catch (RuntimeException invalidIndex) { throw new IOException("O índice de capturas contém JSON inválido.", invalidIndex); }
+            if (indexedCaptures != null) for (int i = 0; i < indexedCaptures.length(); i++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Busca cancelada");
+                JSONObject indexedCapture = indexedCaptures.optJSONObject(i);
+                if (indexedCapture == null) continue;
+                String folder = indexedCapture.optString("folder", "").replace('\\', '/');
+                if (folder.isBlank() || !seen.add(folder)) {
                     continue;
                 }
-                if (!Files.isDirectory(outputRoot.resolve(folder))) {
+                Path resolved;
+                try {
+                    resolved = CaptureIntegrity.resolveContained(normalizedRoot, folder);
+                } catch (IOException unsafe) {
                     continue;
                 }
-                folders.add(folder);
+                if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)
+                        || !Files.isRegularFile(resolved.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+                    continue;
+                }
+                if (folders.size() >= MAX_RECAPTURE_CANDIDATES) {
+                    throw new IOException("O índice excede o limite de " + MAX_RECAPTURE_CANDIDATES + " capturas candidatas.");
+                }
+                folders.add(normalizedRoot.relativize(resolved).toString().replace('\\', '/'));
+                if (progress != null && folders.size() % 100 == 0) progress.accept(folders.size());
             }
         }
-        if (folders.isEmpty() && Files.isDirectory(outputRoot)) {
+        if (folders.isEmpty() && Files.isDirectory(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
             try (Stream<Path> stream = Files.list(outputRoot)) {
-stream.filter(Files::isDirectory)
-                        .filter(path -> !isRecaptureAuxiliaryFolder(path))
-                        .filter(path -> !isLinkedCaptureFolder(path))
-                        .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase()))
-                        .forEach(path -> folders.add(outputRoot.relativize(path).toString().replace('\\', '/')));
+                List<Path> candidates = new ArrayList<>();
+                java.util.Iterator<Path> iterator = stream.iterator();
+                while (iterator.hasNext()) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Busca cancelada");
+                    Path path = iterator.next();
+                    if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) || isRecaptureAuxiliaryFolder(path)
+                            || isLinkedCaptureFolder(path)
+                            || !Files.isRegularFile(path.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) continue; //$NON-NLS-1$
+                    if (candidates.size() >= MAX_RECAPTURE_CANDIDATES) {
+                        throw new IOException("O diretório excede o limite de " + MAX_RECAPTURE_CANDIDATES + " capturas candidatas.");
+                    }
+                    candidates.add(path);
+                }
+                candidates.sort(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(java.util.Locale.ROOT)));
+                for (Path candidate : candidates) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Busca cancelada");
+                    String folder = normalizedRoot.relativize(candidate.toAbsolutePath().normalize()).toString().replace('\\', '/');
+                    if (seen.add(folder)) folders.add(folder);
+                    if (progress != null && folders.size() % 100 == 0) progress.accept(folders.size());
+                }
             }
         }
+        if (progress != null) progress.accept(folders.size());
         return folders;
     }
 
@@ -1377,7 +1488,7 @@ stream.filter(Files::isDirectory)
         return queries;
     }
 
-private void startRecaptureBatch(Path outputRoot, List<RecaptureJob> jobs, boolean annotationsEnabled) {
+    private void startRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled) {
         captureRunning = true;
         stopCaptureRequested = false;
         chatCapturePanel.setCaptureRunning(true);
@@ -1385,21 +1496,30 @@ private void startRecaptureBatch(Path outputRoot, List<RecaptureJob> jobs, boole
             chatCapturePanel.setAnnotationsEnabled(false);
         }
         annotationStore.bindOutputRoot(outputRoot);
-        chatCapturePanel.setRecaptureProgress("Preparando re-extracao...", 0, jobs.size(), 0, 7, true); //$NON-NLS-1$
-        new Thread(() -> runRecaptureBatch(outputRoot, jobs, annotationsEnabled), "IPED-chat-recapture").start(); //$NON-NLS-1$
+        chatCapturePanel.setRecaptureProgress("Preparando re-extracao...", 0, captureIds.size(), 0, 7, true); //$NON-NLS-1$
+        new Thread(() -> runRecaptureBatch(outputRoot, captureIds, annotationsEnabled), "IPED-chat-recapture").start(); //$NON-NLS-1$
     }
 
-    private void runRecaptureBatch(Path outputRoot, List<RecaptureJob> jobs, boolean annotationsEnabled) {
+    private void runRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled) {
         int success = 0;
         int failed = 0;
         String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
         try {
-            for (int i = 0; i < jobs.size() && !stopCaptureRequested; i++) {
-                RecaptureJob job = jobs.get(i);
-                chatCapturePanel.setStatusText("Re-extraindo " + (i + 1) + "/" + jobs.size() + ": " + job.folder); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            for (int i = 0; i < captureIds.size() && !stopCaptureRequested; i++) {
+                RecaptureJob job;
+                try {
+                    List<RecaptureJob> one = loadRecaptureJobs(outputRoot, java.util.Collections.singletonList(captureIds.get(i)));
+                    job = one.isEmpty() ? null : one.get(0);
+                    if (job == null || !job.valid) throw new IOException(job == null ? "Captura indisponível" : job.invalidReason);
+                } catch (Exception invalid) {
+                    failed++;
+                    LOGGER.warn("Selected capture became invalid before processing: {}", captureIds.get(i), invalid);
+                    continue;
+                }
+                chatCapturePanel.setStatusText("Re-extraindo " + (i + 1) + "/" + captureIds.size() + ": " + job.folder); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                 try {
                     resetRecaptureMarksAndPreviewState();
-                    recaptureOne(outputRoot, job, stamp, i + 1, jobs.size(), annotationsEnabled);
+                    recaptureOne(outputRoot, job, stamp, i + 1, captureIds.size(), annotationsEnabled);
                     success++;
                 } catch (Throwable e) {
                     failed++;
@@ -1408,7 +1528,7 @@ private void startRecaptureBatch(Path outputRoot, List<RecaptureJob> jobs, boole
                     resetRecaptureMarksAndPreviewState();
                 }
             }
-            chatCapturePanel.setRecaptureProgress("Limpando temporarios e recriando indice geral das capturas...", jobs.size(), jobs.size(), 7, 7, true); //$NON-NLS-1$
+            chatCapturePanel.setRecaptureProgress("Limpando temporarios e recriando indice geral das capturas...", captureIds.size(), captureIds.size(), 7, 7, true); //$NON-NLS-1$
             cleanupRecaptureAuxiliaryFolders(outputRoot);
             safeRebuildCaptureRootIndex(outputRoot);
             chatCapturePanel.setStatusText("Re-extração concluída. Sucesso: " + success + " Falhas: " + failed); //$NON-NLS-1$ //$NON-NLS-2$
@@ -1452,7 +1572,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder, false);
             updateRecaptureProgress(job, batchCurrent, batchTotal, 5, "Validando resultado temporario da re-extracao...", false); //$NON-NLS-1$
             Path manifest = result.captureDir.resolve("manifest.json"); //$NON-NLS-1$
-            String status = Files.isRegularFile(manifest) ? jsonField(CaptureIntegrity.readUtf8Limited(manifest), "status") : result.status; //$NON-NLS-1$
+            String status = Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS) ? jsonField(CaptureIntegrity.readJsonUtf8Limited(manifest), "status") : result.status; //$NON-NLS-1$
             if (!"completed".equals(status)) { //$NON-NLS-1$
                 deleteDirectoryIfExists(result.captureDir);
                 throw new IOException("Re-extração nao completou: " + status); //$NON-NLS-1$
@@ -1610,7 +1730,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
         if (!Files.isRegularFile(coordinates)) {
             return false;
         }
-        String content = CaptureIntegrity.readUtf8Limited(coordinates);
+        String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
         JSONObject data;
         try {
             data = new JSONObject(content);
@@ -1626,7 +1746,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
         Path temporary = uniqueSibling(html.resolveSibling("whatsapp.html.__migration_tmp")); //$NON-NLS-1$
         Path backup = uniqueSibling(job.folderPath.resolveSibling(job.folderPath.getFileName().toString() + ".__migration_html_backup")); //$NON-NLS-1$
         Path manifestPath = job.folderPath.resolve("manifest.json"); //$NON-NLS-1$
-        String oldManifest = CaptureIntegrity.readUtf8Limited(manifestPath);
+        String oldManifest = CaptureIntegrity.readJsonUtf8Limited(manifestPath);
         boolean backedUpHtml = false;
         try {
             writeWhatsAppHtml(temporary, content);
@@ -2250,7 +2370,7 @@ createReportThumbnails(captureDir, exported);
         String chronologicalStart = ""; //$NON-NLS-1$
         String chronologicalEnd = ""; //$NON-NLS-1$
 if (Files.isRegularFile(manifest)) {
-            String content = CaptureIntegrity.readUtf8Limited(manifest);
+            String content = CaptureIntegrity.readJsonUtf8Limited(manifest);
 
             entry.legacyAnnotations = jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
@@ -2272,14 +2392,14 @@ if (Files.isRegularFile(manifest)) {
 
         Path coordinates = captureDir.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
         if ((entry.title == null || entry.title.isBlank()) && Files.isRegularFile(coordinates)) {
-            String content = CaptureIntegrity.readUtf8Limited(coordinates);
+            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
             entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$
             entry.chatId = inferChatId(entry.title);
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
         }
         if ((chronologicalStart.isBlank() || chronologicalEnd.isBlank()) && Files.isRegularFile(coordinates)) {
-            String content = CaptureIntegrity.readUtf8Limited(coordinates);
+            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             chronologicalStart = nonBlank(chronologicalStart, readAnchor(content, "startAnchor").date); //$NON-NLS-1$
             chronologicalEnd = nonBlank(chronologicalEnd, readAnchor(content, "endAnchor").date); //$NON-NLS-1$
         }
@@ -3457,7 +3577,7 @@ out.println("{"); //$NON-NLS-1$
 
     private void writeArtifactInventory(Path captureDir) throws IOException {
         Path manifestPath = captureDir.resolve("manifest.json"); //$NON-NLS-1$
-        JSONObject manifest = new JSONObject(CaptureIntegrity.readUtf8Limited(manifestPath));
+        JSONObject manifest = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(manifestPath));
         manifest.put("artifactGenerators", new JSONObject(artifactGeneratorsJson()));
         JSONArray artifacts = CaptureIntegrity.artifactInventory(captureDir);
         manifest.put("artifacts", artifacts);
@@ -3472,7 +3592,7 @@ out.println("{"); //$NON-NLS-1$
         JSONObject previous = null;
         if (Files.isRegularFile(oldPath)) {
             try {
-                previous = new JSONObject(CaptureIntegrity.readUtf8Limited(oldPath));
+                previous = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(oldPath));
             } catch (RuntimeException e) {
                 LOGGER.warn("Previous integrity history is invalid for {}; keeping a new local history", previousCapture, e); //$NON-NLS-1$
             }
@@ -4647,7 +4767,7 @@ private void setCaptureInteractionEnabled(boolean enabled) {
         }
         String wanted = hash.trim().toUpperCase();
         try {
-            String content = CaptureIntegrity.readUtf8Limited(coordinates);
+            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             Matcher blockMatcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
                     .matcher(content);
             while (blockMatcher.find()) {
@@ -5401,6 +5521,8 @@ String status;
         String endMessageId = ""; //$NON-NLS-1$
         CaptureAnchor startAnchor = new CaptureAnchor();
         CaptureAnchor endAnchor = new CaptureAnchor();
+        String startAnchorLabel;
+        String endAnchorLabel;
         String sourceHash = ""; //$NON-NLS-1$
         String sourcePath = ""; //$NON-NLS-1$
         String sourceName = ""; //$NON-NLS-1$
@@ -5416,7 +5538,8 @@ String invalidReason;
 
         String displayLabel() {
             String base = folder + " | " + (title == null || title.isBlank() ? chatId : title) //$NON-NLS-1$
-                    + " | " + startAnchor.display() + " -> " + endAnchor.display(); //$NON-NLS-1$ //$NON-NLS-2$
+                    + " | " + (startAnchorLabel != null ? startAnchorLabel : startAnchor == null ? "(âncora inicial indisponível)" : startAnchor.display()) //$NON-NLS-1$
+                    + " -> " + (endAnchorLabel != null ? endAnchorLabel : endAnchor == null ? "(âncora final indisponível)" : endAnchor.display()); //$NON-NLS-1$ //$NON-NLS-2$
             return valid ? base : base + " [invalido: " + invalidReason + "]"; //$NON-NLS-1$ //$NON-NLS-2$
         }
     }

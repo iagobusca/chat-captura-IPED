@@ -4,6 +4,42 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.3.5-beta] - 2026-11-06
+
+### Segurança
+
+- Confinamento dos caminhos do `capturas-index.json` à raiz de saída; rejeita caminhos absolutos, segmentos ambíguos, links e entradas duplicadas sem comparação quadrática.
+- O Re-Extrair carrega metadados no diálogo em segundo plano, limita cada página a 16 MiB e mantém apenas IDs selecionados; jobs são carregados individualmente durante o processamento.
+- Inventário, histórico e metadados cumulativos passam a respeitar limites de tamanho antes de substituir os registros anteriores.
+- Hashes permitidos sincronizados com o Verificador 1.2.8.
+
+### Corrigido
+
+- Verificador troca a extração de campos por regex pelo parser JSON com limite de profundidade, evitando `StackOverflowError` em caminhos longos.
+- Limites globais para candidatos, itens e metadados selecionados; descoberta do verificador ocorre em segundo plano e pode ser cancelada.
+- Relatórios acima do orçamento são recusados antes da montagem; os cinco relatórios são preparados e promovidos com rollback se alguma promoção falhar.
+- HTML, JSON e texto usam escaping adequado; falhas de limite preservam os relatórios anteriores.
+
+### Modificado
+
+- Plugin continua gerando bytecode Java 11. O Verificador 1.2.8 mantém o JAR Java 8 ou superior e o EXE x64 autocontido.
+
+## [2.3.4-beta] - 2026-11-06
+
+### Modificado
+
+- Atualiza os hashes aceitos para o Verificador 1.2.7, cujo JAR agora funciona com Java 8 (1.8) ou superior.
+- O plugin permanece compilado para Java 11, conforme o runtime do IPED 4.3.1.
+
+## [2.3.3-beta] - 2026-11-06
+
+### Modificado
+
+- Seletor do Verificador de Integridade e janela Re-Extrair agora apresentam até 100 capturas por página, com navegação anterior/próxima e contagem.
+- A janela Re-Extrair valida detalhes de metadados sob demanda por página e em lotes de até 25 antes de executar os jobs selecionados.
+- `Marcar todos` usa seleção global compacta; ao editar uma caixa, converte a seleção atual em IDs explícitos e novas capturas ficam desmarcadas.
+- Verificador atualizado para 1.2.6; hashes aceitos pelo plugin sincronizados com os binários construídos.
+
 ## [2.3.2-beta] - 2026-11-06
 
 ### Segurança

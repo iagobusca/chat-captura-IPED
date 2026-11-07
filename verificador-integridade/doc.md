@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.2.5
+# Verificador de Integridade 1.2.8
 
-**Versão:** 1.2.5 | Data: 06/11/2026.
+**Versão:** 1.2.8 | Data: 06/11/2026.
 
 ## Índice
 
@@ -16,7 +16,7 @@
 
 ## Visao geral
 
-Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). Depois, lê capturas existentes, recalcula hashes e grava relatórios. O pacote oferece um JAR Java 11 e um EXE Windows de arquivo único. O EXE contém o runtime Java e o runtime .NET necessários; o usuário não precisa instalar Java ou .NET. As telas principais são janelas nativas com ícone próprio, permanecem sempre no topo e têm entrada na barra de tarefas do Windows.
+Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). A descoberta ocorre em worker cancelável e exibe a contagem atualizada sem manter a Event Dispatch Thread ocupada. Depois, lê metadados quando necessários, recalcula hashes e grava relatórios. O JAR foi compilado para Java 8 (1.8) ou superior. O EXE Windows de arquivo único contém o runtime Java 11 e .NET 10.0.14; o usuário não precisa instalar Java ou .NET.
 
 ## Arquitetura e funcionamento
 
@@ -45,7 +45,7 @@ As ações de copiar hashes e histórico enviam o conteúdo à área de transfer
 
 Para abrir a interface, execute `integridade-verifier.exe` ao lado de `index.html`. O verificador usa essa pasta para localizar as capturas.
 
-O JAR pode ser executado com Java 11 ou superior. Metadados JSON acima de 16 MiB e capturas com mais de 25.010 arquivos são rejeitados com erro controlado. Os hashes canônicos são atualizados em fluxo, sem montar toda a sequência na memória:
+O JAR pode ser executado com Java 8 (1.8) ou superior. JSON acima de 16 MiB, profundidade acima de 64, caminhos acima de 4.096 caracteres e capturas acima de 25.010 arquivos são rejeitados com erro controlado. Uma seleção total é limitada a 10.000 capturas, 25.000 itens e 32 MiB de metadados. Relatórios acima do orçamento de 4 Mi caracteres estimados são recusados antes de montar as strings. Os hashes canônicos são atualizados em fluxo, sem montar toda a sequência na memória:
 
 ```powershell
 java -jar .\integridade-verifier.jar
@@ -59,9 +59,9 @@ Na inicialização, o EXE verifica se há outro processo do verificador em execu
 
 ## Dependencias
 
-- Uso do JAR: Java 11 ou superior.
+- Uso do JAR: Java 8 (1.8) ou superior.
 - Uso do EXE: Windows x64; não requer Java nem .NET instalados.
-- Build: JDK 11, JDK com `jpackage`, .NET SDK 10 e PowerShell.
+- Build do JAR: JDK 8. Build do EXE: JDK 11 para o runtime, JDK com `jpackage`, .NET SDK 10 e PowerShell.
 - O aplicativo Java usa `java.base`, `java.desktop` e a biblioteca JSON embutida no JAR standalone.
 - A biblioteca embutida é `org.json` 20260719, incluindo a correção de consumo de CPU por números JSON longos (CVE-2026-59171; CWE-400/CWE-770).
 

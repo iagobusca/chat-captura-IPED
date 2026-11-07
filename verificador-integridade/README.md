@@ -1,19 +1,21 @@
-# Verificador de Integridade 1.2.5
+# Verificador de Integridade 1.2.8
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.2.5 atualiza a biblioteca JSON para corrigir processamento custoso de números longos, limita os metadados a 16 MiB e as capturas a 25.010 arquivos, calcula hashes em fluxo e protege as gravações contra links simbólicos.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.2.8 corrige o `StackOverflowError` causado pelo parser regex em caminhos longos e impede OOM durante relatórios grandes com limites globais e pré-validação do orçamento. Mantém o JAR para Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
 
 ## Getting Started
 
-1. Copie `integridade-verifier.exe` para a pasta que contém `index.html` e as capturas; ou execute `integridade-verifier.jar` com Java 11 ou superior.
+1. Copie `integridade-verifier.exe` para a pasta que contém `index.html` e as capturas; ou execute `integridade-verifier.jar` com Java 8 ou superior.
 2. Abra o verificador. Selecione **Integridade Local** ou **Integridade Público**.
 3. Marque as capturas que deseja verificar e clique em **OK**.
 4. Consulte os hashes e use os botões destacados para copiar ou comparar as referências.
 
-O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 11 ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
+O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
+
+O JAR limita cada JSON a 16 MiB, profundidade a 64 níveis, caminho a 4.096 caracteres e cada captura a 25.010 arquivos. A seleção inteira tem limite de 10.000 capturas, 25.000 itens e 32 MiB de metadados. A estimativa de relatórios é limitada a 4 Mi caracteres; exceder um limite produz erro controlado sem promover relatórios parciais. A busca de capturas ocorre em segundo plano, atualiza a contagem e pode ser cancelada.
 
 ## Usage
 
@@ -54,7 +56,7 @@ O repositório não informa uma licença específica para este utilitário.
 ## Arquivos e documentação
 
 - `integridade-verifier.exe`: versão Windows x64 independente.
-- `integridade-verifier.jar`: versão Java 11 ou superior.
+- `integridade-verifier.jar`: versão Java 8 (1.8) ou superior.
 - `doc.md`: funcionamento detalhado, pastas temporárias, dependências e códigos de saída.
 - `CHANGELOG.md`: histórico de alterações.
 

@@ -28,6 +28,8 @@ final class CaptureIntegrity {
     static final String AUDIT_FILE = "reextracao-auditoria.jsonl";
     static final int MAX_INVENTORY_FILES = 25000;
     static final long MAX_JSON_BYTES = 16L * 1024L * 1024L;
+    static final int MAX_RELATIVE_PATH_CHARS = 4096;
+    static final long MAX_AUDIT_BYTES = 16L * 1024L * 1024L;
 
     private CaptureIntegrity() {
     }
@@ -109,6 +111,10 @@ final class CaptureIntegrity {
                         && !AUDIT_FILE.equals(path.getFileName().toString())
                         && !"manifest.json".equals(path.getFileName().toString())
                         && !"integridade.json".equals(path.getFileName().toString())) {
+                    String relative = relative(root, path);
+                    if (relative.length() > MAX_RELATIVE_PATH_CHARS) {
+                        throw new IOException("Capture contains a path longer than " + MAX_RELATIVE_PATH_CHARS + " characters");
+                    }
                     if (files.size() >= MAX_INVENTORY_FILES) {
                         throw new IOException("Capture exceeds the inventory limit of " + MAX_INVENTORY_FILES + " files");
                     }
@@ -138,6 +144,30 @@ final class CaptureIntegrity {
             }
             return new String(bytes, StandardCharsets.UTF_8);
         }
+    }
+
+    static String readJsonUtf8Limited(Path path) throws IOException {
+        String json = readUtf8Limited(path);
+        int depth = 0;
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char ch = json.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == '"') quoted = false;
+                continue;
+            }
+            if (ch == '"') quoted = true;
+            else if (ch == '{' || ch == '[') {
+                if (++depth > 64) throw new IOException("JSON metadata exceeds the maximum nesting depth of 64: " + path);
+            } else if (ch == '}' || ch == ']') {
+                if (--depth < 0) throw new IOException("Malformed JSON metadata: " + path);
+            }
+        }
+        if (quoted || depth != 0) throw new IOException("Incomplete JSON metadata: " + path);
+        return json;
     }
 
     static JSONObject integrityRecord(Path captureRoot, JSONObject previous, String action, String pluginVersion) throws IOException {
@@ -233,18 +263,22 @@ final class CaptureIntegrity {
         if (relativePath == null || relativePath.trim().isEmpty()) {
             throw new IOException("Empty relative path");
         }
+        if (relativePath.length() > MAX_RELATIVE_PATH_CHARS || relativePath.indexOf('\0') >= 0
+                || relativePath.indexOf(':') >= 0) {
+            throw new IOException("Invalid or excessively long relative path");
+        }
         Path root = rootPath.toAbsolutePath().normalize();
         Path relative = root.getFileSystem().getPath(relativePath.replace('\\', '/'));
-        if (relative.isAbsolute()) {
+        if (relative.isAbsolute() || relative.getNameCount() == 0) {
             throw new IOException("Absolute paths are not allowed");
         }
         for (Path component : relative) {
-            if ("..".equals(component.toString())) {
-                throw new IOException("Parent path components are not allowed");
+            if ("..".equals(component.toString()) || ".".equals(component.toString())) {
+                throw new IOException("Dot path components are not allowed");
             }
         }
         Path resolved = root.resolve(relative).normalize();
-        if (!resolved.startsWith(root)) {
+        if (!resolved.startsWith(root) || resolved.equals(root)) {
             throw new IOException("Path escapes capture root");
         }
         Path current = root;
@@ -265,11 +299,15 @@ final class CaptureIntegrity {
         record.put("recordedAtUtc", Instant.now().toString());
         record.put("auditSchemaVersion", 1);
         Path log = root.resolve(AUDIT_FILE);
+        byte[] encoded = (record.toString() + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
+        long currentSize = Files.exists(log, LinkOption.NOFOLLOW_LINKS) ? Files.size(log) : 0L;
+        if (currentSize + encoded.length > MAX_AUDIT_BYTES) {
+            throw new IOException("Cumulative recapture audit exceeds the " + MAX_AUDIT_BYTES + " byte limit");
+        }
         try (BufferedWriter writer = Files.newBufferedWriter(log, StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND,
                 LinkOption.NOFOLLOW_LINKS)) {
-            writer.write(record.toString());
-            writer.newLine();
+            writer.write(new String(encoded, StandardCharsets.UTF_8));
         }
     }
 
@@ -285,11 +323,15 @@ final class CaptureIntegrity {
         }
         Files.createDirectories(parent);
         ensureNoSymbolicLinkComponents(root, parent);
+        byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
+        if (contentBytes.length > MAX_JSON_BYTES) {
+            throw new IOException("JSON metadata exceeds the " + MAX_JSON_BYTES + " byte limit; previous file was preserved");
+        }
         Path temporary = Files.createTempFile(parent, "." + target.getFileName() + ".", ".tmp");
         try {
             try (OutputStream output = Files.newOutputStream(temporary, StandardOpenOption.WRITE,
                     StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS)) {
-                output.write(content.getBytes(StandardCharsets.UTF_8));
+                output.write(contentBytes);
             }
             try {
                 Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);

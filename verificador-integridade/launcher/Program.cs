@@ -1,4 +1,4 @@
-// Versão 1.2.5 — mitigação de DoS JSON, limites de entrada e gravação temporária segura.
+// Versão 1.2.8 — runtime atualizado e extração/verificação do pacote com execução concorrente isolada.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

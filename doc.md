@@ -1,6 +1,6 @@
 # Plugin Chat Captura IPED
 
-**Versão:** 2.3.2-beta | Data: 06/11/2026.
+**Versão:** 2.3.5-beta | Data: 06/11/2026.
 **Base:** IPED 4.3.1; Java 11.
 
 Este documento descreve o plugin Java que amplia o viewer HTML do IPED para capturar conversas WhatsApp, gerar evidências navegáveis, anotar mensagens e verificar/reextrair capturas.
@@ -56,7 +56,7 @@ O modo de chat salvo permite adicionar ou editar anotações sem uma nova captur
 
 Feche o IPED antes de instalar. Extraia o ZIP do instalador e execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat`. O instalador valida o JAR, cria um backup, substitui o arquivo do plugin e instala os bundles de idioma. Consulte [README.md](README.md) para downloads e instruções detalhadas.
 
-O JAR do plugin é compatível com Java 11. O verificador 1.2.5 tem fonte e documentação próprias em `verificador-integridade/`; consulte [`verificador-integridade/README.md`](verificador-integridade/README.md). O plugin aceita somente os hashes SHA-256 dos binários 1.2.5 registrados em `CHECKSUMS.md`.
+O JAR do plugin é compatível com Java 11. O verificador 1.2.8 tem fonte e documentação próprias em `verificador-integridade/`; consulte [`verificador-integridade/README.md`](verificador-integridade/README.md). O JAR do verificador aceita Java 8 ou superior e o plugin aceita somente os hashes SHA-256 dos binários 1.2.8 registrados em `CHECKSUMS.md`.
 
 ## Arquivos gerados
 
@@ -75,7 +75,9 @@ O JAR do plugin é compatível com Java 11. O verificador 1.2.5 tem fonte e docu
 
 Hashes SHA-256 identificam o conteúdo comparado; não são assinatura digital nem provam autoria. Para comparação pública, obtenha a referência por um canal separado e confiável. O histórico encadeia eventos e mantém os hashes e inventários, mas não arquiva versões antigas dos bytes substituídos.
 
-Metadados JSON são limitados a 16 MiB e os inventários a 25.000 arquivos. O verificador limita cada captura a 25.010 arquivos para incluir os metadados de controle. O limite impede consumo desproporcional de memória; capturas maiores são encerradas com erro legível. Escritas de registros usam temporários exclusivos e recusam links simbólicos nos diretórios de saída.
+Metadados JSON são limitados a 16 MiB, caminhos relativos a 4.096 caracteres, inventários a 25.000 arquivos e eventos cumulativos de auditoria a 16 MiB. O índice do Re-Extrair aceita até 100.000 candidatos; cada página mantém até 100 descritores e recusa metadados acima de 16 MiB. Caminhos absolutos, segmentos `.`/`..`, drives e links simbólicos são recusados ao resolver capturas. O verificador limita cada captura a 25.010 arquivos, o conjunto selecionado a 25.000 itens e 32 MiB de metadados, e os relatórios a 4 Mi caracteres estimados. Limites excedidos geram erro legível e preservam os arquivos anteriores. Escritas usam temporários exclusivos e verificação de links simbólicos nos diretórios de saída.
+
+A descoberta de capturas do verificador e a leitura de páginas do Re-Extrair ocorrem em workers canceláveis com contador de progresso. Os metadados completos são lidos somente quando a página ou o job é processado.
 
 O instalador cria uma cópia de segurança antes de substituir o JAR. Os hashes dos binários publicados ficam em `CHECKSUMS.md`.
 
