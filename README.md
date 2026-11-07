@@ -78,7 +78,9 @@ As alteracoes incluem:
 - Controle de intensidade do blur: `20%`, `30%`, `60%`, `90%`.
 - Remocao do overlay listrado antigo `iped-sensitive-overlay`, mantendo apenas o efeito de blur.
 
-## Notas e Links por mensagem (versao 2.0.0)
+## Notas e Links por mensagem
+
+Este recurso foi introduzido na versão 2.0.0 e continua disponível no plugin 2.3.6-beta. A indicação 2.0.0 descreve a versão em que a funcionalidade surgiu; não é a versão atual do plugin.
 
 **Recurso opcional.** Nada e obrigatorio: quem nao usar continua com o fluxo anterior,
 com saida identica.
