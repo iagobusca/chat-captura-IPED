@@ -12,6 +12,15 @@ Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no
 
 ## Build local 2.3.5-beta / Verificador 1.2.8
 
+## Build 2.3.6-beta / Verificador 1.2.8
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `iped-viewers-impl-4.3.1-2.3.6-beta.jar` | 601.549 | `832E2CF887357CC0074625BB3A595C33B7D9DB0D11BD9582D8DAA1C5C3A2C9F7` |
+| `instalador-chat-captura-IPED-2.3.6-beta-verificador-1.2.8.zip` | 661.055 | `6434DC5F4954D7CAD2E476E14F67BDF59CCD4E3C9F3332FAA1578E797E887D08` |
+| `integridade-verifier-1.2.8.jar` | 117.491 | `906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96` |
+| `integridade-verifier-1.2.8.exe` | 78.370.372 | `4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF` |
+
 | Arquivo | Bytes | SHA-256 |
 |---|---:|---|
 | `iped-viewers-impl-4.3.1-2.3.5-beta.jar` | 601.549 | `35C557E418F26D793CD8F529C0AE53D7DE30A36BEB2AB89E3D8451851738433A` |

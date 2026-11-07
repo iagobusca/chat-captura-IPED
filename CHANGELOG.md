@@ -4,6 +4,22 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.3.6-beta] - 2026-11-06
+
+### Otimizado
+
+- Lista do Re-Extrair organizada verticalmente, com espaçamento compacto e apenas o nome da pasta.
+
+### Corrigido
+
+- Corrigida a falha que impedia a janela de seleção do Re-Extrair de abrir quando os descritores descartavam as âncoras.
+- Atualizados os hashes aceitos para o Verificador 1.2.8; binários antigos 1.2.7 deixam de ser aceitos.
+
+### Incluído
+
+- Plugin Chat Captura IPED 2.3.6-beta e pacote do instalador atualizado.
+- Verificador de Integridade 1.2.8 em JAR e EXE; hashes publicados em `versao_hash.md`.
+
 ## [2.3.5-beta] - 2026-11-06
 
 ### Segurança

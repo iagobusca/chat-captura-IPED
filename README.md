@@ -4,7 +4,7 @@ Plugin/customizacao para o IPED 4.3.1 que adiciona captura visual avancada de co
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.3.5-beta**
+Versao atual do plugin: **2.3.6-beta**
 
 ## About
 
@@ -251,14 +251,14 @@ chat-captura IPED/
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Downloads da versão beta 2.3.5
+## Downloads da versão beta 2.3.6
 
 Na página de releases, baixe os quatro arquivos de execução ou, se quiser auditar/recompilar, escolha também os pacotes de código-fonte:
 
 | Arquivo | Para que serve |
 |---|---|
-| instalador-chat-captura-IPED-2.3.5-beta-verificador-1.2.8.zip | Instalador, JAR do plugin, biblioteca JSON corrigida e arquivos de idioma |
-| iped-viewers-impl-4.3.1-2.3.5-beta.jar | JAR compilado do plugin para instalação manual |
+| instalador-chat-captura-IPED-2.3.6-beta-verificador-1.2.8.zip | Instalador, JAR do plugin, biblioteca JSON corrigida e arquivos de idioma |
+| iped-viewers-impl-4.3.1-2.3.6-beta.jar | JAR compilado do plugin para instalação manual |
 | integridade-verifier-1.2.8.jar | Verificador independente com Java 8 (1.8) ou superior |
 | integridade-verifier-1.2.8.exe | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
 | src-plugin-2.3.2-beta.zip | Código-fonte separado do plugin, testes e especificação consolidada |
@@ -279,11 +279,11 @@ O histórico de hashes das versões do verificador está em [versao_hash.md](ver
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia instalador-chat-captura-IPED-2.3.5-beta-verificador-1.2.8.zip.
+2. Baixe e extraia instalador-chat-captura-IPED-2.3.6-beta-verificador-1.2.8.zip.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP inclui o JAR 2.3.5-beta, o instalador, o validador, `org.json` 20260719 e os dois bundles de idioma. Ao instalar, o BAT preserva em backup o `json-20250517.jar` e uma eventual cópia anterior do `json-20260719.jar`.
+O ZIP inclui o JAR 2.3.6-beta, o instalador, o validador, `org.json` 20260719 e os dois bundles de idioma. Ao instalar, o BAT preserva em backup o `json-20250517.jar` e uma eventual cópia anterior do `json-20260719.jar`.
 
 ## O que o BAT faz
 
