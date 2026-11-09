@@ -4,6 +4,20 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.5.6-beta] - 2026-11-09
+
+### Corrigido
+
+- A janela **Re-Extrair capturas** agora calcula largura e altura pela área útil do monitor onde o IPED está aberto, descontando a barra de tarefas. Em 1366×768, o diálogo fica com cerca de 879×638 px e cresce proporcionalmente em Full HD, 2K e 4K.
+- O toggle **Limpar registros e criar como nova captura** agora fica disponível também para capturas novas em `html-message-v1`, sem depender do toggle de migração. Ao limpar uma captura nova, o Re-Extrair ignora o atalho de conteúdo inalterado e recaptura o intervalo.
+- A validação da candidata limpa rejeita `migration.json`, `legacy-annotations.json`, `message-reconciliation.json` e `reextracao-auditoria.jsonl` em qualquer reset, seja de captura nova ou legada migrada.
+- Capturas `html-message-v1` não são mais classificadas internamente como legadas pela ausência do campo `version` no manifesto; isso reabilita **Incluir Notas e Links** em capturas novas.
+
+### Modificado
+
+- O reset de capturas legadas continua exigindo a migração para HTML por mensagem; o reset de capturas novas não exige migração.
+- A especificação e os testes de contrato foram atualizados para a nova matriz de decisão (`HTML_RESET`).
+
 ## [2.5.5-beta] - 2026-11-08
 
 ### Adicionado

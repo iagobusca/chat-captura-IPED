@@ -3,7 +3,8 @@
 **Estado:** implementada e validada automaticamente; falta a validação manual no IPED 4.3.1.  
 **Alvo:** Chat Captura IPED para IPED 4.3.1.  
 **Versão de origem:** plugin 2.5.4-beta; Verificador de Integridade 1.3.3.  
-**Versão de entrega:** plugin 2.5.5-beta; Verificador de Integridade 1.3.4.  
+**Versão de entrega:** plugin 2.5.6-beta; Verificador de Integridade 1.3.4.  
+**Revisão 2.5.6-beta:** o mesmo toggle de limpeza também se aplica a capturas já existentes em `html-message-v1`, sem exigir migração.  
 **Objetivo:** permitir que o Re-Extrair substitua, quando solicitado, uma captura legada baseada em frames por uma captura `html-message-v1` do mesmo intervalo de mensagens.
 
 ## 1. Resultado esperado
@@ -67,10 +68,11 @@ Limpar registros e criar como nova captura
 Regras da interface:
 
 - Inicia desmarcado e desabilitado.
-- Só é habilitado quando **Migrar capturas legadas para HTML por mensagem** estiver marcado.
-- Se o primeiro toggle for desmarcado, este também é desmarcado imediatamente.
+- Para capturas legadas, só é habilitado quando **Migrar capturas legadas para HTML por mensagem** estiver marcado.
+- Para capturas já existentes em `html-message-v1`, é habilitado independentemente da migração, pois não há mudança de formato envolvida.
+- Se o primeiro toggle for desmarcado e não houver captura nova selecionável, este também é desmarcado imediatamente.
 - Conserva seu estado entre as páginas Anterior/Próximo.
-- Aplica-se somente às capturas legadas selecionadas; não altera o comportamento de capturas que já usam `html-message-v1`.
+- Aplica-se às capturas selecionadas elegíveis: legadas migradas ou já `html-message-v1`; não altera o comportamento de capturas fora da seleção.
 - O texto de ajuda deve dizer: “Remove a cadeia e os registros da captura anterior. O resultado será tratado como uma nova captura após a validação.”
 
 Quando este segundo toggle estiver marcado, a migração não transporta `integridade.json`, eventos anteriores, `reextracao-auditoria.jsonl`, `message-reconciliation.json`, frames, coordenadas ou anotações legadas. A pasta promovida recebe somente os artefatos que uma captura HTML por mensagem recém-criada produziria, incluindo um novo `integridade.json` com a ação inicial `capture_created`.
@@ -83,8 +85,9 @@ Há duas situações distintas:
 
 | Situação | Regra |
 |---|---|
-| Captura já em `html-message-v1` | Se o inventário, a origem e os hashes das mensagens do intervalo forem iguais, descartar a pasta temporária e registrar `recapture_skipped_content_unchanged`. Não substituir a captura. |
-| Captura legada com toggle desligado | Manter o fluxo legado atual de screenshots. |
+| Captura já em `html-message-v1`, sem limpar registros | Se o inventário, a origem e os hashes das mensagens do intervalo forem iguais, descartar a pasta temporária e registrar `recapture_skipped_content_unchanged`. Não substituir a captura. |
+| Captura já em `html-message-v1`, com limpar registros | Ignorar a comparação de conteúdo, recapturar o intervalo e promover a candidata com uma cadeia nova iniciada em `capture_created`. |
+| Captura legada com toggle de migração desligado | Manter o fluxo legado atual de screenshots. |
 | Captura legada com apenas o primeiro toggle ligado | A migração é uma mudança explícita de formato solicitada pelo analista. Criar a primeira captura HTML por mensagem mesmo sem ser possível comparar hashes de mensagens da versão de frames. Preservar a cadeia anterior. |
 | Captura legada com os dois toggles ligados | Sempre recriar como uma nova captura HTML por mensagem, apagar os registros anteriores após a promoção e não preservar a cadeia. |
 
@@ -111,7 +114,7 @@ Regras de carregamento:
 - `htmlMessageCapture` continua significando que a pasta de origem já é `html-message-v1`.
 - `legacyCapture` é verdadeiro quando `htmlMessageCapture` é falso.
 - `migrateLegacyToHtml` é definido no worker do lote a partir do toggle e somente para a captura legada selecionada.
-- `resetLegacyRecords` é definido somente se `migrateLegacyToHtml` também for verdadeiro. Nunca permitir este estado em uma captura já HTML.
+- `resetLegacyRecords` é definido quando o alvo é `html-message-v1`, isto é, em uma captura já HTML ou em uma captura legada com migração explicitamente solicitada. Na captura legada, continua exigindo `migrateLegacyToHtml`.
 - `targetHtmlMessageCapture()` é a única decisão usada pelo gerador durante o Re-Extrair. Não alterar a classificação persistida antes de a nova pasta passar na validação.
 
 ### 4.2 Propagação da opção
@@ -128,7 +131,7 @@ No início de cada item carregado em `runRecaptureBatch`, definir:
 
 ```java
 job.migrateLegacyToHtml = migrateLegacyToHtml && job.legacyCapture;
-job.resetLegacyRecords = resetLegacyRecords && job.migrateLegacyToHtml;
+job.resetLegacyRecords = resetLegacyRecords && job.targetHtmlMessageCapture();
 ```
 
 O worker sempre recarrega o manifesto antes de processar cada item. Portanto a opção deve ser reaplicada depois desse recarregamento; ela não pode depender dos descritores leves descartados pela paginação da janela.
@@ -138,10 +141,11 @@ O worker sempre recarrega o manifesto antes de processar cada item. Portanto a o
 Em `recaptureOne`:
 
 1. abrir o chat e localizar o intervalo antes de criar qualquer arquivo;
-2. se `job.migrateLegacyToHtml`, pular `tryMigrateOrSkipCapture`, porque a troca de formato foi solicitada explicitamente;
-3. se `job.htmlMessageCapture`, executar a verificação de conteúdo descrita em 4.5;
-4. se `job.legacyCapture` sem migração, manter o caminho existente;
-5. criar o resultado temporário usando `targetHtmlMessageCapture()`.
+2. se `job.resetLegacyRecords` ou `job.migrateLegacyToHtml`, pular `tryMigrateOrSkipCapture`: a troca de formato ou a recriação foi solicitada explicitamente;
+3. se `job.htmlMessageCapture` e `job.resetLegacyRecords`, ignorar a verificação de conteúdo descrita em 4.5 e recapturar de fato;
+4. se `job.htmlMessageCapture` sem reset, executar a verificação de conteúdo descrita em 4.5;
+5. se `job.legacyCapture` sem migração, manter o caminho existente;
+6. criar o resultado temporário usando `targetHtmlMessageCapture()`.
 
 Em `runChatCaptureInternal`, substituir a condição que consulta diretamente `activeRecaptureJob.htmlMessageCapture` por:
 
@@ -153,7 +157,7 @@ O modo normal de uma nova captura continua usando `htmlMessageCaptureEnabled`. E
 
 ### 4.4 Reutilização segura dos anexos na recriação limpa
 
-No modo `resetLegacyRecords`, a captura deve ser nova do ponto de vista de metadados e histórico, mas pode reaproveitar bytes de anexos já presentes na pasta legada para evitar extrair ou copiar novamente o mesmo conteúdo.
+No modo `resetLegacyRecords` aplicado a uma captura legada, a captura deve ser nova do ponto de vista de metadados e histórico, mas pode reaproveitar bytes de anexos já presentes na pasta legada para evitar extrair ou copiar novamente o mesmo conteúdo. Em uma captura que já é `html-message-v1`, o reset não usa esse índice: os anexos são extraídos novamente da fonte atual.
 
 Criar um índice temporário de reuso, válido somente durante a geração da candidata:
 
@@ -364,7 +368,7 @@ Validar também uma execução manual no IPED 4.3.1 com uma cópia temporária d
 ## 8. Entrega
 
 1. Implementar e testar a migração, o modo de criação limpa e o reuso seguro de anexos no código-fonte.
-2. Atualizar `HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION` para `2.5.5-beta` e sincronizar README, `doc.md`, `CHANGELOG.md`, `CHECKSUMS.md` e os arquivos do instalador com a skill `atualizar_documentacao`.
+2. Atualizar `HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION` para `2.5.6-beta` e sincronizar README, `doc.md`, `CHANGELOG.md`, `CHECKSUMS.md` e os arquivos do instalador com a skill `atualizar_documentacao`.
 3. Compilar o plugin Java 11.
 4. Atualizar e compilar o Verificador 1.3.4 para validar a cadeia de integridade também em capturas `html-message-v1` e para conferir os metadados de migração. O teste de adulteração deve confirmar que atualizar `migrationSha256` no manifesto não mascara uma alteração em `migration.json`, pois o inventário hash-chain continua sendo a referência local.
 5. Calcular o SHA-256 do JAR do plugin e atualizar o pacote instalador.

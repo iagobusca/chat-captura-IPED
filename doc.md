@@ -1,11 +1,11 @@
 # Plugin Chat Captura IPED
 
-**Versão:** 2.5.5-beta | Data: 08/11/2026.
+**Versão:** 2.5.6-beta | Data: 09/11/2026.
 **Base:** IPED 4.3.1; Java 11.
 
 Este documento descreve o plugin Java que amplia o viewer HTML do IPED para capturar conversas WhatsApp, gerar evidências navegáveis, anotar mensagens e verificar/reextrair capturas.
 
-Na versão 2.5.5-beta, o Re-Extrair pode migrar capturas legadas em frames para `html-message-v1`, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém a rolagem do chat ao fechar o preview de um anexo no `whatsapp.html`. A versão 2.5.3-beta normaliza o MIME de imagens embutidas no cabeçalho pela assinatura real dos bytes; assim, PNG declarado como `image/jpg` continua verificável.
+Na versão 2.5.6-beta, o toggle **Limpar registros e criar como nova captura** também é habilitado para capturas já existentes em `html-message-v1`, que são recapturadas como uma nova captura, e a janela **Re-Extrair capturas** se ajusta à área útil do monitor. A versão 2.5.5-beta permite migrar capturas legadas em frames para `html-message-v1`, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém a rolagem do chat ao fechar o preview de um anexo no `whatsapp.html`. A versão 2.5.3-beta normaliza o MIME de imagens embutidas no cabeçalho pela assinatura real dos bytes; assim, PNG declarado como `image/jpg` continua verificável.
 
 ## Índice
 
@@ -52,7 +52,7 @@ O parser de SVG usado no tema aceita as opções de segurança suportadas pelo X
 - Censura visual de miniaturas comparadas com imagens de referência no formato legado PNG. O novo formato HTML interrompe a captura se a pasta de blur estiver ativa, pois ainda não aplica essa censura.
 - Re-Extrair com comparação de inventário, reaproveitamento de conteúdo inalterado e registro de auditoria.
 - Migração opt-in de capturas legadas em frames para `html-message-v1`, com marcadores persistidos, candidata temporária, validação e substituição transacional; a pasta antiga é preservada em qualquer falha anterior à promoção.
-- Toggle dependente **Limpar registros e criar como nova captura**, que inicia a cadeia em `capture_created` e descarta registros, reconciliação, auditoria e anotações antigas.
+- Toggle **Limpar registros e criar como nova captura**, disponível para capturas legadas migradas e para capturas já em `html-message-v1`. Ele inicia a cadeia em `capture_created` e descarta registros, reconciliação, auditoria e anotações antigas.
 - Preservação de anotações legadas em `legacy-annotations.json` quando a cadeia é mantida; elas não são vinculadas automaticamente às mensagens novas.
 - Reuso de anexos legados no modo limpo somente após conferir SHA-256 e tamanho; metadados são recalculados pela fonte atual.
 - Capturas `html-message-v1` sem alteração no intervalo não são substituídas; a auditoria registra `recapture_skipped_content_unchanged`.
@@ -64,7 +64,7 @@ O parser de SVG usado no tema aceita as opções de segurança suportadas pelo X
 2. Marque a mensagem inicial e final pelo menu de contexto.
 3. Escolha a pasta de saída. A censura por imagens de referência está disponível no formato legado PNG; em capturas `html-message-v1`, deixe a pasta de blur desativada.
 4. Inicie a captura. Revise os arquivos HTML e JSON produzidos.
-5. Para atualizar uma captura existente, use **Re-Extrair** e confira o resumo da operação. Para converter uma captura legada, marque **Migrar capturas legadas para HTML por mensagem**; use o toggle dependente apenas quando quiser iniciar uma nova cadeia de integridade.
+5. Para atualizar uma captura existente, use **Re-Extrair** e confira o resumo da operação. Para converter uma captura legada, marque **Migrar capturas legadas para HTML por mensagem**; use **Limpar registros e criar como nova captura** quando quiser iniciar uma nova cadeia de integridade, inclusive em uma captura que já está em `html-message-v1`.
 
 O modo de chat salvo permite adicionar ou editar anotações sem uma nova captura, conforme os controles disponíveis nessa tela.
 
@@ -97,7 +97,7 @@ No formato `html-message-v1`, `whatsapp.html` contém somente o intervalo seleci
 
 ## Migração de capturas legadas
 
-No diálogo **Re-Extrair capturas**, o checkbox **Migrar capturas legadas para HTML por mensagem** inicia desmarcado e se aplica somente às capturas legadas selecionadas. Capturas que já usam `html-message-v1` seguem a reconciliação normal e não são afetadas. O estado dos toggles é conservado ao navegar entre as páginas da seleção.
+No diálogo **Re-Extrair capturas**, o checkbox **Migrar capturas legadas para HTML por mensagem** inicia desmarcado e se aplica somente às capturas legadas selecionadas. Capturas que já usam `html-message-v1` seguem a reconciliação normal e não são afetadas pela migração. O estado dos toggles é conservado ao navegar entre as páginas da seleção. A janela calcula o tamanho pela área útil do monitor, descontando a barra de tarefas; em 1366x768 ela fica com cerca de 879x638 px.
 
 Quando a migração é solicitada, o plugin:
 
@@ -109,11 +109,11 @@ Quando a migração é solicitada, o plugin:
 
 Se qualquer etapa anterior à promoção falhar, somente a candidata temporária é removida; a captura legada permanece intacta. Se a promoção falhar, a pasta antiga é restaurada. A primeira migração não declara que as mensagens dos frames eram iguais às da fonte atual: ela registra que o intervalo foi localizado e reconstruído a partir da fonte atual. Depois da migração, as execuções seguintes usam os hashes por mensagem e podem ignorar intervalos sem alteração.
 
-O toggle dependente **Limpar registros e criar como nova captura** só é habilitado com a migração marcada. Ele remove a cadeia e os registros anteriores: a pasta promovida não contém `migration.json`, `legacy-annotations.json`, `message-reconciliation.json` nem `reextracao-auditoria.jsonl`, e o novo `integridade.json` começa em `capture_created`. Anexos legados podem ser reaproveitados somente quando SHA-256 e tamanho conferem com a origem atual; MIME, nome, tipo e caminho são recalculados.
+O toggle **Limpar registros e criar como nova captura** é habilitado com a migração marcada em uma captura legada e independentemente dela em uma captura já `html-message-v1`. Ele remove a cadeia e os registros anteriores: a pasta promovida não contém `migration.json`, `legacy-annotations.json`, `message-reconciliation.json` nem `reextracao-auditoria.jsonl`, e o novo `integridade.json` começa em `capture_created`. Em uma captura nova, o Re-Extrair ignora a comparação de conteúdo e recaptura o intervalo. Anexos legados podem ser reaproveitados somente quando SHA-256 e tamanho conferem com a origem atual; MIME, nome, tipo e caminho são recalculados. Em capturas `html-message-v1`, os anexos são extraídos novamente da fonte atual.
 
 No modo com histórico, anotações baseadas em coordenadas são mantidas em `legacy-annotations.json`, sem vínculo automático com as novas mensagens, e o manifesto registra `migration.legacyAnnotationsPreserved`. A migração é bloqueada quando há pasta de imagens de referência para censura, pois o formato HTML ainda não aplica blur por similaridade.
 
-Capturas já em `html-message-v1` não são substituídas quando `changed`, `missingInCurrentSource` e `newInInterval` são zero. A candidata é descartada, a captura atual é preservada e a auditoria recebe `recapture_skipped_content_unchanged`.
+Capturas já em `html-message-v1` não são substituídas quando `changed`, `missingInCurrentSource` e `newInInterval` são zero, salvo quando **Limpar registros e criar como nova captura** estiver marcado; nesse caso o intervalo é recapturado de fato e a candidata é promovida com uma cadeia nova. Sem o reset, a candidata é descartada, a captura atual é preservada e a auditoria recebe `recapture_skipped_content_unchanged`.
 
 ## Integridade e segurança
 

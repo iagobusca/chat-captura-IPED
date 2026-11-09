@@ -23,7 +23,7 @@ def sha256(path: Path) -> str:
 def classify(manifest: dict, migrate: bool, reset: bool, blur: bool = False) -> str:
     is_html = manifest.get("captureFormat") == "html-message-v1"
     if is_html:
-        return "HTML_NORMAL"
+        return "HTML_RESET" if reset else "HTML_NORMAL"
     if reset and not migrate:
         reset = False
     if migrate and blur:

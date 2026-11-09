@@ -1,0 +1,26 @@
+Pacote Chat Captura IPED 2.5.6-beta - Verificador de Integridade 1.3.4
+
+Instalação:
+1. Feche o IPED 4.3.1.
+2. Execute instalar_captura_chat_zap\instalar_captura_chat_zap.bat.
+3. Reabra o IPED.
+
+O pacote inclui o plugin, org.json 20260719 e o Verificador de Integridade em JAR e EXE.
+O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
+
+O Re-Extrair pode migrar capturas legadas em frames para html-message-v1. A opção
+"Migrar capturas legadas para HTML por mensagem" inicia desmarcada. Marque
+"Limpar registros e criar como nova captura" quando quiser descartar a cadeia de
+integridade anterior; em capturas já em html-message-v1, essa opção fica disponível
+sem a migração e recaptura o intervalo como uma nova captura. A pasta antiga só é
+substituída após a nova captura ser validada.
+
+A janela Re-Extrair capturas se ajusta à área útil do monitor. Em 1366x768 ela fica
+com cerca de 879x638 px e cresce proporcionalmente em Full HD, 2K e 4K.
+
+SHA-256 do Verificador 1.3.4:
+JAR 034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44
+EXE FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE
+
+SHA-256 do plugin 2.5.6-beta:
+JAR 9A34DB5F07B0AD279887C9411D1629D2793E03EA92D746F6113CF971B1221DD7

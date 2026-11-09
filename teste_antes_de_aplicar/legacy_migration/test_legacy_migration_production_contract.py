@@ -16,16 +16,18 @@ class ProductionMigrationContractTests(unittest.TestCase):
         self.assertIn("migrateLegacyToHtml = recaptureLegacyMigrationToggle != null && recaptureLegacyMigrationToggle.isSelected()", VIEWER)
         self.assertIn("resetLegacyRecords = recaptureLegacyResetToggle != null && recaptureLegacyResetToggle.isSelected()", VIEWER)
         self.assertIn("if (!enabled) recaptureLegacyResetToggle.setSelected(false)", VIEWER)
+        self.assertIn("hasSelectableNew |= job.valid && job.htmlMessageCapture", VIEWER)
+        self.assertIn("boolean resetAvailable = newAvailable || (legacyAvailable && migrateLegacyToHtml)", VIEWER)
 
     def test_worker_reapplies_options_after_manifest_reload(self):
         reload_pos = VIEWER.index("loadRecaptureJobs(outputRoot, java.util.Collections.singletonList(captureIds.get(i)))")
         migrate_pos = VIEWER.index("job.migrateLegacyToHtml = migrateLegacyToHtml && job.legacyCapture", reload_pos)
-        reset_pos = VIEWER.index("job.resetLegacyRecords = resetLegacyRecords && job.migrateLegacyToHtml", migrate_pos)
+        reset_pos = VIEWER.index("job.resetLegacyRecords = resetLegacyRecords && job.targetHtmlMessageCapture()", migrate_pos)
         self.assertLess(reload_pos, migrate_pos)
         self.assertLess(migrate_pos, reset_pos)
 
     def test_migration_bypasses_legacy_skip_and_uses_html_generator(self):
-        self.assertIn("!job.migrateLegacyToHtml && tryMigrateOrSkipCapture(job", VIEWER)
+        self.assertIn("!job.resetLegacyRecords && !job.migrateLegacyToHtml && tryMigrateOrSkipCapture(job", VIEWER)
         self.assertIn("return htmlMessageCapture || (legacyCapture && migrateLegacyToHtml);", VIEWER)
         self.assertIn("activeRecaptureJob.targetHtmlMessageCapture()", VIEWER)
 

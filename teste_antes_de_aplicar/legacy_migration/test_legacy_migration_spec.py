@@ -43,7 +43,9 @@ class LegacyMigrationSpecTests(unittest.TestCase):
         self.assertEqual(classify(legacy, True, False), "LEGACY_MIGRATE")
         self.assertEqual(classify(legacy, True, True), "LEGACY_RESET")
         self.assertEqual(classify(legacy, False, True), "LEGACY_SCREENSHOTS")
-        self.assertEqual(classify(current_html, True, True), "HTML_NORMAL")
+        self.assertEqual(classify(current_html, True, False), "HTML_NORMAL")
+        self.assertEqual(classify(current_html, False, True), "HTML_RESET")
+        self.assertEqual(classify(current_html, True, True), "HTML_RESET")
         self.assertEqual(classify(legacy, True, False, blur=True), "BLOCK_BLUR")
 
     def test_attachment_reuse_requires_sha_and_size_and_copies_bytes(self):

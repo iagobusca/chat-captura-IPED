@@ -131,7 +131,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.5.5-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.5.6-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1263,8 +1263,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             JButton next = new JButton("Próximo"); next.setEnabled(start + pageSize < folders.size());
             JPanel header = new JPanel(new BorderLayout()); header.add(count,BorderLayout.CENTER); header.add(bulk,BorderLayout.EAST);
             JScrollPane captureScroll = new JScrollPane(list);
-            java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
-            captureScroll.setPreferredSize(new java.awt.Dimension(Math.min(850, Math.max(480, screen.width - 100)), Math.min(520, Math.max(300, screen.height - 220))));
+            captureScroll.setPreferredSize(recaptureScrollPreferredSize());
             JPanel panel = new JPanel(new BorderLayout(6,6)); panel.add(header,BorderLayout.NORTH); panel.add(captureScroll,BorderLayout.CENTER); panel.add(buildRecaptureTogglePanel(jobs, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords),BorderLayout.SOUTH);
             Object[] options = {prev,next,"Confirmar","Cancelar"};
             int option=JOptionPane.showOptionDialog(chatCapturePanel,panel,"Re-Extrair capturas — página "+(page+1),JOptionPane.DEFAULT_OPTION,JOptionPane.PLAIN_MESSAGE,null,options,options[2]);
@@ -1295,13 +1294,42 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords);
     }
 
+    /**
+     * Sizes the capture list so the whole dialog fits the monitor's usable area.
+     * The dialog chrome (header, toggles and option buttons) takes roughly
+     * 215 px, so the scroll viewport grows proportionally but always leaves
+     * room for those controls.
+     */
+    private java.awt.Dimension recaptureScrollPreferredSize() {
+        java.awt.Dimension screen;
+        java.awt.Insets insets;
+        java.awt.GraphicsConfiguration gc = chatCapturePanel == null ? null : chatCapturePanel.getGraphicsConfiguration();
+        if (gc != null) {
+            java.awt.Rectangle bounds = gc.getBounds();
+            screen = new java.awt.Dimension(bounds.width, bounds.height);
+            insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(gc);
+        } else {
+            screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+            insets = new java.awt.Insets(0, 0, 0, 0);
+        }
+        int usableWidth = Math.max(320, screen.width - insets.left - insets.right);
+        int usableHeight = Math.max(240, screen.height - insets.top - insets.bottom);
+        int width = Math.min(1800, Math.max(520, Math.round(usableWidth * 0.62f)));
+        int height = Math.min(1100, Math.max(280, Math.round(usableHeight * 0.60f)));
+        width = Math.min(width, Math.max(320, usableWidth - 60));
+        height = Math.min(height, Math.max(240, usableHeight - 220));
+        return new java.awt.Dimension(width, height);
+    }
+
     private JPanel buildRecaptureTogglePanel(List<RecaptureJob> jobs, boolean annotationsEnabled,
             boolean migrateLegacyToHtml, boolean resetLegacyRecords) {
         boolean allLegacy = !jobs.isEmpty();
         boolean hasSelectableLegacy = false;
+        boolean hasSelectableNew = false;
         for (RecaptureJob job : jobs) {
             allLegacy = allLegacy && job.legacyAnnotations;
             hasSelectableLegacy |= job.valid && job.legacyCapture;
+            hasSelectableNew |= job.valid && job.htmlMessageCapture;
         }
         recaptureAnnotationsToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), annotationsEnabled); //$NON-NLS-1$
         recaptureAnnotationsToggle.setEnabled(!allLegacy);
@@ -1312,13 +1340,18 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 Messages.getString("ChatCapturePanel.MigrateLegacyToHtml"), migrateLegacyToHtml); //$NON-NLS-1$
         recaptureLegacyMigrationToggle.setToolTipText(Messages.getString("ChatCapturePanel.MigrateLegacyToHtmlTip")); //$NON-NLS-1$
         recaptureLegacyMigrationToggle.setEnabled(hasSelectableLegacy);
-        recaptureLegacyResetToggle = new JCheckBox(
-                Messages.getString("ChatCapturePanel.ResetLegacyRecords"), migrateLegacyToHtml && resetLegacyRecords); //$NON-NLS-1$
-        recaptureLegacyResetToggle.setToolTipText(Messages.getString("ChatCapturePanel.ResetLegacyRecordsTip")); //$NON-NLS-1$
-        recaptureLegacyResetToggle.setEnabled(hasSelectableLegacy && migrateLegacyToHtml);
         final boolean legacyAvailable = hasSelectableLegacy;
+        final boolean newAvailable = hasSelectableNew;
+        boolean resetAvailable = newAvailable || (legacyAvailable && migrateLegacyToHtml);
+        recaptureLegacyResetToggle = new JCheckBox(
+                Messages.getString("ChatCapturePanel.ResetLegacyRecords"), resetAvailable && resetLegacyRecords); //$NON-NLS-1$
+        recaptureLegacyResetToggle.setToolTipText(resetAvailable || legacyAvailable
+                ? Messages.getString("ChatCapturePanel.ResetLegacyRecordsTip") //$NON-NLS-1$
+                : Messages.getString("ChatCapturePanel.ResetLegacyRecordsUnavailable")); //$NON-NLS-1$
+        recaptureLegacyResetToggle.setEnabled(resetAvailable);
         recaptureLegacyMigrationToggle.addActionListener(e -> {
-            boolean enabled = recaptureLegacyMigrationToggle.isSelected() && legacyAvailable;
+            boolean enabled = newAvailable
+                    || (legacyAvailable && recaptureLegacyMigrationToggle.isSelected());
             recaptureLegacyResetToggle.setEnabled(enabled);
             if (!enabled) recaptureLegacyResetToggle.setSelected(false);
         });
@@ -1381,7 +1414,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             job.expectedArtifacts = savedManifest.optJSONArray("artifacts");
             job.htmlMessageCapture = "html-message-v1".equals(savedManifest.optString("captureFormat")); //$NON-NLS-1$ //$NON-NLS-2$
             job.legacyCapture = !job.htmlMessageCapture;
-            job.legacyAnnotations = jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
+            job.legacyAnnotations = !job.htmlMessageCapture && jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             job.status = jsonField(content, "status"); //$NON-NLS-1$
             job.startMessageId = jsonField(content, "startMessageId"); //$NON-NLS-1$
             job.endMessageId = jsonField(content, "endMessageId"); //$NON-NLS-1$
@@ -1660,7 +1693,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                     if (job == null || !job.valid) throw new IOException(job == null ? "Captura indisponível" : job.invalidReason);
                     job.legacyCapture = !job.htmlMessageCapture;
                     job.migrateLegacyToHtml = migrateLegacyToHtml && job.legacyCapture;
-                    job.resetLegacyRecords = resetLegacyRecords && job.migrateLegacyToHtml;
+                    job.resetLegacyRecords = resetLegacyRecords && job.targetHtmlMessageCapture();
                 } catch (Exception invalid) {
                     failed++;
                     LOGGER.warn("Selected capture became invalid before processing: {}", captureIds.get(i), invalid);
@@ -1704,7 +1737,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
 
         activeRecaptureJob = job;
         try {
-            if (job.resetLegacyRecords) {
+            if (job.resetLegacyRecords && job.legacyCapture) {
                 job.reusableAttachmentsByHashAndSize = buildReusableAttachmentIndex(job);
             }
             pendingAnnotations = null;
@@ -1714,7 +1747,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
                     pendingAnnotations = null;
                 }
             }
-            if (!job.migrateLegacyToHtml && tryMigrateOrSkipCapture(job, batchCurrent, batchTotal)) {
+            if (!job.resetLegacyRecords && !job.migrateLegacyToHtml && tryMigrateOrSkipCapture(job, batchCurrent, batchTotal)) {
                 return;
             }
 
@@ -1725,7 +1758,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             LOGGER.info("Recapture capture tmp folder: {}", tmpFolder); //$NON-NLS-1$
             CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder);
             try {
-            if (job.htmlMessageCapture) {
+            if (job.htmlMessageCapture && !job.resetLegacyRecords) {
                 writeHtmlMessageReconciliation(job.folderPath, result.captureDir);
                 if (isHtmlReconciliationUnchanged(result.captureDir)) {
                     CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
@@ -1936,7 +1969,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
             throw new IOException("A candidata HTML ainda contém artefatos do formato de frames."); //$NON-NLS-1$
         }
         JSONObject migration = manifest.optJSONObject("migration"); //$NON-NLS-1$
-        if (job.migrateLegacyToHtml && job.resetLegacyRecords) {
+        if (job.resetLegacyRecords) {
             if (migration != null || Files.exists(candidate.resolve("migration.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
                     || Files.exists(candidate.resolve("legacy-annotations.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
                     || Files.exists(candidate.resolve("message-reconciliation.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
@@ -2795,7 +2828,7 @@ createReportThumbnails(captureDir, exported);
         Files.createDirectories(staging);
         boolean promoted = false;
         RecaptureJob migrationJob = activeRecaptureJob;
-        if (migrationJob != null && migrationJob.resetLegacyRecords) {
+        if (migrationJob != null && migrationJob.legacyCapture && migrationJob.resetLegacyRecords) {
             migrationJob.reusableAttachmentStaging = staging;
             migrationJob.stagedReusableAttachmentPaths.clear();
         }

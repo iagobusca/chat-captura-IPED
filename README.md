@@ -4,14 +4,14 @@ Plugin/customizacao para o IPED 4.3.1 que captura intervalos de mensagens do vie
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.5.5-beta**
+Versao atual do plugin: **2.5.6-beta**
 Verificador de Integridade: **1.3.4**
 
 ## About
 
 Plugin Java para IPED 4.3.1 que captura intervalos de conversas WhatsApp e gera HTML offline, manifesto por mensagem e anexo, anotações, inventários e hashes para revisão forense. Capturas anteriores baseadas em screenshots continuam compatíveis.
 
-A versão 2.5.5-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.3-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
+A versão 2.5.6-beta permite limpar os registros também de uma captura já existente em `html-message-v1`, recriando-a como captura nova, e ajusta a janela **Re-Extrair capturas** à área útil do monitor. A versão 2.5.5-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.3-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
 
 ## Getting Started
 
@@ -60,14 +60,14 @@ Especificacao tecnica completa:
 ESPEC_UNICA_CHAT_CAPTURE_IPED.md
 ```
 
-As capturas novas da versão 2.5.5-beta incluem:
+As capturas novas da versão 2.5.6-beta incluem:
 
 - Cópia offline do intervalo DOM selecionado, sem screenshots e coordenadas como conteúdo principal.
 - Manifesto `messages.json` com identidade e SHA-256 por mensagem e por anexo.
 - Recursos de anexos recuperados do caso por `app.open('sha-256:...')`, com validação de hash, MIME, caminho e limites.
 - Reconciliação do Re-Extrair com estados por mensagem e preservação da captura anterior em falha.
 - Migração opt-in de capturas legadas para `html-message-v1`, com localização dos marcadores persistidos, validação da candidata e substituição transacional; a pasta antiga permanece intacta em qualquer falha anterior à promoção.
-- Modo **Limpar registros e criar como nova captura**, que inicia uma nova cadeia em `capture_created` e descarta `migration.json`, `legacy-annotations.json`, reconciliação e auditoria antigas. Anexos legados só são reutilizados após conferir SHA-256 e tamanho.
+- Modo **Limpar registros e criar como nova captura**, disponível para capturas legadas migradas e para capturas já existentes em `html-message-v1`. Ele inicia uma nova cadeia em `capture_created` e descarta `migration.json`, `legacy-annotations.json`, reconciliação e auditoria antigas. Em capturas novas, o Re-Extrair ignora a comparação de conteúdo e recaptura o intervalo. Anexos legados só são reutilizados após conferir SHA-256 e tamanho.
 - Preservação das anotações legadas em `legacy-annotations.json` quando a cadeia anterior é mantida; elas não são vinculadas automaticamente às novas mensagens.
 - Capturas já em `html-message-v1` não são substituídas quando o intervalo permanece igual; o evento `recapture_skipped_content_unchanged` é registrado na auditoria.
 - Marcador de início colocado em separador de data é resolvido para a primeira mensagem seguinte e salva a ID real no manifesto para o Re-Extrair.
@@ -105,7 +105,7 @@ Os recursos abaixo descrevem o fluxo legado baseado em screenshots, ainda suport
 
 ## Notas e Links por mensagem
 
-Este recurso foi introduzido na versão 2.0.0 e continua disponível no plugin 2.5.5-beta. A indicação 2.0.0 descreve a versão em que a funcionalidade surgiu; não é a versão atual do plugin.
+Este recurso foi introduzido na versão 2.0.0 e continua disponível no plugin 2.5.6-beta. A indicação 2.0.0 descreve a versão em que a funcionalidade surgiu; não é a versão atual do plugin.
 
 **Recurso opcional.** Nada e obrigatorio: quem nao usar continua com o fluxo anterior,
 com saida identica.
@@ -227,7 +227,10 @@ As anotações são mantidas por chat em `anotacoes.json`. Durante a edição, a
 - Fechar o IPED descarta somente as alterações que não foram salvas nem incluídas em uma captura.
 - Sem anotações, a captura não precisa criar o bloco opcional de anotações.
 
-Todas as janelas do plugin abrem com no minimo **640x640**.
+Todas as janelas do plugin abrem com no minimo **640x640**. A janela
+**Re-Extrair capturas** calcula largura e altura pela área útil do monitor,
+descontando a barra de tarefas: em 1366x768 ela fica com cerca de 879x638 px e
+cresce proporcionalmente em Full HD, 2K e 4K.
 
 ### Capturas antigas
 
@@ -237,6 +240,8 @@ capturas selecionadas; sem ele, o fluxo de screenshots das versoes anteriores e 
 Com o toggle marcado, a captura e recriada em `html-message-v1` e a pasta antiga so e
 substituida depois da validacao da candidata. O toggle dependente
 **Limpar registros e criar como nova captura** reinicia a cadeia de integridade.
+Em capturas que ja estao em `html-message-v1`, esse mesmo toggle fica disponivel
+sem exigir a migracao e recaptura o intervalo como uma nova captura.
 
 ### Marcacao forense
 
@@ -280,14 +285,14 @@ chat-captura IPED/
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Artefatos locais preparados para teste beta 2.5.5
+## Artefatos locais preparados para teste beta 2.5.6
 
 Os artefatos locais preparados para validação são:
 
 | Arquivo | Para que serve |
 |---|---|
-| `instalador-chat-captura-IPED-2.5.5-beta-verificador-1.3.4.zip` | Pacote local com a migração de capturas legadas e verificador 1.3.4 |
-| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.5-beta.jar` | JAR compilado do plugin para instalação manual |
+| `instalador-chat-captura-IPED-2.5.6-beta-verificador-1.3.4.zip` | Pacote local com o reset em capturas novas, a janela ajustável e o verificador 1.3.4 |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.6-beta.jar` | JAR compilado do plugin para instalação manual |
 | `verificador-integridade/integridade-verifier.jar` | Verificador independente com Java 8 (1.8) ou superior |
 | `verificador-integridade/integridade-verifier.exe` | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
 | `SPEC_CAPTURA_HTML_POR_MENSAGEM.md e SPEC_RENDERIZACAO_WHATSAPP_HTML.md` | Contrato, formato de captura, limites, testes e pendência de validação manual no IPED |
@@ -301,18 +306,18 @@ Os arquivos ainda são artefatos locais e não foram publicados em uma release. 
 JAR — SHA-256: `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44`<br>
 EXE — SHA-256: `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE`
 
-JAR do plugin 2.5.5-beta — SHA-256: `A2210944559C628A0893B200B89AFF4B4527FDB8A9A014488CF60E214E66A24F`<br>
-ZIP do instalador 2.5.5-beta — SHA-256: `36A1FB08DF7F3F00BA8B760A92A2992EBDC96347EDDC4CF8923F0E725B6E40B8`
+JAR do plugin 2.5.6-beta — SHA-256: `9A34DB5F07B0AD279887C9411D1629D2793E03EA92D746F6113CF971B1221DD7`<br>
+ZIP do instalador 2.5.6-beta — SHA-256: `5195CB02265A1BF1D07024C9262CCF9D7FA598951A5E09080E1DE8A26787E4BB`
 
 O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia `instalador-chat-captura-IPED-2.5.5-beta-verificador-1.3.4.zip`.
+2. Baixe e extraia `instalador-chat-captura-IPED-2.5.6-beta-verificador-1.3.4.zip`.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP inclui o JAR 2.5.5-beta, o instalador, o validador, `org.json` 20260719, os dois bundles de idioma e o Verificador 1.3.4 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
+O ZIP inclui o JAR 2.5.6-beta, o instalador, o validador, `org.json` 20260719, os dois bundles de idioma e o Verificador 1.3.4 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
 
 ## O que o BAT faz
 

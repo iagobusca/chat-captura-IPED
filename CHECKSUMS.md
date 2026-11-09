@@ -1,5 +1,15 @@
 # Checksums
 
+## Build 2.5.6-beta / Verificador 1.3.4 (reset em capturas novas e janela ajustável)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.6-beta.jar` | 634.994 | `9A34DB5F07B0AD279887C9411D1629D2793E03EA92D746F6113CF971B1221DD7` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 634.994 | `9A34DB5F07B0AD279887C9411D1629D2793E03EA92D746F6113CF971B1221DD7` |
+| `instalador-chat-captura-IPED-2.5.6-beta-verificador-1.3.4.zip` | 72.929.269 | `5195CB02265A1BF1D07024C9262CCF9D7FA598951A5E09080E1DE8A26787E4BB` |
+| `verificador-integridade/integridade-verifier.jar` | 133.702 | `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44` |
+| `verificador-integridade/integridade-verifier.exe` | 77.839.428 | `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE` |
+
 ## Build 2.5.5-beta / Verificador 1.3.4 (migração de capturas legadas para HTML por mensagem)
 
 | Arquivo | Bytes | SHA-256 |
