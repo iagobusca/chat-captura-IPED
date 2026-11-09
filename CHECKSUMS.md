@@ -1,23 +1,94 @@
 # Checksums
 
-Arquivo principal do instalador:
+## Build 2.5.5-beta / Verificador 1.3.4 (migração de capturas legadas para HTML por mensagem)
 
-```text
-instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
-SHA-256: 35C557E418F26D793CD8F529C0AE53D7DE30A36BEB2AB89E3D8451851738433A
-Versao do plugin: 2.3.5-beta
-```
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.5-beta.jar` | 639.173 | `A2210944559C628A0893B200B89AFF4B4527FDB8A9A014488CF60E214E66A24F` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 639.173 | `A2210944559C628A0893B200B89AFF4B4527FDB8A9A014488CF60E214E66A24F` |
+| `instalador-chat-captura-IPED-2.5.5-beta-verificador-1.3.4.zip` | 72.897.251 | `36A1FB08DF7F3F00BA8B760A92A2992EBDC96347EDDC4CF8923F0E725B6E40B8` |
+| `verificador-integridade/integridade-verifier.jar` | 133.702 | `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44` |
+| `verificador-integridade/integridade-verifier.exe` | 77.839.428 | `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE` |
 
-Este hash identifica o JAR distribuido. O instalador mescla bundles de idioma no JAR instalado, portanto os hashes do pacote e da instalacao podem diferir; valide as entradas/classes com `validate-plugin-jar.ps1`.
+## Build 2.5.4-beta / Verificador 1.3.3 (restaura a rolagem ao fechar previews)
 
-## Build local 2.3.5-beta / Verificador 1.2.8
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.4-beta.jar` | 625.971 | `6F23B94B0CA0E054CC7838D41E10ABA519364ECAE27D49C30F6F0BCAD06657CE` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 625.971 | `6F23B94B0CA0E054CC7838D41E10ABA519364ECAE27D49C30F6F0BCAD06657CE` |
+| `instalador-chat-captura-IPED-2.5.4-beta-verificador-1.3.3.zip` | 73.678.535 | `133DDB7DF5F843A56D25483A59DB6DFE933A8F205B0670C62DDBAFEEC0DFDE87` |
+| `verificador-integridade/integridade-verifier.jar` | 131.972 | `22FBAA2A8D4EA32940B4555E95207A22982B7FCDD308020950A667853420D921` |
+| `verificador-integridade/integridade-verifier.exe` | 78.384.708 | `933F27A61AEDDAC5E4F1D8D7CA7AFC057AA2F04062A9267783FC56BB00DCE25B` |
+
+## Build 2.5.3-beta / Verificador 1.3.2 (compatibilidade de MIME da imagem embutida)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.3-beta.jar` | 626.302 | `B8E73D89C7F19AD4B77B0FF3DF6F7A39C53CF5AD4745DB731E279FD88D819AC9` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 626.302 | `B8E73D89C7F19AD4B77B0FF3DF6F7A39C53CF5AD4745DB731E279FD88D819AC9` |
+| `instalador-chat-captura-IPED-2.5.3-beta-verificador-1.3.2.zip` | 73.677.332 | `44F8CC6EFD3E9BBF6794A46E4BC576ECB8D4F7E078DB4ACEA469A1D236545A99` |
+| `verificador-integridade/integridade-verifier.jar` | 131.464 | `F6D21DC4DAAFBF0BB241B66790EE2FE137AF5DBD5609EF9CED8D1336D622A7A7` |
+| `verificador-integridade/integridade-verifier.exe` | 78.384.196 | `94FC180EA3D25DB9881F3D245FE1D2100CC21B6263F6163E129B5033B55D5908` |
+
+## Build 2.5.2-beta / Verificador 1.3.1 (correção dos marcadores de captura)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.2-beta.jar` | 629.590 | `884C22025AF90353CC8271CCBC84CD37EF771D1DDE47C094380B95C29E9E0CF1` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 629.590 | `884C22025AF90353CC8271CCBC84CD37EF771D1DDE47C094380B95C29E9E0CF1` |
+| `instalador-chat-captura-IPED-2.5.2-beta-verificador-1.3.1.zip` | 73.676.554 | `5191A42B2260E4FF4EFEC56EDEF33C15C9A55C3C97B04C1CB96E51521CC77822` |
+| `verificador-integridade/integridade-verifier.jar` | 131.441 | `0C262CC3D2F8BB0FD6CF7FB3E4071CF19903D684396356F56F9D92DB869F8339` |
+| `verificador-integridade/integridade-verifier.exe` | 78.384.196 | `AE1E2E1E9D7E78BBCF8C551C2209F7F990C8AC37C77F751556BB29D698D719F5` |
+
+## Build 2.5.1-beta / Verificador 1.3.1 (correção de captura)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.1-beta.jar` | 617.730 | `C3257814268EFCA487946F77B38A0F8C5D1A279E4CFCC604DA0D89A822B76292` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 617.730 | `C3257814268EFCA487946F77B38A0F8C5D1A279E4CFCC604DA0D89A822B76292` |
+| `instalador-chat-captura-IPED-2.5.1-beta-verificador-1.3.1.zip` | 73.669.095 | `3088D0C67D495B946CD76272F7FD17AC851EC0416EFA304E2037A91E9D683821` |
+| `verificador-integridade/integridade-verifier.jar` | 131.441 | `0C262CC3D2F8BB0FD6CF7FB3E4071CF19903D684396356F56F9D92DB869F8339` |
+| `verificador-integridade/integridade-verifier.exe` | 78.384.196 | `AE1E2E1E9D7E78BBCF8C551C2209F7F990C8AC37C77F751556BB29D698D719F5` |
+
+## Build 2.5.0-beta / Verificador 1.3.1 (pacote local para teste)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.0-beta.jar` | 622.142 | `E8248F56072FBC41B5B259F118605DB7DE357CB14BF583B4BE98446B5059F575` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 622.142 | `E8248F56072FBC41B5B259F118605DB7DE357CB14BF583B4BE98446B5059F575` |
+| `instalador-chat-captura-IPED-2.5.0-beta-verificador-1.3.1.zip` | 73.668.564 | `ECA259CF8C27122FD9AC605425ECF4EFA77551091EAEE5570721623F79780B0E` |
+| `verificador-integridade/integridade-verifier.jar` | 131.441 | `0C262CC3D2F8BB0FD6CF7FB3E4071CF19903D684396356F56F9D92DB869F8339` |
+| `verificador-integridade/integridade-verifier.exe` | 78.384.196 | `AE1E2E1E9D7E78BBCF8C551C2209F7F990C8AC37C77F751556BB29D698D719F5` |
+
+## Build 2.4.1-beta / Verificador 1.3.0 (pacote local para teste)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.4.1-beta.jar` | 612.886 | `2BEADACF04C36ACA1E804B51B360D4336B4B1C36448FC4AC8D35420BF072B737` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 612.886 | `2BEADACF04C36ACA1E804B51B360D4336B4B1C36448FC4AC8D35420BF072B737` |
+| `instalador-chat-captura-IPED-2.4.1-beta-verificador-1.3.0.zip` | 73.652.975 | `B4311834AA52C6BE1BC672F97C62A08D1DDE71534B04D9C75279CCBC53DB7B75` |
+| `verificador-integridade/integridade-verifier.jar` | 126.570 | `CB5B11C913763546084EC0745E5D95F059BC731D752183FE306AB8FBCBD29FC6` |
+| `verificador-integridade/integridade-verifier.exe` | 78.379.076 | `963B44556ECEA6A57D65E14A5EF74C1F842779FE05ACA068390F6511F295654C` |
+
+## Build 2.4.0-beta / Verificador 1.3.0
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.4.0-beta.jar` | 615.587 | `35347DDB5D7A0E0A6C3E3E7EECC4B4F5A269736393DEE369D36ED51C13C7BA4C` |
+| `instalador-chat-captura-IPED-2.4.0-beta-verificador-1.3.0.zip` | 73.651.577 | `6121D310C118BEB4ADB5E44CB8B572FA3A2BE64E7C00D88F43D6CC55C293F07A` |
+| `verificador-integridade/integridade-verifier.jar` | 126.570 | `CB5B11C913763546084EC0745E5D95F059BC731D752183FE306AB8FBCBD29FC6` |
+| `verificador-integridade/integridade-verifier.exe` | 78.379.076 | `963B44556ECEA6A57D65E14A5EF74C1F842779FE05ACA068390F6511F295654C` |
+
+O JAR do verificador foi construído com JDK 8 e bytecode 52. O EXE x64 passou pelo `--self-test` (código de saída 0). O ZIP contém estes binários e o instalador.
+
+Este é o pacote anterior à correção 2.4.1-beta; o pacote atual e seu JAR principal estão na seção acima.
 
 ## Build 2.3.6-beta / Verificador 1.2.8
 
 | Arquivo | Bytes | SHA-256 |
 |---|---:|---|
-| `iped-viewers-impl-4.3.1-2.3.6-beta.jar` | 601.549 | `832E2CF887357CC0074625BB3A595C33B7D9DB0D11BD9582D8DAA1C5C3A2C9F7` |
-| `instalador-chat-captura-IPED-2.3.6-beta-verificador-1.2.8.zip` | 661.055 | `6434DC5F4954D7CAD2E476E14F67BDF59CCD4E3C9F3332FAA1578E797E887D08` |
+| `iped-viewers-impl-4.3.1-2.3.6-beta.jar` | 602.221 | `832E2CF887357CC0074625BB3A595C33B7D9DB0D11BD9582D8DAA1C5C3A2C9F7` |
+| `instalador-chat-captura-IPED-2.3.6-beta-verificador-1.2.8.zip` | 661.619 | `6434DC5F4954D7CAD2E476E14F67BDF59CCD4E3C9F3332FAA1578E797E887D08` |
 | `integridade-verifier-1.2.8.jar` | 117.491 | `906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96` |
 | `integridade-verifier-1.2.8.exe` | 78.370.372 | `4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF` |
 

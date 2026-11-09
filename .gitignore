@@ -14,10 +14,15 @@ tmp/
 temp/
 *.log
 
+# Python
+__pycache__/
+*.pyc
+
 
 # Build outputs and release assets
 /build/
 /release-assets/
+/verificador-integridade/build/
 /verificador-integridade/build-native/
 /verificador-integridade/build-single-exe/
 /verificador-integridade/dist/

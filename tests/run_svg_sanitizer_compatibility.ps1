@@ -1,0 +1,27 @@
+param(
+    [string]$IpedRoot,
+    [string]$JavaFxLib = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\javafx-sdk-26.0.1\lib',
+    [string]$JdkHome = 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot'
+)
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if (!$IpedRoot) {
+    $workspaceRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
+    $IpedRoot = Join-Path $workspaceRoot 'iped-4.3.1'
+}
+$pluginJar = Join-Path $repoRoot 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
+$javac = Join-Path $JdkHome 'bin\javac.exe'
+$java = Join-Path $JdkHome 'bin\java.exe'
+$testClasses = Join-Path $repoRoot 'tmp\svg-sanitizer-compatibility-test'
+if (!(Test-Path $javac) -or !(Test-Path $java)) { throw "JDK não encontrado: $JdkHome" }
+if (!(Test-Path (Join-Path $IpedRoot 'lib\xercesImpl-2.12.2.jar'))) { throw "Xerces do IPED 4.3.1 não encontrado em $IpedRoot" }
+if (!(Test-Path $JavaFxLib)) { throw "JavaFX necessário para carregar HtmlLinkViewer não encontrado: $JavaFxLib" }
+if (!(Test-Path $pluginJar)) { throw "JAR do plugin não encontrado: $pluginJar" }
+New-Item -ItemType Directory -Force -Path $testClasses | Out-Null
+$source = Join-Path $PSScriptRoot 'iped\viewers\CaptureSvgCompatibilityTest.java'
+$compileCp = "$pluginJar;$(Join-Path $IpedRoot 'lib\*')"
+& $javac -encoding UTF-8 -cp $compileCp -d $testClasses $source
+if ($LASTEXITCODE -ne 0) { throw "javac falhou: $LASTEXITCODE" }
+$runtimeCp = "$testClasses;$pluginJar;$(Join-Path $IpedRoot 'lib\*')"
+& $java "--module-path=$JavaFxLib" --add-modules javafx.controls,javafx.web,javafx.swing '-Djavax.xml.parsers.DocumentBuilderFactory=org.apache.xerces.jaxp.DocumentBuilderFactoryImpl' -cp $runtimeCp iped.viewers.CaptureSvgCompatibilityTest
+if ($LASTEXITCODE -ne 0) { throw "Teste de compatibilidade SVG falhou: $LASTEXITCODE" }

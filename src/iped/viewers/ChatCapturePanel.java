@@ -186,9 +186,11 @@ public class ChatCapturePanel extends JPanel {
             if (viewer.isChatCaptureRunning()) {
                 viewer.stopChatCapture();
             } else {
-                VerifierIntegrity.installVerifierFiles(new File(outputFolder.getText()).toPath());
-                VerifierIntegrity.showAlertIfNeeded(this, new File(outputFolder.getText()).toPath());
-                viewer.startChatCapture(new File(outputFolder.getText()), getEffectiveCustomName(),
+                File destination = new File(outputFolder.getText());
+                if (!viewer.validateCaptureStart(destination)) return;
+                VerifierIntegrity.installVerifierFiles(destination.toPath());
+                VerifierIntegrity.showAlertIfNeeded(this, destination.toPath());
+                viewer.startChatCapture(destination, getEffectiveCustomName(),
                         getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
             }
         });

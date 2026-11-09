@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.2.8
+# Verificador de Integridade 1.3.4
 
-**Versão:** 1.2.8 | Data: 06/11/2026.
+**Versão:** 1.3.4 | Data: 08/11/2026.
 
 ## Índice
 
@@ -17,6 +17,18 @@
 ## Visao geral
 
 Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). A descoberta ocorre em worker cancelável e exibe a contagem atualizada sem manter a Event Dispatch Thread ocupada. Depois, lê metadados quando necessários, recalcula hashes e grava relatórios. O JAR foi compilado para Java 8 (1.8) ou superior. O EXE Windows de arquivo único contém o runtime Java 11 e .NET 10.0.14; o usuário não precisa instalar Java ou .NET.
+
+A versão 1.3.4 valida a cadeia local de integridade também em capturas `html-message-v1`. Antes, a verificação por mensagem retornava sem ler `integridade.json`; agora a cadeia é verificada e, quando há migração, `migration.json` e `legacy-annotations.json` precisam estar vinculados ao inventário. Uma alteração no registro de migração é detectada mesmo que o manifesto seja atualizado junto. A versão mantém a validação do script fixo do `whatsapp.html` e sua CSP, que restauram a posição de rolagem ao fechar um preview; para preservar capturas existentes, também aceita o par exato de script e CSP da versão 1.3.2. A compatibilidade com `data:image/jpg` contendo assinatura PNG continua restrita a bytes cuja assinatura confirma o formato raster. O plugin 2.5.5-beta grava as capturas migradas com esse registro de proveniência.
+
+A versão 1.3.1 reconhece `captureFormat: "html-message-v1"`. Para esse formato, valida o manifesto por mensagem, a ordem e unicidade dos IDs, `messageHash`, `captureRootHash`, caminhos confinados e os bytes SHA-256 dos anexos locais. O resultado “não encontrada na fonte atual” não atribui remoção ou autoria a ninguém.
+
+### Capturas migradas de frames
+
+Quando `manifest.json` contém o objeto `migration`, o verificador exige `migrationFile: "migration.json"` e o hash `migrationSha256` correspondente. O conteúdo de `migration.json` precisa ser idêntico ao objeto do manifesto, e ambos precisam declarar o mesmo estado de `legacyAnnotationsPreserved`. O inventário de `integridade.json` precisa conter `migration.json` e, quando preservado, `legacy-annotations.json` com tamanho e SHA-256 iguais. A cadeia local é a referência contra alterações posteriores; atualizar o hash no manifesto não mascara a troca do arquivo inventariado. Uma captura sem `migration` não pode conter `migration.json` nem `legacy-annotations.json`; uma captura criada com **Limpar registros** começa em `capture_created` e não carrega esses arquivos.
+
+Na apresentação HTML 2, o verificador também permite somente o tema CSS validado, CSP canônica e script fixo com hash conhecido; o PDF é exibido apenas em `iframe sandbox=""`.
+
+As referências do `whatsapp.html` precisam corresponder exatamente aos anexos registrados. O verificador valida assinatura binária e MIME para imagem, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z e texto/CSV; conteúdo desconhecido só é permitido como `application/octet-stream` com extensão `.bin`. O conjunto de anexos da captura tem orçamento agregado e falha com mensagem controlada quando é excedido.
 
 ## Arquitetura e funcionamento
 
@@ -76,7 +88,7 @@ Em falhas do lançador, uma janela informa o erro. O processo Java pode apresent
 
 ## Limitacoes e migracao
 
-A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. As versões 1.2.x acrescentam os modos local/público e um registro público determinístico. A comparação pública depende de uma referência obtida fora da pasta verificada. A gravação de relatórios cria temporários exclusivos e rejeita diretórios de saída com links simbólicos.
+A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\IntegridadeVerifier`; não percorre outras pastas do Windows. Se uma instância ainda estiver aberta, a limpeza geral é adiada para evitar apagar arquivos em uso. As versões 1.2.x acrescentam os modos local/público e um registro público determinístico. A versão 1.3.4 lê a cadeia local também para capturas HTML e valida a proveniência de migrações legadas. A comparação pública depende de uma referência obtida fora da pasta verificada. A gravação de relatórios cria temporários exclusivos e rejeita diretórios de saída com links simbólicos.
 
 
 

@@ -5,8 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -16,17 +18,21 @@ public final class VerifierIntegrity {
     private static final String JAR_NAME = "integridade-verifier.jar";
     private static final String EXE_NAME = "integridade-verifier.exe";
 
-    private static final Set<String> VALID_JAR_HASHES = Set.of("906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96");
-    private static final Set<String> VALID_EXE_HASHES = Set.of("4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF");
+    private static final Set<String> VALID_JAR_HASHES = Set.of("034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44");
+    private static final Set<String> VALID_EXE_HASHES = Set.of("FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE");
     private static volatile boolean alertShown = false;
 
     /** Copia os arquivos do verificador (jar/exe) para a pasta de captura, se encontrados. */
     public static void installVerifierFiles(Path outputFolder) {
         if (outputFolder == null) return;
-        Path srcDir = findVerifierSourceDir();
-        if (srcDir == null) return;
+        try {
+            Files.createDirectories(outputFolder);
+        } catch (IOException e) {
+            return;
+        }
         for (String name : new String[] { JAR_NAME, EXE_NAME }) {
-            Path src = srcDir.resolve(name);
+            Path src = findTrustedVerifierFile(name);
+            if (src == null) continue;
             Path dst = outputFolder.resolve(name);
             boolean needCopy = !Files.isRegularFile(dst);
             if (!needCopy) {
@@ -37,17 +43,46 @@ public final class VerifierIntegrity {
                     needCopy = true;
                 }
             }
-            if (Files.isRegularFile(src) && needCopy) {
+            if (!needCopy) continue;
+            Path temp = outputFolder.resolve(name + ".tmp-" + UUID.randomUUID().toString()); //$NON-NLS-1$
+            try {
+                Files.copy(src, temp);
+                if (!isValid(name, sha256(temp))) continue;
                 try {
-                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.move(temp, dst, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    Files.move(temp, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException ignored) {
+                // A falha ao copiar o verificador nao deve impedir a captura.
+            } finally {
+                try {
+                    Files.deleteIfExists(temp);
                 } catch (IOException ignored) {
                 }
             }
         }
     }
 
-    /** Procura a pasta do verificador (verificador-integridade) em locais conhecidos. */
-    private static Path findVerifierSourceDir() {
+    /** Procura somente artefatos com SHA-256 explicitamente autorizado pelo plugin. */
+    private static Path findTrustedVerifierFile(String name) {
+        for (Path dir : verifierSourceDirs()) {
+            Path candidate = dir.resolve(name);
+            if (!Files.isRegularFile(candidate)) continue;
+            try {
+                if (isValid(name, sha256(candidate))) return candidate;
+            } catch (IOException ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** Locais conhecidos, em ordem: origem do projeto e depois caminhos relativos ao IPED. */
+    private static List<Path> verifierSourceDirs() {
+        LinkedHashSet<Path> candidates = new LinkedHashSet<>();
+        candidates.add(java.nio.file.Paths.get(
+                "C:/Avilla-Forensics-Free/IPED-4.3.1_and_java_plugins/plugins/chat-captura IPED/verificador-integridade"));
         try {
             Path loc = VerifierIntegrity.class.getProtectionDomain().getCodeSource().getLocation().toURI() != null
                     ? java.nio.file.Paths.get(VerifierIntegrity.class.getProtectionDomain().getCodeSource().getLocation().toURI())
@@ -56,35 +91,30 @@ public final class VerifierIntegrity {
                 Path ipedRoot = loc.getParent();
                 if (ipedRoot != null) ipedRoot = ipedRoot.getParent();
                 if (ipedRoot != null) {
-                    Path cand = ipedRoot.resolve("lib");
-                    if (Files.isRegularFile(cand.resolve(JAR_NAME)) || Files.isRegularFile(cand.resolve(EXE_NAME))) return cand;
-                    cand = ipedRoot.resolve("verificador-integridade");
-                    if (Files.isDirectory(cand)) return cand;
-                    cand = ipedRoot.resolveSibling("verificador-integridade");
-                    if (Files.isDirectory(cand)) return cand;
-                    cand = ipedRoot.resolveSibling("plugins").resolve("chat-captura IPED").resolve("verificador-integridade");
-                    if (Files.isDirectory(cand)) return cand;
+                    candidates.add(ipedRoot.resolve("verificador-integridade")); //$NON-NLS-1$
+                    candidates.add(ipedRoot.resolve("lib")); //$NON-NLS-1$
+                    candidates.add(ipedRoot.resolveSibling("verificador-integridade")); //$NON-NLS-1$
+                    candidates.add(ipedRoot.resolveSibling("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
                     if (ipedRoot.getParent() != null) {
-                        cand = ipedRoot.getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade");
-                        if (Files.isDirectory(cand)) return cand;
-                        cand = ipedRoot.getParent().resolve("verificador-integridade");
-                        if (Files.isDirectory(cand)) return cand;
+                        candidates.add(ipedRoot.getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
+                        candidates.add(ipedRoot.getParent().resolve("verificador-integridade")); //$NON-NLS-1$
+                        if (ipedRoot.getParent().getParent() != null) {
+                            candidates.add(ipedRoot.getParent().getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
+                        }
                     }
                 }
             }
         } catch (Exception ignored) {
         }
-        // caminhos absolutos conhecidos
-        for (String p : new String[] {
-                "C:/Avilla-Forensics-Free/IPED-4.3.1_and_java_plugins/plugins/chat-captura IPED/verificador-integridade",
-                "C:/Avilla-Forensics-Free/IPED-4.3.1_and_java_plugins/IPED_testes_chat_real/iped/lib",
-                "F:/Download/Avilla-Acquisitions/IPED_v11/iped/../plugins/chat-captura IPED/verificador-integridade",
-                "F:/Download/Avilla-Acquisitions/Prova_v3/iped/../plugins/chat-captura IPED/verificador-integridade",
-                "F:/Download/Avilla-Acquisitions/Prova_v3/iped/lib" }) {
-            Path cand = java.nio.file.Paths.get(p);
-            if (Files.isDirectory(cand)) return cand;
+        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/IPED_v11/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
+        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/Prova_v3/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
+        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/Prova_v2/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
+        List<Path> normalized = new ArrayList<>();
+        for (Path candidate : candidates) {
+            Path path = candidate.toAbsolutePath().normalize();
+            if (!normalized.contains(path)) normalized.add(path);
         }
-        return null;
+        return normalized;
     }
 
     /** Procura arquivos do verificador em outputFolder e ate 3 niveis de pais. */

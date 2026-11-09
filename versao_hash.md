@@ -1,11 +1,21 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários oficiais. Compare o hash do arquivo baixado antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.3.4 está preparada localmente para validação e ainda não foi publicada em release. Compare o hash do arquivo antes de executá-lo.
 
-## Binários publicados
+## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.3.4 | `integridade-verifier.jar` | `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44` | Build com JDK 8; bytecode 52; 133.702 bytes |
+| 1.3.4 | `integridade-verifier.exe` | `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE` | Build Windows x64 autocontido; `--self-test` código 0; 77.839.428 bytes |
+| 1.3.3 | `integridade-verifier.jar` | `22FBAA2A8D4EA32940B4555E95207A22982B7FCDD308020950A667853420D921` | Build com JDK 8; bytecode 52; 131.972 bytes |
+| 1.3.3 | `integridade-verifier.exe` | `933F27A61AEDDAC5E4F1D8D7CA7AFC057AA2F04062A9267783FC56BB00DCE25B` | Build Windows x64 autocontido; `--self-test` código 0; 78.384.708 bytes |
+| 1.3.2 | `integridade-verifier.jar` | `F6D21DC4DAAFBF0BB241B66790EE2FE137AF5DBD5609EF9CED8D1336D622A7A7` | Build com JDK 8; bytecode 52; 131.464 bytes |
+| 1.3.2 | `integridade-verifier.exe` | `94FC180EA3D25DB9881F3D245FE1D2100CC21B6263F6163E129B5033B55D5908` | Build Windows x64 autocontido; `--self-test` código 0; 78.384.196 bytes |
+| 1.3.1 | `integridade-verifier.jar` | `0C262CC3D2F8BB0FD6CF7FB3E4071CF19903D684396356F56F9D92DB869F8339` | Build com JDK 8; bytecode 52; 131.441 bytes |
+| 1.3.1 | `integridade-verifier.exe` | `AE1E2E1E9D7E78BBCF8C551C2209F7F990C8AC37C77F751556BB29D698D719F5` | Build Windows x64 autocontido; `--self-test` código 0; 78.384.196 bytes |
+| 1.3.0 | `integridade-verifier.jar` | `CB5B11C913763546084EC0745E5D95F059BC731D752183FE306AB8FBCBD29FC6` | Build com JDK 8; bytecode 52; 126.570 bytes |
+| 1.3.0 | `integridade-verifier.exe` | `963B44556ECEA6A57D65E14A5EF74C1F842779FE05ACA068390F6511F295654C` | Build Windows x64 autocontido; `--self-test` código 0; 78.379.076 bytes |
 | 1.2.8 | `integridade-verifier.jar` | `906705C1A69F41505B0A794AA93F7E87D606FD62E5895A8FD2D3A9E0AA9E4B96` | Build local com JDK 8; bytecode 52 |
 | 1.2.8 | `integridade-verifier.exe` | `4F591C102058B0046814E9A5C9019E7483DB82A1E286BFF80DDC4CEA7E85A4EF` | Build local Windows x64 autocontido; runtime .NET 10.0.14 |
 | 1.2.7 | `integridade-verifier.jar` | `D16D0BA8EDD722DE810DE5A7E5B458271E216961CAF0DAD9BEBDA9B0F715097D` | Build com JDK 8; bytecode 52 |
@@ -29,4 +39,4 @@ Os arquivos preservados para as versões 1.2.1 e 1.2.2 são pacotes de código-f
 | 1.2.2 | `src-integridade-verifier-1.2.2.zip` (código-fonte) | `8C5413C833093136DDAA2A080B8339FE464CCF19E3F4A7DCF98BAC9ED80529BA` |
 | 1.2.3 | `src-integridade-verifier-1.2.3.zip` (código-fonte) | `83CD34A66C46C1ED0EF6D34C0E6A5B1E54EB3376B500D60F56F0668569D674EF` |
 
-A versão 1.2.8 é a atual; o JAR foi compilado para Java 8. Os hashes das versões anteriores são mantidos para consulta histórica.
+A versão atual é 1.3.4; o JAR foi compilado para Java 8. Os hashes das versões anteriores são mantidos para consulta histórica.

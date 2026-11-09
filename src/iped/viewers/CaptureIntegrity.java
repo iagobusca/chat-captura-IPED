@@ -52,6 +52,25 @@ final class CaptureIntegrity {
         }
     }
 
+    static String sha256(InputStream input, long maximumBytes) throws IOException {
+        if (input == null || maximumBytes < 0) throw new IOException("Invalid stream or byte limit for SHA-256");
+        try {
+            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+            byte[] buffer = new byte[16384];
+            long total = 0;
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count == 0) continue;
+                total += count;
+                if (total > maximumBytes) throw new IOException("Stream exceeds the configured byte limit");
+                digest.update(buffer, 0, count);
+            }
+            return toHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 is unavailable", e);
+        }
+    }
+
     static JSONObject messageSignature(String id, String type, String originalText, String dateTime,
             int sequencePosition, Collection<String> mediaSha256, String auxiliaryTranscript) throws IOException {
         List<String> hashes = new ArrayList<>();
@@ -385,6 +404,15 @@ final class CaptureIntegrity {
         try {
             MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
             return toHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 is unavailable", e);
+        }
+    }
+
+    static String sha256Bytes(byte[] value) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
+            return toHex(digest.digest(value == null ? new byte[0] : value));
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IOException("SHA-256 is unavailable", e);
         }

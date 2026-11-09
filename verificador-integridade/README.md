@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.2.8
+# Verificador de Integridade 1.3.4
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.2.8 corrige o `StackOverflowError` causado pelo parser regex em caminhos longos e impede OOM durante relatórios grandes com limites globais e pré-validação do orçamento. Mantém o JAR para Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.3.4 valida a cadeia local de integridade também em capturas `html-message-v1` e exige que `migration.json` e `legacy-annotations.json` estejam vinculados ao inventário. Assim, uma captura legada migrada tem a proveniência verificada e uma alteração no registro de migração é detectada mesmo que o manifesto seja atualizado junto. A versão mantém a validação do script fixo de preview e o par anterior exato de script e CSP da versão 1.3.2, além de aceitar a combinação legada `data:image/jpg` com assinatura PNG do IPED 4.3.1; a assinatura binária continua validada. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
 
 ## Getting Started
 
@@ -14,6 +14,12 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 4. Consulte os hashes e use os botões destacados para copiar ou comparar as referências.
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
+
+Hashes dos binários 1.3.4: JAR `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44`; EXE `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+
+Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
+
+No formato `html-message-v1`, a verificação local valida os hashes de cada mensagem e anexo, a raiz do manifesto, os caminhos e as referências do HTML. Também lê a cadeia de `integridade.json` e, quando a captura foi migrada, confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário. A comparação pública aceita um manifesto `html-message-v1` correspondente à mesma conversa e versão IPED. Tipos MIME e assinaturas reconhecidos: imagens, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z, texto/CSV e conteúdo genérico `.bin`.
 
 O JAR limita cada JSON a 16 MiB, profundidade a 64 níveis, caminho a 4.096 caracteres e cada captura a 25.010 arquivos. A seleção inteira tem limite de 10.000 capturas, 25.000 itens e 32 MiB de metadados. A estimativa de relatórios é limitada a 4 Mi caracteres; exceder um limite produz erro controlado sem promover relatórios parciais. A busca de capturas ocorre em segundo plano, atualiza a contagem e pode ser cancelada.
 

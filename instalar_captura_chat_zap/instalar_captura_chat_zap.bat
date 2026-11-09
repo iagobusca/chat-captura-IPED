@@ -24,8 +24,8 @@ set "JSON_OLD=%IPED_ROOT%\lib\json-20250517.jar"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.3.6-beta
-echo Verificador de integridade: 1.2.8
+echo Versao do plugin: 2.5.5-beta
+echo Verificador de integridade: 1.3.4
 echo ------------------------------------------------
 echo.
 
@@ -114,6 +114,18 @@ if exist "%JSON_OLD%" (
 copy /Y "%JSON_SOURCE%" "%JSON_TARGET%" >nul
 if errorlevel 1 (
     echo ERRO: nao foi possivel instalar a dependencia JSON corrigida.
+    if exist "%BACKUP_JSON%" move /Y "%BACKUP_JSON%" "%JSON_OLD%" >nul
+    if exist "%BACKUP_JSON_TARGET%" move /Y "%BACKUP_JSON_TARGET%" "%JSON_TARGET%" >nul
+    copy /Y "%BACKUP_JAR%" "%TARGET_JAR%" >nul
+    pause
+    exit /b 1
+)
+
+REM Mantem o nome legado como alias com os mesmos bytes novos para classpaths fixos do IPED.
+copy /Y "%JSON_SOURCE%" "%JSON_OLD%" >nul
+if errorlevel 1 (
+    echo ERRO: nao foi possivel criar o alias de compatibilidade da dependencia JSON.
+    del /Q "%JSON_TARGET%" >nul 2>&1
     if exist "%BACKUP_JSON%" move /Y "%BACKUP_JSON%" "%JSON_OLD%" >nul
     if exist "%BACKUP_JSON_TARGET%" move /Y "%BACKUP_JSON_TARGET%" "%JSON_TARGET%" >nul
     copy /Y "%BACKUP_JAR%" "%TARGET_JAR%" >nul

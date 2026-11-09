@@ -4,6 +4,53 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.3.4] - 2026-11-08
+
+### Adicionado
+
+- Validação da cadeia local de `integridade.json` também para capturas `html-message-v1`, que antes retornavam da verificação por mensagem sem ler o histórico.
+- Verificação da proveniência de capturas migradas: `migration.json` precisa corresponder ao objeto `migration` do manifesto, e `legacy-annotations.json` precisa corresponder ao estado declarado em `legacyAnnotationsPreserved`.
+- Conferência de que `migration.json` e as anotações preservadas estão vinculados ao inventário da cadeia local, com tamanho e SHA-256 iguais.
+
+### Corrigido
+
+- Uma alteração em `migration.json` é detectada mesmo quando o manifesto e o campo `migrationSha256` são atualizados junto, pois a referência é o inventário encadeado.
+- Uma captura sem `migration` que contenha `migration.json` ou `legacy-annotations.json`, ou uma captura migrada sem a cadeia local, é rejeitada com erro explícito.
+
+## [1.3.3] - 2026-11-07
+
+### Corrigido
+
+- O validador reconhece o novo script fixo de preview com restauração da rolagem e exige sua CSP SHA-256 correspondente.
+- Capturas anteriores continuam aceitas somente com o par exato de script e CSP da versão 1.3.2.
+
+## [1.3.2] - 2026-11-07
+
+### Corrigido
+
+- Capturas existentes com avatar PNG embutido declarado pelo IPED 4.3.1 como `data:image/jpg` agora passam na verificação quando a assinatura dos bytes confirma PNG. MIME desconhecido, SVG e conteúdo incompatível continuam rejeitados.
+- Adicionado teste de regressão para o caso legado e para MIME/formato incompatíveis.
+
+## [1.3.1] - 2026-11-07
+
+### Corrigido
+
+- Validação da apresentação HTML WhatsApp 2: CSS de tema local, CSP canônica e script fixo de parada de áudio/vídeo conferidos byte a byte.
+- Preview de PDF permitido somente em iframe com `sandbox=""` e recurso inventariado.
+- Validação de mídia sem autoplay, referências locais, fragmentos de modal e MIME dos recursos. Capturas legadas mantêm o caminho de verificação anterior.
+
+## [1.3.0] - 2026-11-07
+
+### Adicionado
+
+- Verificação de `html-message-v1` por mensagem e por anexo, com hash canônico, hash-raiz e inventário de anexos locais.
+- Comparação de manifesto público por chave e hash de mensagem, com estados distintos para mensagem alterada, ausente, nova ou ambígua.
+
+### Segurança
+
+- Rejeita IDs/chaves inválidos ou duplicados, metadados de anexo inseguros, caminhos fora da captura, links simbólicos, HTML ativo e dependências externas no novo formato.
+- Confere referências locais do HTML com a lista do manifesto e valida assinaturas de imagem, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z e texto/CSV; arquivos desconhecidos podem ser anexados somente como `.bin` com MIME `application/octet-stream`.
+
 ## [1.2.8] - 2026-11-06
 
 ### Segurança

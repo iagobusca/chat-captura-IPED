@@ -2,6 +2,7 @@ package iped.viewers;
 
 import java.io.File;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
@@ -17,7 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -29,11 +32,14 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
@@ -44,9 +50,12 @@ import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.stream.Stream;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import javax.imageio.ImageIO;
 import javax.swing.JButton;
+import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JFileChooser;
@@ -60,6 +69,10 @@ import org.apache.tika.metadata.Metadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 import org.opencv.core.Core;
 import org.opencv.core.DMatch;
 import org.opencv.core.Mat;
@@ -118,11 +131,17 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.3.6-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.5.5-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
-    private static final int HTML_GENERATOR_VERSION = 2;
+    private static final int HTML_GENERATOR_VERSION = 3;
+    private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();"; //$NON-NLS-1$
+    private static final String CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-Pq7vIvwsQpte7OdNyOYYE9cKIEPmIFR7E/G7kB1JaJI='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'"; //$NON-NLS-1$
+    private static final long MAX_HTML_MESSAGE_ATTACHMENT_BYTES = 8L * 1024L * 1024L;
+    private static final long MAX_HTML_MESSAGE_CAPTURE_BYTES = 64L * 1024L * 1024L;
+    private static final int MAX_HTML_MESSAGE_COUNT = 25000;
+    private static final int MAX_HTML_MESSAGE_TEXT_CHARS = 1024 * 1024;
 
     protected AttachmentSearcher attachSearcher;
 
@@ -150,6 +169,8 @@ private volatile RecaptureJob activeRecaptureJob;
     private final List<CaptureFrame> currentCaptureFrames = new ArrayList<>();
     private volatile String avatarBase64Cache;
     private JCheckBox recaptureAnnotationsToggle;
+    private JCheckBox recaptureLegacyMigrationToggle;
+    private JCheckBox recaptureLegacyResetToggle;
     private volatile boolean linkedCaptureViewer;
 
     /** Teto de resultados devolvidos ao painel, para chats muito grandes. */
@@ -228,7 +249,8 @@ htmlViewer.setContextMenuEnabled(false);
                     end.setOnAction(e -> setChatCaptureEndFromContext());
                     clear.setOnAction(e -> clearChatCaptureMarks());
                     menu.getItems().add(isDate ? dateStart : start);
-                    menu.getItems().addAll(end, clear);
+                    if (!isDate) menu.getItems().add(end);
+                    menu.getItems().add(clear);
                     // Na janela do chat vinculado nao ha anotacao nova: o vinculo
                     // pertence a mensagem de origem.
                     if (!linkedCaptureViewer) {
@@ -262,27 +284,107 @@ htmlViewer.setContextMenuEnabled(false);
         if (captureContextMessageId == null || captureContextMessageId.isBlank()) {
             return;
         }
-        captureStartMessageId = captureContextMessageId;
-        highlightCaptureMarks();
-        chatCapturePanel.setStatus("ChatCapturePanel.StartMarked"); //$NON-NLS-1$
+        applyCaptureMarker(captureContextMessageId, CaptureBoundaryResolver.Role.START, "ChatCapturePanel.StartMarked"); //$NON-NLS-1$
     }
 
     private void setChatCaptureEndFromContext() {
         if (captureContextMessageId == null || captureContextMessageId.isBlank()) {
             return;
         }
-        captureEndMessageId = captureContextMessageId;
-        highlightCaptureMarks();
-        chatCapturePanel.setStatus("ChatCapturePanel.EndMarked"); //$NON-NLS-1$
+        applyCaptureMarker(captureContextMessageId, CaptureBoundaryResolver.Role.END, "ChatCapturePanel.EndMarked"); //$NON-NLS-1$
     }
 
     private void setChatCaptureStartDateFromContext() {
         if (captureContextMessageId == null || captureContextMessageId.isBlank()) {
             return;
         }
-        captureStartMessageId = captureContextMessageId;
-        highlightCaptureMarks();
-        chatCapturePanel.setStatus("ChatCapturePanel.StartDateMarked"); //$NON-NLS-1$
+        applyCaptureMarker(captureContextMessageId, CaptureBoundaryResolver.Role.START, "ChatCapturePanel.StartDateMarked"); //$NON-NLS-1$
+    }
+
+    private void applyCaptureMarker(String requestedId, CaptureBoundaryResolver.Role role, String successKey) {
+        try {
+            List<CaptureBoundaryResolver.Row> rows = readCaptureBoundaryRows();
+            CaptureBoundaryResolver.Resolution result = CaptureBoundaryResolver.resolve(rows, requestedId, role);
+            if (!result.isValid()) {
+                chatCapturePanel.setStatus(captureBoundaryMessageKey(result.errorCode));
+                return;
+            }
+            if (role == CaptureBoundaryResolver.Role.START) captureStartMessageId = result.messageId;
+            else captureEndMessageId = result.messageId;
+            highlightCaptureMarks();
+            chatCapturePanel.setStatus(successKey);
+        } catch (Exception failure) {
+            LOGGER.debug("Unable to resolve chat capture boundary (role={})", role, failure); //$NON-NLS-1$
+            chatCapturePanel.setStatus("ChatCapturePanel.MarkerMissing"); //$NON-NLS-1$
+        }
+    }
+
+    /** Validate both markers before verifier installation, output-index writes or worker startup. */
+    boolean validateCaptureStart(File outputFolder) {
+        if (captureRunning) return false;
+        if (outputFolder == null || outputFolder.getPath().isBlank()) {
+            chatCapturePanel.setStatus("ChatCapturePanel.MissingFolder"); //$NON-NLS-1$
+            return false;
+        }
+        CaptureRangeValidation range = resolveCaptureRange();
+        if (!range.valid()) {
+            chatCapturePanel.setStatus(captureBoundaryMessageKey(range.errorCode));
+            return false;
+        }
+        captureStartMessageId = range.start.messageId;
+        captureEndMessageId = range.end.messageId;
+        LOGGER.debug("Capture range validated: start={} end={}", captureStartMessageId, captureEndMessageId); //$NON-NLS-1$
+        chatCapturePanel.setStatusText(Messages.getString("ChatCapturePanel.RangeReady") + " " //$NON-NLS-1$
+                + captureStartMessageId + " -> " + captureEndMessageId); //$NON-NLS-1$
+        return true;
+    }
+
+    private CaptureRangeValidation resolveCaptureRange() {
+        if (captureStartMessageId == null || captureStartMessageId.isBlank()) return CaptureRangeValidation.error("start_marker_missing"); //$NON-NLS-1$
+        if (captureEndMessageId == null || captureEndMessageId.isBlank()) return CaptureRangeValidation.error("end_marker_missing"); //$NON-NLS-1$
+        try {
+            List<CaptureBoundaryResolver.Row> rows = readCaptureBoundaryRows();
+            CaptureBoundaryResolver.Resolution start = CaptureBoundaryResolver.resolve(rows, captureStartMessageId,
+                    CaptureBoundaryResolver.Role.START);
+            CaptureBoundaryResolver.Resolution end = CaptureBoundaryResolver.resolve(rows, captureEndMessageId,
+                    CaptureBoundaryResolver.Role.END);
+            String error = CaptureBoundaryResolver.validateRange(rows, start, end);
+            return error.isEmpty() ? CaptureRangeValidation.success(start, end) : CaptureRangeValidation.error(error);
+        } catch (Exception failure) {
+            LOGGER.debug("Unable to validate chat capture range", failure); //$NON-NLS-1$
+            return CaptureRangeValidation.error("marker_missing"); //$NON-NLS-1$
+        }
+    }
+
+    private List<CaptureBoundaryResolver.Row> readCaptureBoundaryRows() throws IOException {
+        String script = "(function(){var out=[];document.querySelectorAll('div.linha').forEach(function(row){var raw=row.id||'',messageId=/^\\d+$/.test(raw)?raw:'',dates=[];if(row.hasAttribute('data-iped-capture-date')&&row.id)dates.push(row.id);row.querySelectorAll('[data-iped-capture-date][id]').forEach(function(date){dates.push(date.id);});if(messageId||dates.length)out.push({messageId:messageId,dateIds:dates});});return JSON.stringify(out);})()"; //$NON-NLS-1$
+        Object raw = executeScriptAndWait(script);
+        if (!(raw instanceof String)) throw new IOException("Não foi possível ler os marcadores de mensagem do DOM."); //$NON-NLS-1$
+        JSONArray jsonRows = new JSONArray((String) raw);
+        List<CaptureBoundaryResolver.Row> rows = new ArrayList<>(jsonRows.length());
+        for (int i = 0; i < jsonRows.length(); i++) {
+            JSONObject row = jsonRows.optJSONObject(i);
+            if (row == null) throw new IOException("Lista de marcadores DOM inválida."); //$NON-NLS-1$
+            JSONArray dateIds = row.optJSONArray("dateIds"); //$NON-NLS-1$
+            List<String> dates = new ArrayList<>();
+            for (int d = 0; dateIds != null && d < dateIds.length(); d++) dates.add(dateIds.optString(d, "")); //$NON-NLS-1$
+            rows.add(new CaptureBoundaryResolver.Row(row.optString("messageId", ""), dates)); //$NON-NLS-1$
+        }
+        return rows;
+    }
+
+    private String captureBoundaryMessageKey(String errorCode) {
+        switch (errorCode == null ? "" : errorCode) { //$NON-NLS-1$
+        case "end_date_not_supported": return "ChatCapturePanel.EndDateNotAllowed"; //$NON-NLS-1$ //$NON-NLS-2$
+        case "start_date_no_message": return "ChatCapturePanel.StartDateNoMessage"; //$NON-NLS-1$ //$NON-NLS-2$
+        case "marker_ambiguous": return "ChatCapturePanel.MarkerAmbiguous"; //$NON-NLS-1$ //$NON-NLS-2$
+        case "invalid_order": return "ChatCapturePanel.InvalidRangeOrder"; //$NON-NLS-1$ //$NON-NLS-2$
+        case "marker_not_message": return "ChatCapturePanel.MarkerNotMessage"; //$NON-NLS-1$ //$NON-NLS-2$
+        case "start_marker_missing":
+        case "end_marker_missing":
+        case "marker_missing": return "ChatCapturePanel.MarkerMissing"; //$NON-NLS-1$ //$NON-NLS-2$
+        default: return "ChatCapturePanel.MarkerMissing"; //$NON-NLS-1$
+        }
     }
 
 private void clearChatCaptureMarks() {
@@ -1021,14 +1123,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         if (captureRunning) {
             return;
         }
-        if (captureStartMessageId == null || captureEndMessageId == null) {
-            chatCapturePanel.setStatus("ChatCapturePanel.MissingMarks"); //$NON-NLS-1$
-            return;
-        }
-        if (outputFolder == null || outputFolder.getPath().isBlank()) {
-            chatCapturePanel.setStatus("ChatCapturePanel.MissingFolder"); //$NON-NLS-1$
-            return;
-        }
+        if (!validateCaptureStart(outputFolder)) return;
         annotationStore.bindOutputRoot(outputFolder.toPath());
         // Recurso opcional: so entra no output se o toggle estiver ligado e houver
         // anotacao. A captura de chat vinculado nunca exporta anotacoes.
@@ -1136,6 +1231,8 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         boolean accepted = false;
         Set<String> selectedIds = new HashSet<>();
         boolean annotationsEnabled = true;
+        boolean migrateLegacyToHtml = false;
+        boolean resetLegacyRecords = false;
         List<String> selectedFolders = new ArrayList<>();
         while (!accepted) {
             int start = page * pageSize;
@@ -1168,9 +1265,12 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             JScrollPane captureScroll = new JScrollPane(list);
             java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
             captureScroll.setPreferredSize(new java.awt.Dimension(Math.min(850, Math.max(480, screen.width - 100)), Math.min(520, Math.max(300, screen.height - 220))));
-            JPanel panel = new JPanel(new BorderLayout(6,6)); panel.add(header,BorderLayout.NORTH); panel.add(captureScroll,BorderLayout.CENTER); panel.add(buildRecaptureAnnotationsToggle(jobs),BorderLayout.SOUTH);
+            JPanel panel = new JPanel(new BorderLayout(6,6)); panel.add(header,BorderLayout.NORTH); panel.add(captureScroll,BorderLayout.CENTER); panel.add(buildRecaptureTogglePanel(jobs, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords),BorderLayout.SOUTH);
             Object[] options = {prev,next,"Confirmar","Cancelar"};
             int option=JOptionPane.showOptionDialog(chatCapturePanel,panel,"Re-Extrair capturas — página "+(page+1),JOptionPane.DEFAULT_OPTION,JOptionPane.PLAIN_MESSAGE,null,options,options[2]);
+            annotationsEnabled = recaptureAnnotationsToggle != null && recaptureAnnotationsToggle.isSelected();
+            migrateLegacyToHtml = recaptureLegacyMigrationToggle != null && recaptureLegacyMigrationToggle.isSelected();
+            resetLegacyRecords = recaptureLegacyResetToggle != null && recaptureLegacyResetToggle.isSelected();
             for(int i=0;i<checks.size();i++){String id=jobs.get(i).folder;if(checks.get(i).isSelected())selectedIds.add(id);else selectedIds.remove(id);}
             if(option==0){page=Math.max(0,page-1);continue;}
             if(option==1){page=Math.min((folders.size()-1)/pageSize,page+1);continue;}
@@ -1178,7 +1278,6 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             accepted=true;
         }
         for (String folder : folders) if (allFuture[0] || selectedIds.contains(folder)) selectedFolders.add(folder);
-        annotationsEnabled = recaptureAnnotationsToggle != null && recaptureAnnotationsToggle.isSelected();
         if (selectedFolders.isEmpty()) {
             JOptionPane.showMessageDialog(chatCapturePanel, "Nenhuma captura selecionada.", "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
             return;
@@ -1187,21 +1286,50 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 : sensitiveImagesFolder.toPath();
         this.sensitiveSimilarityPercent = normalizeSimilarityPercent(sensitiveSimilarityPercent);
         this.sensitiveBlurPercent = normalizeBlurPercent(sensitiveBlurPercent);
-startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
+        if (migrateLegacyToHtml && sensitiveImagesFolder != null && !sensitiveImagesFolder.getPath().isBlank()) {
+            JOptionPane.showMessageDialog(chatCapturePanel,
+                    Messages.getString("ChatCapturePanel.MigrateLegacyBlurUnsupported"), //$NON-NLS-1$
+                    "Re-Extrair", JOptionPane.ERROR_MESSAGE); //$NON-NLS-1$
+            return;
+        }
+        startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords);
     }
 
-    private JPanel buildRecaptureAnnotationsToggle(List<RecaptureJob> jobs) {
+    private JPanel buildRecaptureTogglePanel(List<RecaptureJob> jobs, boolean annotationsEnabled,
+            boolean migrateLegacyToHtml, boolean resetLegacyRecords) {
         boolean allLegacy = !jobs.isEmpty();
+        boolean hasSelectableLegacy = false;
         for (RecaptureJob job : jobs) {
             allLegacy = allLegacy && job.legacyAnnotations;
+            hasSelectableLegacy |= job.valid && job.legacyCapture;
         }
-        recaptureAnnotationsToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), !allLegacy); //$NON-NLS-1$
+        recaptureAnnotationsToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), annotationsEnabled); //$NON-NLS-1$
         recaptureAnnotationsToggle.setEnabled(!allLegacy);
         if (allLegacy) {
             recaptureAnnotationsToggle.setToolTipText(Messages.getString("ChatCapturePanel.LegacyAnnotationsLocked")); //$NON-NLS-1$
         }
-        JPanel togglePanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+        recaptureLegacyMigrationToggle = new JCheckBox(
+                Messages.getString("ChatCapturePanel.MigrateLegacyToHtml"), migrateLegacyToHtml); //$NON-NLS-1$
+        recaptureLegacyMigrationToggle.setToolTipText(Messages.getString("ChatCapturePanel.MigrateLegacyToHtmlTip")); //$NON-NLS-1$
+        recaptureLegacyMigrationToggle.setEnabled(hasSelectableLegacy);
+        recaptureLegacyResetToggle = new JCheckBox(
+                Messages.getString("ChatCapturePanel.ResetLegacyRecords"), migrateLegacyToHtml && resetLegacyRecords); //$NON-NLS-1$
+        recaptureLegacyResetToggle.setToolTipText(Messages.getString("ChatCapturePanel.ResetLegacyRecordsTip")); //$NON-NLS-1$
+        recaptureLegacyResetToggle.setEnabled(hasSelectableLegacy && migrateLegacyToHtml);
+        final boolean legacyAvailable = hasSelectableLegacy;
+        recaptureLegacyMigrationToggle.addActionListener(e -> {
+            boolean enabled = recaptureLegacyMigrationToggle.isSelected() && legacyAvailable;
+            recaptureLegacyResetToggle.setEnabled(enabled);
+            if (!enabled) recaptureLegacyResetToggle.setSelected(false);
+        });
+        JPanel togglePanel = new JPanel();
+        togglePanel.setLayout(new BoxLayout(togglePanel, BoxLayout.Y_AXIS));
         togglePanel.add(recaptureAnnotationsToggle);
+        togglePanel.add(recaptureLegacyMigrationToggle);
+        togglePanel.add(recaptureLegacyResetToggle);
+        if (!hasSelectableLegacy) {
+            recaptureLegacyMigrationToggle.setToolTipText(Messages.getString("ChatCapturePanel.MigrateLegacyUnavailable")); //$NON-NLS-1$
+        }
         return togglePanel;
     }
 
@@ -1251,12 +1379,23 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
             job.captureFingerprint = savedManifest.optJSONObject("captureFingerprint");
             job.artifactGenerators = savedManifest.optJSONObject("artifactGenerators");
             job.expectedArtifacts = savedManifest.optJSONArray("artifacts");
+            job.htmlMessageCapture = "html-message-v1".equals(savedManifest.optString("captureFormat")); //$NON-NLS-1$ //$NON-NLS-2$
+            job.legacyCapture = !job.htmlMessageCapture;
             job.legacyAnnotations = jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             job.status = jsonField(content, "status"); //$NON-NLS-1$
             job.startMessageId = jsonField(content, "startMessageId"); //$NON-NLS-1$
             job.endMessageId = jsonField(content, "endMessageId"); //$NON-NLS-1$
             job.startAnchor = readAnchor(content, "startAnchor"); //$NON-NLS-1$
             job.endAnchor = readAnchor(content, "endAnchor"); //$NON-NLS-1$
+            if (job.htmlMessageCapture) {
+                JSONObject anchors = savedManifest.optJSONObject("anchors"); //$NON-NLS-1$
+                job.startMessageId = anchors == null ? "" : anchors.optString("start"); //$NON-NLS-1$ //$NON-NLS-2$
+                job.endMessageId = anchors == null ? "" : anchors.optString("end"); //$NON-NLS-1$ //$NON-NLS-2$
+                job.startAnchor.id = job.startMessageId;
+                job.endAnchor.id = job.endMessageId;
+                job.startAnchorLabel = "ID " + job.startMessageId; //$NON-NLS-1$
+                job.endAnchorLabel = "ID " + job.endMessageId; //$NON-NLS-1$
+            }
             // Capturas v2 nao gravam startMessageId/endMessageId; usa o id das ancoras.
             if (job.startMessageId == null || job.startMessageId.isBlank()) {
                 job.startMessageId = job.startAnchor == null ? "" : safe(job.startAnchor.id); //$NON-NLS-1$
@@ -1265,9 +1404,9 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
                 job.endMessageId = job.endAnchor == null ? "" : safe(job.endAnchor.id); //$NON-NLS-1$
             }
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            job.sourceName = jsonField(source, "nome"); //$NON-NLS-1$
-            job.sourceTitle = jsonField(source, "title"); //$NON-NLS-1$
-            job.sourceHash = jsonField(source, "hash"); //$NON-NLS-1$
+            job.sourceName = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name")); //$NON-NLS-1$ //$NON-NLS-2$
+            job.sourceTitle = firstNonBlank(jsonField(source, "title"), jsonField(source, "name"), jsonField(source, "nome")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            job.sourceHash = firstNonBlank(jsonField(source, "itemHash"), jsonField(source, "hash"), jsonField(source, "sha256")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             job.sourcePath = jsonField(source, "caminho"); //$NON-NLS-1$
 
             // Compatibilidade com capturas legadas: tenta recuperar dados de origem
@@ -1319,11 +1458,17 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
 
             job.luceneQueries = buildRecaptureQueries(job);
             job.luceneQuery = job.luceneQueries.isEmpty() ? "" : job.luceneQueries.get(0); //$NON-NLS-1$
-            boolean hasAnchors = job.startAnchor.isUsable() && job.endAnchor.isUsable();
+            boolean hasAnchors = job.htmlMessageCapture
+                    ? job.startMessageId.matches("[0-9]{1,32}") && job.endMessageId.matches("[0-9]{1,32}")
+                    : job.startAnchor.isUsable() && job.endAnchor.isUsable();
             boolean hasQueries = !job.luceneQueries.isEmpty();
             // Capturas legadas podem nao ter todos os dados de assinatura; aceita
             // quando ha ancora utilizavel e ao menos uma consulta derivada.
             job.valid = hasAnchors && (hasQueries || job.legacyAnnotations);
+            if (job.htmlMessageCapture && !Files.isRegularFile(folderPath.resolve("messages.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+                job.valid = false;
+                job.invalidReason = "messages.json não encontrado para a captura HTML"; //$NON-NLS-1$
+            }
             if (!job.valid && job.invalidReason == null) {
                 job.invalidReason = "dados insuficientes para localizar chat/inicio/fim por assinatura"; //$NON-NLS-1$
             }
@@ -1488,7 +1633,8 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
         return queries;
     }
 
-    private void startRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled) {
+    private void startRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled,
+            boolean migrateLegacyToHtml, boolean resetLegacyRecords) {
         captureRunning = true;
         stopCaptureRequested = false;
         chatCapturePanel.setCaptureRunning(true);
@@ -1497,10 +1643,11 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
         }
         annotationStore.bindOutputRoot(outputRoot);
         chatCapturePanel.setRecaptureProgress("Preparando re-extracao...", 0, captureIds.size(), 0, 7, true); //$NON-NLS-1$
-        new Thread(() -> runRecaptureBatch(outputRoot, captureIds, annotationsEnabled), "IPED-chat-recapture").start(); //$NON-NLS-1$
+        new Thread(() -> runRecaptureBatch(outputRoot, captureIds, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords), "IPED-chat-recapture").start(); //$NON-NLS-1$
     }
 
-    private void runRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled) {
+    private void runRecaptureBatch(Path outputRoot, List<String> captureIds, boolean annotationsEnabled,
+            boolean migrateLegacyToHtml, boolean resetLegacyRecords) {
         int success = 0;
         int failed = 0;
         String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
@@ -1511,6 +1658,9 @@ startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled);
                     List<RecaptureJob> one = loadRecaptureJobs(outputRoot, java.util.Collections.singletonList(captureIds.get(i)));
                     job = one.isEmpty() ? null : one.get(0);
                     if (job == null || !job.valid) throw new IOException(job == null ? "Captura indisponível" : job.invalidReason);
+                    job.legacyCapture = !job.htmlMessageCapture;
+                    job.migrateLegacyToHtml = migrateLegacyToHtml && job.legacyCapture;
+                    job.resetLegacyRecords = resetLegacyRecords && job.migrateLegacyToHtml;
                 } catch (Exception invalid) {
                     failed++;
                     LOGGER.warn("Selected capture became invalid before processing: {}", captureIds.get(i), invalid);
@@ -1554,6 +1704,9 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
 
         activeRecaptureJob = job;
         try {
+            if (job.resetLegacyRecords) {
+                job.reusableAttachmentsByHashAndSize = buildReusableAttachmentIndex(job);
+            }
             pendingAnnotations = null;
             if (annotationsEnabled && !job.legacyAnnotations) {
                 pendingAnnotations = buildAnnotationPreflight().toAnnotationSet();
@@ -1561,15 +1714,29 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
                     pendingAnnotations = null;
                 }
             }
-            if (tryMigrateOrSkipCapture(job, batchCurrent, batchTotal)) {
+            if (!job.migrateLegacyToHtml && tryMigrateOrSkipCapture(job, batchCurrent, batchTotal)) {
                 return;
             }
 
-            updateRecaptureProgress(job, batchCurrent, batchTotal, 4, "Capturando novamente imagens, anexos e coordenadas...", true); //$NON-NLS-1$
+            updateRecaptureProgress(job, batchCurrent, batchTotal, 4,
+                    job.migrateLegacyToHtml ? Messages.getString("ChatCapturePanel.MigrateExtracting") : "Capturando novamente imagens, anexos e coordenadas...", true); //$NON-NLS-1$ //$NON-NLS-2$
             String tmpName = job.folder + ".__reextract_tmp_" + batchStamp; //$NON-NLS-1$
             Path tmpFolder = outputRoot.resolve(tmpName);
             LOGGER.info("Recapture capture tmp folder: {}", tmpFolder); //$NON-NLS-1$
-            CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder, false);
+            CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder);
+            try {
+            if (job.htmlMessageCapture) {
+                writeHtmlMessageReconciliation(job.folderPath, result.captureDir);
+                if (isHtmlReconciliationUnchanged(result.captureDir)) {
+                    CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
+                            .put("action", "recapture_skipped_content_unchanged")
+                            .put("result", "selected_interval_message_hashes_unchanged")); //$NON-NLS-1$ //$NON-NLS-2$
+                    deleteDirectoryIfExists(result.captureDir);
+                    updateRecaptureProgress(job, batchCurrent, batchTotal, 7,
+                            Messages.getString("ChatCapturePanel.ContentUnchanged"), false); //$NON-NLS-1$
+                    return;
+                }
+            }
             updateRecaptureProgress(job, batchCurrent, batchTotal, 5, "Validando resultado temporario da re-extracao...", false); //$NON-NLS-1$
             Path manifest = result.captureDir.resolve("manifest.json"); //$NON-NLS-1$
             String status = Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS) ? jsonField(CaptureIntegrity.readJsonUtf8Limited(manifest), "status") : result.status; //$NON-NLS-1$
@@ -1578,9 +1745,19 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
                 throw new IOException("Re-extração nao completou: " + status); //$NON-NLS-1$
             }
 
-            recordRestoredArtifactAudit(job, result.captureDir);
-            appendIntegrityHistory(result.captureDir, job.folderPath);
-            updateRecaptureProgress(job, batchCurrent, batchTotal, 6, "Substituindo a extracao antiga pela nova...", false); //$NON-NLS-1$
+            if (job.targetHtmlMessageCapture()) validateHtmlCaptureCandidate(job, result.captureDir);
+            if (!job.resetLegacyRecords) {
+                if (!job.migrateLegacyToHtml) recordRestoredArtifactAudit(job, result.captureDir);
+                appendIntegrityHistory(result.captureDir, job.folderPath,
+                        job.migrateLegacyToHtml ? "legacy_screenshot_capture_migrated_to_html_message_v1" : "recapture_completed"); //$NON-NLS-1$ //$NON-NLS-2$
+                if (job.migrateLegacyToHtml) {
+                    CaptureIntegrity.appendAudit(result.captureDir, new JSONObject()
+                            .put("action", "legacy_screenshot_capture_migrated_to_html_message_v1")
+                            .put("sourceFormat", "legacy-screenshot").put("result", "promoted")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                }
+            }
+            updateRecaptureProgress(job, batchCurrent, batchTotal, 6,
+                    job.migrateLegacyToHtml ? "Substituindo a captura legada validada..." : "Substituindo a extracao antiga pela nova...", false); //$NON-NLS-1$ //$NON-NLS-2$
             Path oldFolder = uniqueSibling(outputRoot.resolve(job.folder + ".__old_" + batchStamp)); //$NON-NLS-1$
             LOGGER.info("Recapture replacing old folder {} with {}", job.folderPath, result.captureDir);
             Files.move(job.folderPath, oldFolder);
@@ -1598,7 +1775,21 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
                 disposeOldRecaptureFolder(oldFolder, outputRoot, batchStamp, e);
             }
             LOGGER.info("Recapture completed for {}", job.folder); //$NON-NLS-1$
-            updateRecaptureProgress(job, batchCurrent, batchTotal, 7, "Chat re-extraido com sucesso.", false); //$NON-NLS-1$
+            String completion = job.migrateLegacyToHtml
+                    ? Messages.getString("ChatCapturePanel.MigrationCompleted") //$NON-NLS-1$
+                    : "Chat re-extraido com sucesso."; //$NON-NLS-1$
+            if (job.migrateLegacyToHtml && !job.resetLegacyRecords
+                    && Files.isRegularFile(job.folderPath.resolve("legacy-annotations.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+                completion += " " + Messages.getString("ChatCapturePanel.MigrationAnnotationsPreserved"); //$NON-NLS-1$
+            }
+            updateRecaptureProgress(job, batchCurrent, batchTotal, 7,
+                    completion, false);
+            } catch (Exception failure) {
+                if (Files.exists(result.captureDir, LinkOption.NOFOLLOW_LINKS)) {
+                    try { deleteDirectoryIfExists(result.captureDir); } catch (IOException cleanupFailure) { failure.addSuppressed(cleanupFailure); }
+                }
+                throw failure;
+            }
         } finally {
             pendingAnnotations = null;
             activeRecaptureJob = null;
@@ -1641,6 +1832,239 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
                     .put("result", same ? "restored_same_hash" : "restored_changed_hash"));
         }
     }
+
+    private void writeHtmlMessageReconciliation(Path previousCapture, Path currentCapture) throws IOException {
+        JSONObject oldManifest = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(previousCapture.resolve("manifest.json"))); //$NON-NLS-1$
+        if (!"html-message-v1".equals(oldManifest.optString("captureFormat"))) return; //$NON-NLS-1$ //$NON-NLS-2$
+        JSONObject newManifest = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(currentCapture.resolve("manifest.json"))); //$NON-NLS-1$
+        if (!oldManifest.optString("conversationKey").equals(newManifest.optString("conversationKey"))) {
+            throw new IOException("A origem/conversa atual não corresponde à captura selecionada para Re-Extrair."); //$NON-NLS-1$
+        }
+        JSONObject oldWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(previousCapture.resolve("messages.json"))); //$NON-NLS-1$
+        JSONObject newWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(currentCapture.resolve("messages.json"))); //$NON-NLS-1$
+        JSONArray oldMessages = oldWrapper.optJSONArray("messages"), newMessages = newWrapper.optJSONArray("messages"); //$NON-NLS-1$ //$NON-NLS-2$
+        if (oldMessages == null || newMessages == null) throw new IOException("Manifesto de mensagens ausente na reconciliação."); //$NON-NLS-1$
+        Map<String, JSONObject> oldByKey = new java.util.TreeMap<>(), newByKey = new java.util.TreeMap<>();
+        for (int i = 0; i < oldMessages.length(); i++) {
+            JSONObject item = oldMessages.getJSONObject(i);
+            if (oldByKey.put(item.optString("key"), item) != null) throw new IOException("Chave repetida na captura anterior."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        for (int i = 0; i < newMessages.length(); i++) {
+            JSONObject item = newMessages.getJSONObject(i);
+            if (newByKey.put(item.optString("key"), item) != null) throw new IOException("Chave repetida na nova captura."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        Map<String, JSONObject> oldByDomId = new HashMap<>();
+        for (JSONObject item : oldByKey.values()) {
+            if (oldByDomId.put(item.optString("domId"), item) != null) throw new IOException("ID DOM repetido na captura anterior."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        Set<String> usedOld = new HashSet<>();
+        JSONArray entries = new JSONArray();
+        int unchanged = 0, changed = 0, missing = 0, added = 0;
+        for (JSONObject after : newByKey.values()) {
+            String key = after.optString("key"); //$NON-NLS-1$
+            JSONObject before = oldByKey.get(key);
+            if (before == null) {
+                JSONObject sameDomId = oldByDomId.get(after.optString("domId")); //$NON-NLS-1$
+                if (sameDomId != null && !usedOld.contains(sameDomId.optString("key"))) before = sameDomId; //$NON-NLS-1$
+            }
+            String previousHash = before == null ? "" : before.optString("messageHash"); //$NON-NLS-1$ //$NON-NLS-2$
+            String currentHash = after.optString("messageHash"); //$NON-NLS-1$
+            String state;
+            if (before == null) { state = "new_in_interval"; added++; } //$NON-NLS-1$
+            else if (previousHash.equalsIgnoreCase(currentHash)) { state = "unchanged"; unchanged++; } //$NON-NLS-1$
+            else { state = "changed"; changed++; }
+            if (before != null) usedOld.add(before.optString("key")); //$NON-NLS-1$
+            entries.put(new JSONObject().put("key", key).put("state", state) //$NON-NLS-1$ //$NON-NLS-2$
+                    .put("domId", after.optString("domId")).put("previousKey", before == null ? "" : before.optString("key")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    .put("previousMessageHash", previousHash).put("currentMessageHash", currentHash)); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        for (JSONObject before : oldByKey.values()) {
+            String key = before.optString("key"); //$NON-NLS-1$
+            if (usedOld.contains(key)) continue;
+            missing++;
+            entries.put(new JSONObject().put("key", key).put("state", "missing_in_current_source") //$NON-NLS-1$ //$NON-NLS-2$
+                    .put("domId", before.optString("domId")).put("previousKey", key) //$NON-NLS-1$ //$NON-NLS-2$
+                    .put("previousMessageHash", before.optString("messageHash")).put("currentMessageHash", "")); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        String json = new JSONObject().put("schemaVersion", 1).put("captureFormat", "html-message-v1") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                .put("previousCaptureRootHash", oldManifest.optString("captureRootHash")) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("previousReconciliationSha256", oldManifest.optString("reconciliationSha256", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("currentSourceFingerprint", newManifest.optString("sourceFingerprint")) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("entries", entries).put("counts", new JSONObject().put("unchanged", unchanged).put("changed", changed) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                        .put("missingInCurrentSource", missing).put("newInInterval", added)).toString(2) + System.lineSeparator(); //$NON-NLS-1$ //$NON-NLS-2$
+        Path reconciliation = currentCapture.resolve("message-reconciliation.json"); //$NON-NLS-1$
+        Files.writeString(reconciliation, json, StandardCharsets.UTF_8);
+        JSONObject manifest = newManifest;
+        String reconciliationSha = CaptureIntegrity.sha256(reconciliation);
+        manifest.put("reconciliationFile", "message-reconciliation.json").put("reconciliationSha256", reconciliationSha); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        JSONArray messages = newMessages;
+        JSONObject anchors = manifest.optJSONObject("anchors"); //$NON-NLS-1$
+        manifest.put("captureRootHash", htmlCaptureRootHash(messages, manifest.optString("htmlSha256"), //$NON-NLS-1$ //$NON-NLS-2$
+                manifest.optString("annotationsSha256"), reconciliationSha, manifest.optString("conversationKey"), //$NON-NLS-1$ //$NON-NLS-2$
+                manifest.optString("sourceFingerprint"), manifest.optJSONObject("sourceMetadata"), //$NON-NLS-1$
+                manifest.optString("ipedVersion"), manifest.optString("pluginVersion"), //$NON-NLS-1$ //$NON-NLS-2$
+                anchors == null ? "" : anchors.optString("start"), anchors == null ? "" : anchors.optString("end"))); //$NON-NLS-1$ //$NON-NLS-2$
+        CaptureIntegrity.writeAtomically(currentCapture, currentCapture.resolve("manifest.json"), manifest.toString(2) + System.lineSeparator()); //$NON-NLS-1$
+        writeArtifactInventory(currentCapture);
+    }
+    private boolean isHtmlReconciliationUnchanged(Path capture) throws IOException {
+        Path reconciliationPath = capture.resolve("message-reconciliation.json"); //$NON-NLS-1$
+        JSONObject reconciliation = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(reconciliationPath));
+        JSONObject counts = reconciliation.optJSONObject("counts"); //$NON-NLS-1$
+        return counts != null && counts.optInt("changed", -1) == 0
+                && counts.optInt("missingInCurrentSource", -1) == 0
+                && counts.optInt("newInInterval", -1) == 0;
+    }
+
+    private void validateHtmlCaptureCandidate(RecaptureJob job, Path candidate) throws IOException {
+        Path manifestPath = candidate.resolve("manifest.json"); //$NON-NLS-1$
+        Path messagesPath = candidate.resolve("messages.json"); //$NON-NLS-1$
+        Path htmlPath = candidate.resolve("whatsapp.html"); //$NON-NLS-1$
+        if (!Files.isRegularFile(manifestPath, LinkOption.NOFOLLOW_LINKS)
+                || !Files.isRegularFile(messagesPath, LinkOption.NOFOLLOW_LINKS)
+                || !Files.isRegularFile(htmlPath, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("A candidata HTML não contém todos os artefatos obrigatórios."); //$NON-NLS-1$
+        }
+        JSONObject manifest = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(manifestPath));
+        if (!"html-message-v1".equals(manifest.optString("captureFormat")) //$NON-NLS-1$
+                || !"completed".equals(manifest.optString("status")) //$NON-NLS-1$
+                || !"complete".equals(manifest.optString("state"))) { //$NON-NLS-1$
+            throw new IOException("Formato ou estado da candidata HTML é inválido."); //$NON-NLS-1$
+        }
+        if (Files.exists(candidate.resolve("screenshots"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
+                || Files.exists(candidate.resolve("whatsapp-coordinates.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+            throw new IOException("A candidata HTML ainda contém artefatos do formato de frames."); //$NON-NLS-1$
+        }
+        JSONObject migration = manifest.optJSONObject("migration"); //$NON-NLS-1$
+        if (job.migrateLegacyToHtml && job.resetLegacyRecords) {
+            if (migration != null || Files.exists(candidate.resolve("migration.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
+                    || Files.exists(candidate.resolve("legacy-annotations.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
+                    || Files.exists(candidate.resolve("message-reconciliation.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
+                    || Files.exists(candidate.resolve(CaptureIntegrity.AUDIT_FILE), LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("A candidata de cadeia limpa ainda contém registros legados."); //$NON-NLS-1$
+            }
+        } else if (job.migrateLegacyToHtml) {
+            Path migrationPath = candidate.resolve("migration.json"); //$NON-NLS-1$
+            if (migration == null || !"legacy_screenshot_capture_migrated_to_html_message_v1" //$NON-NLS-1$
+                    .equals(migration.optString("action"))
+                    || !"migration.json".equals(manifest.optString("migrationFile")) //$NON-NLS-1$
+                    || !Files.isRegularFile(migrationPath, LinkOption.NOFOLLOW_LINKS)
+                    || !CaptureIntegrity.sha256(migrationPath).equalsIgnoreCase(manifest.optString("migrationSha256"))) { //$NON-NLS-1$
+                throw new IOException("Registro de proveniência da migração ausente ou divergente."); //$NON-NLS-1$
+            }
+            JSONObject migrationFile = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(migrationPath));
+            if (!migration.toString().equals(migrationFile.toString())) {
+                throw new IOException("O manifesto e o registro da migração não correspondem."); //$NON-NLS-1$
+            }
+            boolean annotationsPreserved = migration.optBoolean("legacyAnnotationsPreserved", false); //$NON-NLS-1$
+            if (annotationsPreserved != Files.isRegularFile(candidate.resolve("legacy-annotations.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+                throw new IOException("O estado das anotações legadas diverge do registro de migração."); //$NON-NLS-1$
+            }
+        } else if (migration != null || Files.exists(candidate.resolve("migration.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+            throw new IOException("Uma captura que não está sendo migrada contém registro de migração inesperado."); //$NON-NLS-1$
+        }
+        JSONObject anchors = manifest.optJSONObject("anchors"); //$NON-NLS-1$
+        String start = anchors == null ? "" : anchors.optString("start"); //$NON-NLS-1$
+        String end = anchors == null ? "" : anchors.optString("end"); //$NON-NLS-1$
+        if (!start.matches("[0-9]{1,32}") || !end.matches("[0-9]{1,32}")
+                || !start.equals(captureStartMessageId) || !end.equals(captureEndMessageId)) {
+            throw new IOException("As âncoras HTML não correspondem ao intervalo localizado para Re-Extrair."); //$NON-NLS-1$
+        }
+        CaptureSourceMetadata sourceMetadata = readCaptureSourceMetadata();
+        String currentConversation = CaptureIntegrity.sha256Text(safe(sourceMetadata.name) + "\n" //$NON-NLS-1$
+                + safe(sourceMetadata.path) + "\n" + safe(currentChatTitle())); //$NON-NLS-1$
+        if (currentConversation.isBlank() || !currentConversation.equalsIgnoreCase(manifest.optString("conversationKey"))) {
+            throw new IOException("A conversa da candidata HTML diverge da conversa localizada."); //$NON-NLS-1$
+        }
+        JSONObject wrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(messagesPath));
+        JSONArray messages = wrapper.optJSONArray("messages"); //$NON-NLS-1$
+        if (messages == null || messages.length() == 0 || messages.length() > MAX_HTML_MESSAGE_COUNT
+                || messages.length() != manifest.optInt("messageCount", -1)) {
+            throw new IOException("A lista de mensagens da candidata está ausente ou fora dos limites."); //$NON-NLS-1$
+        }
+        Set<String> ids = new HashSet<>(), keys = new HashSet<>();
+        for (int i = 0; i < messages.length(); i++) {
+            JSONObject message = messages.optJSONObject(i);
+            if (message == null || message.optInt("order", -1) != i
+                    || !message.optString("domId").matches("[0-9]{1,32}")
+                    || !message.optString("key").matches("(?i)[0-9a-f]{64}")
+                    || !message.optString("messageHash").matches("(?i)[0-9a-f]{64}")
+                    || !ids.add(message.optString("domId")) || !keys.add(message.optString("key"))
+                    || !htmlMessageHash(message).equalsIgnoreCase(message.optString("messageHash"))) {
+                throw new IOException("A candidata contém ID, chave, ordem ou hash de mensagem inválidos."); //$NON-NLS-1$
+            }
+        }
+        String htmlSha = CaptureIntegrity.sha256(htmlPath);
+        if (!htmlSha.equalsIgnoreCase(manifest.optString("htmlSha256"))) {
+            throw new IOException("O SHA-256 do whatsapp.html não corresponde ao manifesto."); //$NON-NLS-1$
+        }
+        if (Files.size(htmlPath) > MAX_HTML_MESSAGE_CAPTURE_BYTES
+                || !containsUtf8(htmlPath, "Content-Security-Policy") //$NON-NLS-1$
+                || !containsUtf8(htmlPath, html(CAPTURE_CSP))
+                || !containsUtf8(htmlPath, CAPTURE_MEDIA_STOP_SCRIPT)) {
+            throw new IOException("O HTML da candidata não passou na verificação de estrutura e política local."); //$NON-NLS-1$
+        }
+        String computedRoot = htmlCaptureRootHash(messages, htmlSha,
+                manifest.optString("annotationsSha256"), manifest.optString("reconciliationSha256"),
+                manifest.optString("conversationKey"), manifest.optString("sourceFingerprint"),
+                manifest.optJSONObject("sourceMetadata"), manifest.optString("ipedVersion"),
+                manifest.optString("pluginVersion"), start, end);
+        if (!computedRoot.equalsIgnoreCase(manifest.optString("captureRootHash"))) {
+            throw new IOException("O hash raiz da candidata não confere com as mensagens e o HTML."); //$NON-NLS-1$
+        }
+        try (Stream<Path> paths = Files.walk(candidate)) {
+            for (Path path : paths.collect(java.util.stream.Collectors.toList())) {
+                if (Files.isSymbolicLink(path)) throw new IOException("A candidata contém link simbólico: " + path); //$NON-NLS-1$
+                if (path.equals(candidate) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
+                CaptureIntegrity.resolveContained(candidate, candidate.relativize(path).toString());
+            }
+        }
+        JSONArray inventory = CaptureIntegrity.artifactInventory(candidate);
+        if (inventory.length() == 0 || inventory.length() > 25000) {
+            throw new IOException("Inventário da candidata vazio ou acima do limite."); //$NON-NLS-1$
+        }
+        long total = 0;
+        for (int i = 0; i < inventory.length(); i++) {
+            JSONObject item = inventory.optJSONObject(i);
+            if (item == null) throw new IOException("Entrada inválida no inventário da candidata."); //$NON-NLS-1$
+            total += item.optLong("size", 0);
+            if (total > MAX_HTML_MESSAGE_CAPTURE_BYTES) throw new IOException("A candidata ultrapassa o limite total de bytes."); //$NON-NLS-1$
+        }
+        for (int i = 0; i < messages.length(); i++) {
+            JSONArray attachments = messages.getJSONObject(i).optJSONArray("attachments"); //$NON-NLS-1$
+            if (attachments == null) throw new IOException("Mensagem sem lista de anexos na candidata."); //$NON-NLS-1$
+            for (int j = 0; j < attachments.length(); j++) {
+                JSONObject attachment = attachments.optJSONObject(j);
+                if (attachment == null) throw new IOException("Metadado de anexo inválido na candidata."); //$NON-NLS-1$
+                String relative = attachment.optString("path"); //$NON-NLS-1$
+                Path file = CaptureIntegrity.resolveContained(candidate, relative);
+                if (!relative.matches("attachments/[0-9a-fA-F]{64}\\.[a-z0-9]{1,10}") //$NON-NLS-1$
+                        || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                        || Files.size(file) != attachment.optLong("size", -1)
+                        || !CaptureIntegrity.sha256(file).equalsIgnoreCase(attachment.optString("sha256"))) { //$NON-NLS-1$
+                    throw new IOException("Anexo da candidata está ausente ou diverge do manifesto: " + relative); //$NON-NLS-1$
+                }
+            }
+        }
+    }
+
+    private boolean containsUtf8(Path path, String expected) throws IOException {
+        byte[] pattern = expected.getBytes(StandardCharsets.UTF_8);
+        if (pattern.length == 0) return true;
+        byte[] buffer = new byte[16 * 1024];
+        String carry = ""; //$NON-NLS-1$
+        try (InputStream input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                String section = carry + new String(buffer, 0, count, StandardCharsets.UTF_8);
+                if (section.contains(expected)) return true;
+                int keepChars = Math.min(expected.length() - 1, section.length());
+                carry = section.substring(section.length() - keepChars);
+            }
+        }
+        return false;
+    }
+
     private boolean tryMigrateOrSkipCapture(RecaptureJob job, int batchCurrent, int batchTotal) throws IOException {
         if (job.captureFingerprint == null || !job.captureFingerprint.optBoolean("complete", false)
                 || job.expectedArtifacts == null || job.expectedArtifacts.length() == 0
@@ -1705,7 +2129,7 @@ private void recaptureOne(Path outputRoot, RecaptureJob job, String batchStamp, 
         }
 
         JSONObject event = new JSONObject()
-                .put("action", "capture_skipped_unchanged")
+                .put("action", job.htmlMessageCapture ? "recapture_skipped_content_unchanged" : "capture_skipped_unchanged") //$NON-NLS-1$ //$NON-NLS-2$
                 .put("sourceSha256", currentSourceHash)
                 .put("result", "verified_inventory_and_fingerprint");
         CaptureIntegrity.appendAudit(job.folderPath, event);
@@ -1818,7 +2242,7 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         if (job == null || job.luceneQueries == null || job.luceneQueries.isEmpty()) {
             return false;
         }
-        if (!job.startAnchor.isUsable() || !job.endAnchor.isUsable()) {
+        if (!job.htmlMessageCapture && (!job.startAnchor.isUsable() || !job.endAnchor.isUsable())) {
             LOGGER.warn("Skipping recapture job without usable anchors: {}", job.folder); //$NON-NLS-1$
             return false;
         }
@@ -1862,6 +2286,19 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
             return new RecaptureLocatedRange("", ""); //$NON-NLS-1$ //$NON-NLS-2$
         }
         LOGGER.info("Recapture DOM resolve started for {}", job.folder); //$NON-NLS-1$
+        if (job.htmlMessageCapture) {
+            String direct = "(function(a,b){return document.getElementById(a)&&document.getElementById(b)?a+'|'+b:'|';})(" //$NON-NLS-1$
+                    + js(job.startMessageId) + "," + js(job.endMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+            executeScriptAndWait("window.scrollTo(0,0);"); //$NON-NLS-1$
+            long directDeadline = System.currentTimeMillis() + 180000;
+            while (System.currentTimeMillis() < directDeadline && !stopCaptureRequested) {
+                RecaptureLocatedRange found = RecaptureLocatedRange.parse(String.valueOf(executeScriptAndWait(direct)));
+                if (!found.startId.isBlank() && !found.endId.isBlank()) return found;
+                executeScriptAndWait("window.scrollBy(0,4000);"); //$NON-NLS-1$
+                sleep(250);
+            }
+            return new RecaptureLocatedRange("", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        }
         executeScriptAndWait("window.scrollTo(0,0);"); //$NON-NLS-1$
         sleep(600);
 
@@ -2089,18 +2526,10 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
     }
 
     private void ensureCaptureRangeElementsAvailable() throws IOException {
-        if (captureStartMessageId == null || captureStartMessageId.isBlank() || captureEndMessageId == null
-                || captureEndMessageId.isBlank()) {
-            throw new IOException("Marcadores de inicio/fim ausentes para captura."); //$NON-NLS-1$
-        }
-        Object startExists = executeScriptAndWait("!!document.getElementById(" + js(captureStartMessageId) + ");"); //$NON-NLS-1$ //$NON-NLS-2$
-        if (!(startExists instanceof Boolean) || !((Boolean) startExists).booleanValue()) {
-            throw new IOException("Mensagem inicial nao encontrada no chat carregado: " + captureStartMessageId); //$NON-NLS-1$
-        }
-        Object endExists = executeScriptAndWait("!!document.getElementById(" + js(captureEndMessageId) + ");"); //$NON-NLS-1$ //$NON-NLS-2$
-        if (!(endExists instanceof Boolean) || !((Boolean) endExists).booleanValue()) {
-            throw new IOException("Mensagem final nao encontrada no chat carregado: " + captureEndMessageId); //$NON-NLS-1$
-        }
+        CaptureRangeValidation range = resolveCaptureRange();
+        if (!range.valid()) throw new IOException(Messages.getString(captureBoundaryMessageKey(range.errorCode)));
+        captureStartMessageId = range.start.messageId;
+        captureEndMessageId = range.end.messageId;
     }
 
     private boolean scrollToCaptureStartMessage() {
@@ -2155,8 +2584,10 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
     }
 
     private void runChatCapture(Path outputRoot, String customFolderName) {
+        boolean captureCommitted = false;
         try {
-            CaptureRunResult result = runChatCaptureInternal(outputRoot, customFolderName, null, true);
+            CaptureRunResult result = runChatCaptureInternal(outputRoot, customFolderName, null);
+            captureCommitted = result != null && result.captureDir != null && Files.isDirectory(result.captureDir);
             chatCapturePanel.setStatus("completed".equals(result.status) ? "ChatCapturePanel.Completed" : "ChatCapturePanel.Stopped"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         } catch (Exception e) {
             LOGGER.error("Error capturing chat interval", e); //$NON-NLS-1$
@@ -2168,37 +2599,52 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
             captureRunning = false;
             stopCaptureRequested = false;
             chatCapturePanel.setCaptureRunning(false);
-            safeRebuildCaptureRootIndex(outputRoot);
+            if (captureCommitted) safeRebuildCaptureRootIndex(outputRoot);
         }
     }
 
-    private CaptureRunResult runChatCaptureInternal(Path outputRoot, String customFolderName, Path exactCaptureDir, boolean rebuildBefore) throws Exception {
+    private CaptureRunResult runChatCaptureInternal(Path outputRoot, String customFolderName, Path exactCaptureDir) throws Exception {
         List<CaptureFrame> frames = new ArrayList<>();
         Map<String, ExportedFile> exported = new LinkedHashMap<>();
         Set<String> exportedAttachmentHashes = new HashSet<>();
         String status = "completed"; //$NON-NLS-1$
-Path captureDir = null;
+        Path captureDir = null;
+        Path finalCaptureDir = null;
+        boolean workDirCreated = false;
+        boolean promoted = false;
         currentCaptureOutputRoot = outputRoot;
         try {
-            if (rebuildBefore) {
-                safeRebuildCaptureRootIndex(outputRoot);
-            }
             String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
-            captureDir = exactCaptureDir != null ? exactCaptureDir : outputRoot.resolve(buildCaptureFolderName(customFolderName, timestamp));
-            if (Files.exists(captureDir)) {
-                throw new IOException("Capture folder already exists: " + captureDir); //$NON-NLS-1$
+            finalCaptureDir = exactCaptureDir != null ? exactCaptureDir : outputRoot.resolve(buildCaptureFolderName(customFolderName, timestamp));
+            captureDir = exactCaptureDir != null ? exactCaptureDir
+                    : outputRoot.resolve(".__capture_staging_" + java.util.UUID.randomUUID().toString().replace("-", "")); //$NON-NLS-1$ //$NON-NLS-2$
+            if (Files.exists(finalCaptureDir) || Files.exists(captureDir)) {
+                throw new IOException("Capture folder already exists: " + finalCaptureDir); //$NON-NLS-1$
             }
-            safeRebuildCaptureRootIndex(outputRoot);
-            Path screenshotsDir = captureDir.resolve("screenshots"); //$NON-NLS-1$
-            Path attachmentsDir = captureDir.resolve("anexos"); //$NON-NLS-1$
-            Files.createDirectories(screenshotsDir);
-            Files.createDirectories(attachmentsDir);
-
+            // Revalidar no worker antes de alterar a interface ou criar qualquer arquivo.
+            ensureCaptureRangeElementsAvailable();
             setCaptureInteractionEnabled(false);
             setCaptureMarksVisible(false);
             prepareSensitiveImageMatcher();
             sleep(150);
-            ensureCaptureRangeElementsAvailable();
+            boolean htmlMessageCaptureEnabled = !"false".equalsIgnoreCase(System.getProperty("iped.chat.capture.htmlMessageV1", "true")); //$NON-NLS-1$ //$NON-NLS-2$
+            if ((exactCaptureDir == null && htmlMessageCaptureEnabled)
+                    || (activeRecaptureJob != null && activeRecaptureJob.targetHtmlMessageCapture())) {
+                if (sensitiveImageMatcher != null) {
+                    throw new IOException("A censura por imagens de referência ainda não é aplicada ao formato html-message-v1. Remova a pasta de blur ou use -Diped.chat.capture.htmlMessageV1=false para uma captura legada."); //$NON-NLS-1$
+                }
+                CaptureRunResult htmlResult = runHtmlMessageCapture(outputRoot, captureDir);
+                workDirCreated = true;
+                if (exactCaptureDir != null) return htmlResult;
+                promoteCaptureDirectory(captureDir, finalCaptureDir);
+                promoted = true;
+                return new CaptureRunResult(htmlResult.status, finalCaptureDir);
+            }
+            Path screenshotsDir = captureDir.resolve("screenshots"); //$NON-NLS-1$
+            Path attachmentsDir = captureDir.resolve("anexos"); //$NON-NLS-1$
+            Files.createDirectories(screenshotsDir);
+            workDirCreated = true;
+            Files.createDirectories(attachmentsDir);
             if (!scrollToCaptureStartMessage()) {
                 throw new IOException("Nao foi possivel posicionar na mensagem inicial: " + captureStartMessageId); //$NON-NLS-1$
             }
@@ -2282,13 +2728,24 @@ createReportThumbnails(captureDir, exported);
             writeText(captureDir.resolve("whatsapp-coordinates.json"), whatsappJson); //$NON-NLS-1$
             writeWhatsAppHtml(captureDir.resolve("whatsapp.html"), whatsappJson); //$NON-NLS-1$
             writeArtifactInventory(captureDir);
+            if (exactCaptureDir == null) {
+                promoteCaptureDirectory(captureDir, finalCaptureDir);
+                promoted = true;
+                return new CaptureRunResult(status, finalCaptureDir);
+            }
             return new CaptureRunResult(status, captureDir);
         } catch (Exception e) {
             if (captureDir != null && Files.exists(captureDir)) {
-                LOGGER.warn("Capture failed at {}", captureDir, e); //$NON-NLS-1$
+                LOGGER.warn("Capture staging failed (work area created={})", workDirCreated, e); //$NON-NLS-1$
+            }
+            try {
+                if (captureDir != null && (exactCaptureDir == null || workDirCreated)) deleteDirectoryIfExists(captureDir);
+                if (promoted && finalCaptureDir != null) deleteDirectoryIfExists(finalCaptureDir);
+            } catch (IOException cleanupFailure) {
+                e.addSuppressed(cleanupFailure);
             }
             throw e;
-} finally {
+        } finally {
             clearSensitiveBlur();
             sensitiveImageMatcher = null;
             sensitiveBlurHashes.clear();
@@ -2296,6 +2753,795 @@ createReportThumbnails(captureDir, exported);
             pendingLink = null;
             currentCaptureOutputRoot = null;
             currentCaptureFrames.clear();
+        }
+    }
+
+    private void promoteCaptureDirectory(Path staging, Path destination) throws IOException {
+        if (Files.exists(destination)) throw new IOException("A pasta de destino da captura já existe: " + destination); //$NON-NLS-1$
+        try {
+            Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(staging, destination);
+        }
+    }
+
+    private CaptureRunResult runHtmlMessageCapture(Path outputRoot, Path captureDir) throws Exception {
+        String script = "(function(startId,endId){var all=[].slice.call(document.querySelectorAll('div.linha[id]')).filter(function(n){return /^\\d+$/.test(n.id)}),theme=document.querySelector('style'),top=document.getElementById('topbar'),header=top&&top.cloneNode(true);if(!theme||!header||theme.textContent.length>2097152)return JSON.stringify({error:'theme_unavailable'});header.id='capture-topbar';[header].concat([].slice.call(header.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(a){var k=a.name.toLowerCase(),v=a.value||'';if(k.indexOf('on')===0||k==='style'||k==='href'||k==='srcset'||k==='srcdoc'||k==='action'||k==='formaction'||(k==='id'&&n!==header)||(k==='src'&&!/^data:image\\/(png|jpe?g|gif|webp);base64,/i.test(v)))n.removeAttribute(a.name);});});" //$NON-NLS-1$
+                + "var ids=all.map(function(n){return n.id}),startMatches=ids.filter(function(x){return x===startId}).length;if(startMatches===0)return JSON.stringify({error:'start_marker_missing'});if(startMatches!==1)return JSON.stringify({error:'start_marker_ambiguous'});var endMatches=ids.filter(function(x){return x===endId}).length;if(endMatches===0)return JSON.stringify({error:'end_marker_missing'});if(endMatches!==1)return JSON.stringify({error:'end_marker_ambiguous'});" //$NON-NLS-1$
+                + "var resolvedStart=startId,a=ids.indexOf(startId),b=ids.indexOf(endId);if(a>b)return JSON.stringify({error:'marker_order_invalid'});if(b-a+1>" + MAX_HTML_MESSAGE_COUNT + ")return JSON.stringify({error:'message_count_limit'});var rows=[],payloadBytes=0;" //$NON-NLS-1$ //$NON-NLS-2$
+                + "for(var i=a;i<=b;i++){var src=all[i],clone=src.cloneNode(true),resources=[],resourceByHash={},media=[],resourceError='';" //$NON-NLS-1$
+                + "[].slice.call(clone.querySelectorAll('a[onclick]')).forEach(function(link){var click=link.getAttribute('onclick')||'';if(click.indexOf('app.open')<0)return;var match=click.match(/(?:sha-256|hash):([0-9a-f]{64})/i);if(!match){resourceError='unsupported_attachment';return;}var hash=match[1].toLowerCase(),token=resourceByHash[hash];if(!token){token='r'+resources.length;resourceByHash[hash]=token;resources.push({token:token,sha256:hash,label:(link.innerText||link.textContent||'').replace(/\\s+/g,' ').trim().substring(0,512)});}link.setAttribute('data-capture-link-token',token);});" //$NON-NLS-1$
+                + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});" //$NON-NLS-1$
+                + "var nodes=[clone].concat([].slice.call(clone.querySelectorAll('[src]')));nodes.forEach(function(node){var value=node.getAttribute&&node.getAttribute('src');if(!value)return;if(/^data:(image|audio|video)\\//i.test(value)){media.push(value);return;}var link=node.closest?node.closest('a[data-capture-link-token]'):null;if(!link){resourceError='unresolved_attachment';return;}node.removeAttribute('src');node.setAttribute('data-capture-src-token',link.getAttribute('data-capture-link-token'));});" //$NON-NLS-1$
+                + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink)return JSON.stringify({error:'unsupported_attachment',id:src.id});" //$NON-NLS-1$
+                + "clone.querySelectorAll('script,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
+                + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
+                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^\\d+$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
+                + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+        Object raw = executeScriptAndWait(script);
+        if (!(raw instanceof String)) throw new IOException("Falha ao extrair mensagens do DOM do IPED."); //$NON-NLS-1$
+        JSONObject extracted = new JSONObject((String) raw);
+        if (extracted.has("error")) throw new IOException("Captura HTML interrompida: " + extracted.optString("error") + " " + extracted.optString("id")); //$NON-NLS-1$ //$NON-NLS-2$
+        JSONArray rows = extracted.optJSONArray("rows"); //$NON-NLS-1$
+        if (rows == null || rows.isEmpty()) throw new IOException("O intervalo não contém mensagens elegíveis."); //$NON-NLS-1$
+        if (rows.length() > MAX_HTML_MESSAGE_COUNT) throw new IOException("O intervalo ultrapassa 25.000 mensagens."); //$NON-NLS-1$
+        String resolvedStartMessageId = extracted.optString("resolvedStart", ""); //$NON-NLS-1$
+        if (resolvedStartMessageId.isBlank() || !resolvedStartMessageId.equals(rows.getJSONObject(0).optString("domId"))) { //$NON-NLS-1$
+            throw new IOException("Não foi possível registrar a mensagem correspondente ao marcador inicial."); //$NON-NLS-1$
+        }
+        String themeCss = sanitizeCaptureThemeCss(extracted.optString("themeCss", "")); //$NON-NLS-1$
+        String headerHtml = validateCaptureHeaderHtml(extracted.optString("header", "")); //$NON-NLS-1$
+        Path staging = outputRoot.resolve(".__html_capture_" + java.util.UUID.randomUUID().toString().replace("-", "")); //$NON-NLS-1$ //$NON-NLS-2$
+        Files.createDirectories(staging);
+        boolean promoted = false;
+        RecaptureJob migrationJob = activeRecaptureJob;
+        if (migrationJob != null && migrationJob.resetLegacyRecords) {
+            migrationJob.reusableAttachmentStaging = staging;
+            migrationJob.stagedReusableAttachmentPaths.clear();
+        }
+        try {
+        JSONArray records = new JSONArray();
+        Map<String, byte[]> attachments = new LinkedHashMap<>();
+        Map<String, String> attachmentModals = new LinkedHashMap<>();
+        Map<String, Integer> duplicateOrdinals = new LinkedHashMap<>();
+        Set<String> seenMessageIds = new HashSet<>();
+        CaptureSourceMetadata sourceMetadata = readCaptureSourceMetadata();
+        String conversationIdentity = safe(sourceMetadata.name) + "\n" + safe(sourceMetadata.path) + "\n" + safe(currentChatTitle()); //$NON-NLS-1$
+        String conversationKey = CaptureIntegrity.sha256Text(conversationIdentity);
+        long aggregateAttachmentBytes = 0;
+        String annotations = migrationJob != null && migrationJob.migrateLegacyToHtml ? "" : buildAnnotationsJson(); //$NON-NLS-1$
+        Map<String, JSONObject> annotationsByMessage = new HashMap<>();
+        if (!annotations.isBlank()) {
+            JSONArray annotationItems = new JSONObject(annotations).optJSONArray("items"); //$NON-NLS-1$
+            for (int i = 0; annotationItems != null && i < annotationItems.length(); i++) {
+                JSONObject item = annotationItems.optJSONObject(i);
+                if (item != null) annotationsByMessage.put(item.optString("messageId"), item); //$NON-NLS-1$
+            }
+        }
+        StringBuilder page = new StringBuilder(128 * 1024);
+        page.append("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"") //$NON-NLS-1$
+                .append(html(CAPTURE_CSP)).append("\"><title>WhatsApp</title><style>").append(themeCss) //$NON-NLS-1$
+                .append("</style><style>").append(captureViewerCss()).append("</style></head><body>") //$NON-NLS-1$
+                .append(headerHtml).append("<div id=\"capture-conversation\">"); //$NON-NLS-1$
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i); JSONObject record = new JSONObject();
+            String domId = row.getString("domId"); //$NON-NLS-1$
+            if (!seenMessageIds.add(domId)) throw new IOException("ID DOM duplicado no intervalo selecionado: " + domId); //$NON-NLS-1$
+            JSONArray attachmentList = new JSONArray();
+            String fragment = row.getString("html"); //$NON-NLS-1$
+            JSONArray media = row.optJSONArray("media"); //$NON-NLS-1$
+            Set<String> messageAttachmentPaths = new HashSet<>();
+            Set<String> contentTypes = new HashSet<>();
+            if (media != null) for (int mediaIndex = 0; mediaIndex < media.length(); mediaIndex++) {
+                String dataUri = media.optString(mediaIndex); //$NON-NLS-1$
+                DecodedHtmlAttachment attachment = decodeHtmlAttachment(dataUri);
+                aggregateAttachmentBytes += attachment.size;
+                if (aggregateAttachmentBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) throw new IOException("Anexos do intervalo excedem o limite total de 64 MiB."); //$NON-NLS-1$
+                String relative = "attachments/" + attachment.sha256 + "." + attachment.extension; //$NON-NLS-1$ //$NON-NLS-2$
+                if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
+                if (i + 1L + attachments.size() + (migrationJob == null ? 0 : migrationJob.stagedReusableAttachmentPaths.size()) > 25000L) throw new IOException("Mensagens e anexos ultrapassam o limite global de 25.000 itens."); //$NON-NLS-1$
+                if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
+                        .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
+                fragment = fragment.replace(dataUri, relative);
+                contentTypes.add(htmlContentKind(attachment.mime));
+                attachmentModals.putIfAbsent(relative, renderCaptureAttachmentModal(relative, attachment.mime,
+                        attachment.size, attachment.sha256, safeAttachmentName("", attachment.name))); //$NON-NLS-1$
+            }
+            JSONArray resources = row.optJSONArray("resources"); //$NON-NLS-1$
+            if (resources != null) for (int resourceIndex = 0; resourceIndex < resources.length(); resourceIndex++) {
+                JSONObject resource = resources.optJSONObject(resourceIndex);
+                if (resource == null) throw new IOException("Referência de anexo inválida na mensagem " + domId); //$NON-NLS-1$
+                String token = resource.optString("token", ""); //$NON-NLS-1$
+                String sha256 = resource.optString("sha256", ""); //$NON-NLS-1$
+                if (!token.matches("r[0-9]{1,5}") || !sha256.matches("(?i)[0-9a-f]{64}")) throw new IOException("Referência/hash de anexo inválido na mensagem " + domId); //$NON-NLS-1$ //$NON-NLS-2$
+                DecodedHtmlAttachment attachment = resolveCaseAttachment(sha256);
+                aggregateAttachmentBytes += attachment.size;
+                if (aggregateAttachmentBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) throw new IOException("Anexos do intervalo excedem o limite total de 64 MiB."); //$NON-NLS-1$
+                String relative = "attachments/" + attachment.sha256 + "." + attachment.extension; //$NON-NLS-1$ //$NON-NLS-2$
+                if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
+                if (i + 1L + attachments.size() + (migrationJob == null ? 0 : migrationJob.stagedReusableAttachmentPaths.size()) > 25000L) throw new IOException("Mensagens e anexos ultrapassam o limite global de 25.000 itens."); //$NON-NLS-1$
+                if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
+                        .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
+                String label = safeAttachmentName(resource.optString("label", ""), attachment.name); //$NON-NLS-1$
+                String linkAttributes = "href=\"#preview-" + attachment.sha256 + "\" class=\"capture-media-link\" title=\"" //$NON-NLS-1$ //$NON-NLS-2$
+                        + html(label) + "\""; //$NON-NLS-1$
+                fragment = fragment.replace("data-capture-link-token=\"" + token + "\"", linkAttributes); //$NON-NLS-1$
+                fragment = fragment.replace("data-capture-src-token=\"" + token + "\"", "src=\"" + relative + "\""); //$NON-NLS-1$ //$NON-NLS-2$
+                attachmentModals.putIfAbsent(relative, renderCaptureAttachmentModal(relative, attachment.mime,
+                        attachment.size, attachment.sha256, label));
+                contentTypes.add(htmlContentKind(attachment.mime));
+            }
+            fragment = linkInlineCaptureImages(fragment);
+            fragment = replaceInlineCapturePlayers(fragment, attachmentModals);
+            String messageType = row.optString("type"); //$NON-NLS-1$
+            if (!"system".equals(messageType)) messageType = contentTypes.isEmpty() ? "text" : contentTypes.size() == 1 ? contentTypes.iterator().next() : "mixed"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            String natural = row.optString("timestamp") + "\n" + row.optString("sender") + "\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    + row.optString("direction") + "\n" + messageType; //$NON-NLS-1$ //$NON-NLS-2$
+            int duplicateOrdinal = duplicateOrdinals.merge(natural, 1, Integer::sum) - 1;
+            record.put("domId", domId).put("order", i).put("timestamp", row.optString("timestamp")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    .put("sender", row.optString("sender")).put("direction", row.optString("direction")) //$NON-NLS-1$ //$NON-NLS-2$
+                    .put("type", messageType).put("duplicateOrdinal", duplicateOrdinal) //$NON-NLS-1$ //$NON-NLS-2$
+                    .put("text", row.optString("text")).put("classes", row.optString("classes")).put("attachments", attachmentList); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            String key = CaptureIntegrity.sha256Text(conversationKey + "\n" + domId + "\n" + natural + "\n" + duplicateOrdinal); //$NON-NLS-1$
+            record.put("key", key).put("messageHash", htmlMessageHash(record)); //$NON-NLS-1$ //$NON-NLS-2$
+            records.put(record);
+            String separatorBefore = validateCaptureSeparatorHtml(row.optString("separatorBefore", "")); //$NON-NLS-1$
+            if (!separatorBefore.isEmpty()) page.append(separatorBefore);
+            page.append(fragment.replaceFirst("<div(?=[ >])", "<div data-capture-message-key=\"" + key + "\"")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            JSONObject annotation = annotationsByMessage.get(domId);
+            if (annotation != null) page.append(htmlAnnotationBlock(annotation));
+        }
+        page.append("</div>"); //$NON-NLS-1$
+        for (String modal : attachmentModals.values()) page.append(modal);
+        page.append("<script>").append(CAPTURE_MEDIA_STOP_SCRIPT).append("</script></body></html>"); //$NON-NLS-1$
+        String sourceFingerprint = captureSourceFingerprint();
+        String capturedHtml = page.toString();
+        String capturedHtmlSha256 = CaptureIntegrity.sha256Text(capturedHtml);
+        JSONObject publicSourceMetadata = new JSONObject()
+                .put("name", safe(sourceMetadata.name)).put("size", sourceMetadata.size) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("type", safe(sourceMetadata.type)).put("itemHash", safe(sourceMetadata.hash)) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("deleted", sourceMetadata.deleted); //$NON-NLS-1$
+        String annotationsSha256 = annotations.isBlank() ? "" : CaptureIntegrity.sha256Text(annotations); //$NON-NLS-1$
+        JSONArray publicMessageHashes = new JSONArray();
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject message = records.getJSONObject(i);
+            publicMessageHashes.put(new JSONObject().put("domId", message.optString("domId")).put("key", message.optString("key")).put("messageHash", message.optString("messageHash"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        }
+        String legacyAnnotationsJson = ""; //$NON-NLS-1$
+        JSONObject migrationMetadata = null;
+        if (migrationJob != null && migrationJob.migrateLegacyToHtml && !migrationJob.resetLegacyRecords) {
+            legacyAnnotationsJson = readLegacyAnnotationsForMigration(migrationJob);
+            migrationMetadata = buildLegacyMigrationMetadata(migrationJob, legacyAnnotationsJson);
+            Files.writeString(staging.resolve("migration.json"), migrationMetadata.toString(2), StandardCharsets.UTF_8); //$NON-NLS-1$
+            if (!legacyAnnotationsJson.isBlank()) {
+                Files.writeString(staging.resolve("legacy-annotations.json"), legacyAnnotationsJson, StandardCharsets.UTF_8); //$NON-NLS-1$
+            }
+        }
+        JSONObject manifest = new JSONObject().put("schemaVersion", 1).put("captureFormat", "html-message-v1").put("presentationVersion", 2) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("pluginVersion", CHAT_CAPTURE_PLUGIN_VERSION).put("ipedVersion", "4.3.1") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("status", "completed").put("createdAt", OffsetDateTime.now(ZoneOffset.UTC).toString()).put("sourceFingerprint", sourceFingerprint).put("conversationKey", conversationKey) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                .put("sourceMetadata", publicSourceMetadata) //$NON-NLS-1$
+                .put("anchors", new JSONObject().put("start", resolvedStartMessageId).put("end", captureEndMessageId)) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("messageCount", records.length()).put("state", "complete").put("messagesFile", "messages.json") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                .put("messageHashes", publicMessageHashes) //$NON-NLS-1$
+                .put("limits", new JSONObject().put("maxAttachmentBytes", MAX_HTML_MESSAGE_ATTACHMENT_BYTES).put("maxCaptureBytes", MAX_HTML_MESSAGE_CAPTURE_BYTES).put("maxMessages", MAX_HTML_MESSAGE_COUNT).put("maxSourceHtmlBytes", 16L * 1024L * 1024L)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                .put("htmlSha256", capturedHtmlSha256).put("annotationsSha256", annotationsSha256) //$NON-NLS-1$ //$NON-NLS-2$
+                .put("reconciliationSha256", "") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("captureRootHash", htmlCaptureRootHash(records, capturedHtmlSha256, annotationsSha256, "", //$NON-NLS-1$ //$NON-NLS-2$
+                        conversationKey, sourceFingerprint, publicSourceMetadata, "4.3.1", CHAT_CAPTURE_PLUGIN_VERSION, resolvedStartMessageId, captureEndMessageId)); //$NON-NLS-1$
+        if (migrationMetadata != null) {
+            manifest.put("migration", migrationMetadata).put("migrationFile", "migration.json"); //$NON-NLS-1$ //$NON-NLS-2$
+            manifest.put("migrationSha256", CaptureIntegrity.sha256(staging.resolve("migration.json"))); //$NON-NLS-1$
+        }
+        try {
+            String messagesJson = new JSONObject().put("messages", records).toString(2); //$NON-NLS-1$
+            long storedBytes = capturedHtml.getBytes(StandardCharsets.UTF_8).length + messagesJson.getBytes(StandardCharsets.UTF_8).length;
+            for (byte[] attachment : attachments.values()) storedBytes += attachment.length;
+            if (migrationJob != null) for (String relative : migrationJob.stagedReusableAttachmentPaths) {
+                storedBytes += Files.size(staging.resolve(relative));
+            }
+            if (storedBytes > MAX_HTML_MESSAGE_CAPTURE_BYTES) throw new IOException("Captura HTML ultrapassa o limite total de 64 MiB."); //$NON-NLS-1$
+            for (Map.Entry<String, byte[]> attachment : attachments.entrySet()) {
+                Path target = staging.resolve(attachment.getKey());
+                Files.createDirectories(target.getParent());
+                Files.write(target, attachment.getValue());
+            }
+            Files.writeString(staging.resolve("messages.json"), messagesJson, StandardCharsets.UTF_8); //$NON-NLS-1$
+            if (!annotations.isBlank()) Files.writeString(staging.resolve("annotations.json"), annotations, StandardCharsets.UTF_8); //$NON-NLS-1$
+            Files.writeString(staging.resolve("whatsapp.html"), capturedHtml, StandardCharsets.UTF_8); //$NON-NLS-1$
+            Files.writeString(staging.resolve("manifest.json"), manifest.toString(2), StandardCharsets.UTF_8); //$NON-NLS-1$
+            if (Files.exists(captureDir)) throw new IOException("A pasta de destino da captura já existe: " + captureDir); //$NON-NLS-1$
+            Files.move(staging, captureDir, StandardCopyOption.ATOMIC_MOVE);
+            promoted = true;
+            writeArtifactInventory(captureDir);
+            return new CaptureRunResult("completed", captureDir); //$NON-NLS-1$
+        } catch (Exception e) { deleteDirectoryIfExists(staging); if (promoted) deleteDirectoryIfExists(captureDir); throw e; }
+        } catch (Exception failure) {
+            if (!promoted) {
+                try { deleteDirectoryIfExists(staging); } catch (IOException cleanupFailure) { failure.addSuppressed(cleanupFailure); }
+            }
+            throw failure;
+        } finally {
+            if (migrationJob != null) {
+                migrationJob.reusableAttachmentStaging = null;
+                migrationJob.stagedReusableAttachmentPaths.clear();
+            }
+        }
+    }
+
+    private static String sanitizeCaptureThemeCss(String css) throws IOException {
+        if (css == null || css.isBlank() || css.getBytes(StandardCharsets.UTF_8).length > 2L * 1024L * 1024L
+                || Pattern.compile("(?i)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:").matcher(css).find()) {
+            throw new IOException("A folha de estilo do IPED excede o limite ou contém regra ativa não permitida."); //$NON-NLS-1$
+        }
+        Pattern urlPattern = Pattern.compile("(?is)url\\(\\s*(['\\\"]?)(.*?)\\1\\s*\\)"); //$NON-NLS-1$
+        Matcher urls = urlPattern.matcher(css);
+        String withoutUrls = urlPattern.matcher(css).replaceAll(""); //$NON-NLS-1$
+        if (Pattern.compile("(?i)url\\s*\\(").matcher(withoutUrls).find()) throw new IOException("URL CSS malformada na folha do IPED."); //$NON-NLS-1$
+        long aggregate = 0;
+        while (urls.find()) {
+            String value = urls.group(2).trim();
+            Matcher image = Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp|svg\\+xml));base64,([a-z0-9+/=\\r\\n]+)$").matcher(value); //$NON-NLS-1$
+            if (!image.matches()) throw new IOException("A folha CSS contém URL que não é imagem base64 local."); //$NON-NLS-1$
+            byte[] bytes;
+            try { bytes = Base64.getMimeDecoder().decode(image.group(2)); }
+            catch (IllegalArgumentException invalid) { throw new IOException("Imagem CSS possui base64 inválido.", invalid); } //$NON-NLS-1$
+            if (bytes.length == 0 || bytes.length > 8L * 1024L * 1024L) throw new IOException("Imagem CSS excede 8 MiB."); //$NON-NLS-1$
+            aggregate += bytes.length;
+            if (aggregate > 16L * 1024L * 1024L) throw new IOException("Imagens CSS excedem 16 MiB no total."); //$NON-NLS-1$
+            String mime = image.group(1).toLowerCase(Locale.ROOT);
+            if ("image/svg+xml".equals(mime)) validateCaptureSvg(bytes); //$NON-NLS-1$
+            else if (!captureRasterSignatureMatches(mime, bytes)) throw new IOException("Assinatura de imagem CSS incompatível com o MIME."); //$NON-NLS-1$
+        }
+        return css.replaceAll("#topbar\\b", "#capture-topbar").replaceAll("#conversation\\b", "#capture-conversation"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static boolean captureRasterSignatureMatches(String mime, byte[] bytes) {
+        if ("image/jpg".equals(mime)) mime = "image/jpeg"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("image/png".equals(mime)) return bytes.length >= 8 && (bytes[0] & 255) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' && bytes[4] == 13 && bytes[5] == 10 && bytes[6] == 26 && bytes[7] == 10; //$NON-NLS-1$
+        if ("image/jpeg".equals(mime)) return bytes.length >= 3 && (bytes[0] & 255) == 0xff && (bytes[1] & 255) == 0xd8 && (bytes[2] & 255) == 0xff; //$NON-NLS-1$
+        if ("image/gif".equals(mime)) return bytes.length >= 6 && ("GIF87a".equals(new String(bytes, 0, 6, StandardCharsets.US_ASCII)) || "GIF89a".equals(new String(bytes, 0, 6, StandardCharsets.US_ASCII))); //$NON-NLS-1$ //$NON-NLS-2$
+        return "image/webp".equals(mime) && bytes.length >= 12 && "RIFF".equals(new String(bytes, 0, 4, StandardCharsets.US_ASCII)) && "WEBP".equals(new String(bytes, 8, 4, StandardCharsets.US_ASCII)); //$NON-NLS-1$
+    }
+
+    private static void validateCaptureSvg(byte[] bytes) throws IOException {
+        if (bytes.length > 512L * 1024L) throw new IOException("SVG CSS excede 512 KiB."); //$NON-NLS-1$
+        String xml = new String(bytes, StandardCharsets.UTF_8);
+        if (Pattern.compile("(?i)<!\\s*(?:DOCTYPE|ENTITY)").matcher(xml).find()) throw new IOException("SVG com DTD ou entidade não é permitido."); //$NON-NLS-1$
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true); //$NON-NLS-1$
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false); //$NON-NLS-1$
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false); //$NON-NLS-1$
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false); //$NON-NLS-1$
+            // Xerces 2.12.2 bundled with IPED 4.3.1 does not support JAXP ACCESS_EXTERNAL_* attributes.
+            // DOCTYPE is rejected above and these parser features disable external loading without them.
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            Document document = factory.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(xml)));
+            if (document.getDocumentElement() == null || !"svg".equalsIgnoreCase(document.getDocumentElement().getLocalName() == null ? document.getDocumentElement().getTagName() : document.getDocumentElement().getLocalName())) throw new IOException("Raiz SVG inválida."); //$NON-NLS-1$
+            NodeList all = document.getElementsByTagName("*"); //$NON-NLS-1$
+            if (all.getLength() > 4096) throw new IOException("SVG excede 4.096 elementos."); //$NON-NLS-1$
+            for (int i = 0; i < all.getLength(); i++) {
+                Element element = (Element) all.item(i);
+                String name = element.getLocalName() == null ? element.getTagName() : element.getLocalName();
+                if ("script".equalsIgnoreCase(name) || "foreignObject".equalsIgnoreCase(name) || "iframe".equalsIgnoreCase(name) || "object".equalsIgnoreCase(name) || "embed".equalsIgnoreCase(name)) throw new IOException("SVG contém elemento ativo."); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                NamedNodeMap attributes = element.getAttributes();
+                for (int j = 0; j < attributes.getLength(); j++) {
+                    Node attribute = attributes.item(j);
+                    String attr = attribute.getNodeName().toLowerCase(Locale.ROOT), value = attribute.getNodeValue();
+                    if (attr.startsWith("on") || (("href".equals(attr) || attr.endsWith(":href") || "src".equals(attr)) && !value.startsWith("#")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                            || Pattern.compile("(?i)url\\s*\\(\\s*(?:https?:|file:|javascript:|//)").matcher(value).find()) throw new IOException("SVG contém atributo de evento ou referência externa."); //$NON-NLS-1$
+                }
+            }
+        } catch (IOException e) { throw e; }
+        catch (Exception invalid) { throw new IOException("SVG CSS inválido.", invalid); } //$NON-NLS-1$
+    }
+
+    private static String validateCaptureHeaderHtml(String header) throws IOException {
+        if (header == null || header.length() > 256 * 1024 || !header.matches("(?is)^<div\\s+id=\\\"capture-topbar\\\"(?:\\s[^>]*)?>.*</div>$")) throw new IOException("Cabeçalho da conversa ausente ou inválido."); //$NON-NLS-1$
+        if (Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|style|svg|math)\\b|\\son[a-z]+\\s*=|(?:https?:|file:|javascript:)").matcher(header).find()) throw new IOException("Cabeçalho contém elemento ativo ou referência externa."); //$NON-NLS-1$
+        Matcher srcs = Pattern.compile("(?is)(\\bsrc\\s*=\\s*)([\\\"])(.*?)\\2").matcher(header);
+        StringBuffer normalized = new StringBuffer();
+        while (srcs.find()) {
+            try {
+                DecodedHtmlAttachment image = decodeHtmlAttachment(srcs.group(3));
+                if (!image.mime.startsWith("image/")) throw new IOException("Imagem inválida no cabeçalho."); //$NON-NLS-1$
+                String normalizedUri = "data:" + image.mime + ";base64," + Base64.getEncoder().encodeToString(image.bytes); //$NON-NLS-1$ //$NON-NLS-2$
+                String replacement = srcs.group(1) + srcs.group(2) + normalizedUri + srcs.group(2);
+                srcs.appendReplacement(normalized, Matcher.quoteReplacement(replacement));
+            }
+            catch (IOException invalid) { throw new IOException("Cabeçalho contém imagem não validada.", invalid); } //$NON-NLS-1$
+        }
+        srcs.appendTail(normalized);
+        return normalized.toString();
+    }
+
+    private String validateCaptureSeparatorHtml(String separator) throws IOException {
+        if (separator == null || separator.isEmpty()) return ""; //$NON-NLS-1$
+        if (separator.length() > 64 * 1024 || Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|style|svg|math)\\b|\\son[a-z]+\\s*=|\\bid\\s*=|\\b(?:src|href|style|srcdoc)\\s*=").matcher(separator).find()) throw new IOException("Separador de data contém marcação não permitida."); //$NON-NLS-1$
+        return separator;
+    }
+
+    private String captureViewerCss() {
+        return ".capture-modal{display:none;position:fixed;inset:0;z-index:2147483000;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72)}.capture-modal:target{display:flex}.capture-modal-card{box-sizing:border-box;width:min(900px,96vw);max-height:94vh;overflow:auto;background:#f7f4ef;border-radius:10px;box-shadow:0 12px 38px rgba(0,0,0,.45);font:14px Arial,sans-serif;color:#202c33}.capture-modal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#075e54;color:#fff}.capture-modal-header h2{margin:0;font-size:16px}.capture-close-icon{font-size:26px;color:#fff;text-decoration:none;padding:0 6px}.capture-modal-body{padding:14px;max-height:75vh;text-align:center}.capture-preview-image{display:block;max-width:100%;max-height:68vh;margin:auto;object-fit:contain}.capture-preview-pdf{display:block;width:100%;height:68vh;border:0;background:#fff}.capture-modal-body audio{width:min(100%,550px)}.capture-modal-body video{max-width:100%;max-height:68vh}.capture-preview-fallback,.capture-file-details{overflow-wrap:anywhere;color:#53636c}.capture-preview-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 14px}.capture-button{display:inline-block;padding:8px 12px;border-radius:5px;background:#128c7e;color:#fff;text-decoration:none}.capture-button:hover{background:#075e54}.capture-close{background:#52636a}.capture-media-link{cursor:pointer}.capture-file-card{margin:6px 0;padding:8px 10px;border-radius:6px;background:#f4f0e8;color:#263238;overflow-wrap:anywhere}.annotation{white-space:pre-wrap;border-left:3px solid #b26a00;background:#fffbe9;margin:.25rem .5rem .75rem;padding:.5rem}.annotation-links{font-size:.9em;color:#555}"; //$NON-NLS-1$
+    }
+
+    private String renderCaptureAttachmentModal(String path, String mime, long size, String sha256, String label) {
+        String safePath = html(path), safeName = html(safeAttachmentName(label, "anexo")), safeHash = html(sha256); //$NON-NLS-1$
+        String lowerMime = mime == null ? "application/octet-stream" : mime.toLowerCase(Locale.ROOT); //$NON-NLS-1$
+        String title = lowerMime.startsWith("image/") ? "Imagem" : "application/pdf".equals(lowerMime) ? "PDF" : lowerMime.startsWith("audio/") ? "Áudio" : lowerMime.startsWith("video/") ? "Vídeo" : "Arquivo"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        StringBuilder content = new StringBuilder();
+        if (lowerMime.startsWith("image/")) content.append("<img class=\"capture-preview-image\" src=\"").append(safePath).append("\" alt=\"").append(safeName).append("\">"); //$NON-NLS-1$ //$NON-NLS-2$
+        else if ("application/pdf".equals(lowerMime)) content.append("<iframe class=\"capture-preview-pdf\" title=\"Pré-visualização do PDF\" src=\"").append(safePath).append("\" sandbox=\"\"></iframe><p class=\"capture-preview-fallback\">Se o PDF não aparecer neste painel, use Abrir em nova aba ou Baixar.</p>"); //$NON-NLS-1$ //$NON-NLS-2$
+        else if (lowerMime.startsWith("audio/")) content.append("<audio controls preload=\"none\" src=\"").append(safePath).append("\"></audio>"); //$NON-NLS-1$ //$NON-NLS-2$
+        else if (lowerMime.startsWith("video/")) content.append("<video controls preload=\"none\" src=\"").append(safePath).append("\"></video>"); //$NON-NLS-1$ //$NON-NLS-2$
+        else content.append("<p class=\"capture-file-details\">").append(safeName).append(" · ").append(html(lowerMime)).append(" · ").append(size).append(" bytes · SHA-256 ").append(safeHash).append("</p>"); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = "preview-" + sha256; //$NON-NLS-1$
+        return "<section class=\"capture-modal\" id=\"" + id + "\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"title-" + sha256 + "\"><div class=\"capture-modal-card\"><header class=\"capture-modal-header\"><h2 id=\"title-" + sha256 + "\">" + title + "</h2><a class=\"capture-close-icon capture-close\" href=\"#\" aria-label=\"Fechar\">×</a></header><div class=\"capture-modal-body\">" + content + "</div><nav class=\"capture-preview-actions\"><a class=\"capture-button\" href=\"" + safePath + "\" download=\"" + safeName + "\">Baixar</a><a class=\"capture-button\" href=\"" + safePath + "\" target=\"_blank\" rel=\"noopener noreferrer\">Abrir em nova aba</a><a class=\"capture-button capture-close\" href=\"#\">Fechar</a></nav></div></section>"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+    }
+
+    private String linkInlineCaptureImages(String fragment) {
+        Matcher images = Pattern.compile("(?is)<img\\b[^>]*>").matcher(fragment); //$NON-NLS-1$
+        StringBuffer result = new StringBuffer();
+        while (images.find()) {
+            String tag = images.group(), before = fragment.substring(0, images.start());
+            String source = null;
+            Matcher src = Pattern.compile("(?is)\\bsrc=([\\\"])(attachments/[0-9a-f]{64}\\.[a-z0-9]{1,10})\\1").matcher(tag); //$NON-NLS-1$
+            if (src.find()) source = src.group(2);
+            boolean insideAnchor = before.lastIndexOf("<a") > before.toLowerCase(Locale.ROOT).lastIndexOf("</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+            if (source != null && !insideAnchor) {
+                String hash = source.substring("attachments/".length(), source.lastIndexOf('.')); //$NON-NLS-1$
+                String replacement = "<a class=\"capture-media-link\" href=\"#preview-" + hash + "\">" + tag + "</a>"; //$NON-NLS-1$ //$NON-NLS-2$
+                images.appendReplacement(result, Matcher.quoteReplacement(replacement));
+            } else images.appendReplacement(result, Matcher.quoteReplacement(tag));
+        }
+        images.appendTail(result);
+        return result.toString();
+    }
+
+    private String replaceInlineCapturePlayers(String fragment, Map<String, String> modals) {
+        Matcher players = Pattern.compile("(?is)<(audio|video)\\b[^>]*>.*?</\\1\\s*>").matcher(fragment); //$NON-NLS-1$
+        StringBuffer result = new StringBuffer();
+        while (players.find()) {
+            String player = players.group(), lower = player.toLowerCase(Locale.ROOT);
+            Matcher src = Pattern.compile("(?is)\\bsrc=([\\\"])(attachments/([0-9a-f]{64})\\.[a-z0-9]{1,10})\\1").matcher(player); //$NON-NLS-1$
+            if (!src.find()) { players.appendReplacement(result, Matcher.quoteReplacement("")); continue; } //$NON-NLS-1$
+            String path = src.group(2), hash = src.group(3), kind = lower.startsWith("<audio") ? "Áudio" : "Vídeo"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            String before = fragment.substring(0, players.start());
+            boolean insideAnchor = before.lastIndexOf("<a") > before.toLowerCase(Locale.ROOT).lastIndexOf("</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+            String replacement = insideAnchor ? "<span class=\"capture-file-card\">" + kind + "</span>" //$NON-NLS-1$ //$NON-NLS-2$
+                    : "<a class=\"capture-file-card capture-media-link\" href=\"#preview-" + hash + "\">" + kind + "</a>"; //$NON-NLS-1$ //$NON-NLS-2$
+            if (!modals.containsKey(path)) replacement = ""; //$NON-NLS-1$
+            players.appendReplacement(result, Matcher.quoteReplacement(replacement));
+        }
+        players.appendTail(result);
+        return result.toString();
+    }
+
+    private static DecodedHtmlAttachment decodeHtmlAttachment(String value) throws IOException {
+        Matcher matcher = Pattern.compile("(?is)^data:([a-z0-9.+-]+/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\\r\\n]+)$").matcher(value == null ? "" : value); //$NON-NLS-1$ //$NON-NLS-2$
+        if (!matcher.matches()) throw new IOException("Anexo HTML não possui URI data base64 segura."); //$NON-NLS-1$
+        if (value.length() > ((MAX_HTML_MESSAGE_ATTACHMENT_BYTES + 2) / 3) * 4 + 128) throw new IOException("Anexo codificado excede o limite antes da decodificação."); //$NON-NLS-1$
+        byte[] bytes;
+        try { bytes = Base64.getMimeDecoder().decode(matcher.group(2)); }
+        catch (IllegalArgumentException invalid) { throw new IOException("Anexo HTML possui base64 inválido.", invalid); }
+        if (bytes.length == 0 || bytes.length > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) throw new IOException("Anexo HTML fora do limite de 8 MiB."); //$NON-NLS-1$
+        String declaredMime = matcher.group(1).toLowerCase(Locale.ROOT);
+        String mime = sniffHtmlAttachmentMime(bytes);
+        if (mime == null || !declaredMime.substring(0, declaredMime.indexOf('/')).equals(mime.substring(0, mime.indexOf('/')))) {
+            throw new IOException("Tipo de anexo HTML não reconhecido ou incompatível com os bytes."); //$NON-NLS-1$
+        }
+        return new DecodedHtmlAttachment(mime, bytes, CaptureIntegrity.sha256Bytes(bytes), htmlAttachmentExtension(mime));
+    }
+
+    private DecodedHtmlAttachment resolveCaseAttachment(String expectedSha256) throws IOException {
+        if (attachSearcher == null || expectedSha256 == null || !expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("Não foi possível resolver a referência de anexo do IPED."); //$NON-NLS-1$
+        }
+        String query = "sha-256:" + attachSearcher.escapeQuery(expectedSha256); //$NON-NLS-1$
+        IItem item = attachSearcher.getItem(query);
+        if (item == null) throw new IOException("Anexo relacionado à mensagem não foi encontrado no caso: " + expectedSha256); //$NON-NLS-1$
+        Long declaredLength = item.getLength();
+        if (declaredLength != null && (declaredLength < 0 || declaredLength > MAX_HTML_MESSAGE_ATTACHMENT_BYTES)) {
+            throw new IOException("Anexo relacionado excede o limite de 8 MiB: " + safe(item.getName())); //$NON-NLS-1$
+        }
+        DecodedHtmlAttachment reused = tryReuseLegacyAttachment(item, expectedSha256, declaredLength);
+        if (reused != null) return reused;
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(declaredLength == null ? 8192 : Math.min(declaredLength.intValue(), 8192));
+        try (InputStream input = item.getBufferedInputStream()) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (bytes.size() + (long) count > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) {
+                    throw new IOException("Anexo relacionado excede o limite de 8 MiB durante a leitura: " + safe(item.getName())); //$NON-NLS-1$
+                }
+                bytes.write(buffer, 0, count);
+            }
+        }
+        byte[] content = bytes.toByteArray();
+        String actualSha256 = CaptureIntegrity.sha256Bytes(content);
+        if (!actualSha256.equalsIgnoreCase(expectedSha256)) throw new IOException("Hash do anexo relacionado diverge da referência do IPED."); //$NON-NLS-1$
+        String declaredMime = item.getMediaType() == null ? "" : item.getMediaType().toString().toLowerCase(Locale.ROOT); //$NON-NLS-1$
+        int semicolon = declaredMime.indexOf(';');
+        if (semicolon >= 0) declaredMime = declaredMime.substring(0, semicolon).trim();
+        String extension = item.getExt() == null ? "" : item.getExt().toLowerCase(Locale.ROOT); //$NON-NLS-1$
+        while (extension.startsWith(".")) extension = extension.substring(1); //$NON-NLS-1$
+        if (!extension.matches("[a-z0-9]{1,10}")) extension = ""; //$NON-NLS-1$ //$NON-NLS-2$
+        String mime = caseAttachmentMime(content, declaredMime, extension);
+        String safeExtension = htmlAttachmentExtension(mime);
+        return new DecodedHtmlAttachment(mime, content, actualSha256, safeExtension);
+    }
+
+    private Map<String, List<ReusableAttachment>> buildReusableAttachmentIndex(RecaptureJob job) throws IOException {
+        Map<String, List<ReusableAttachment>> indexed = new HashMap<>();
+        if (job == null || !job.legacyCapture || !job.resetLegacyRecords || job.folderPath == null) return indexed;
+        Path root = job.folderPath.toRealPath(LinkOption.NOFOLLOW_LINKS);
+        int files = 0;
+        long totalBytes = 0;
+        for (String directory : new String[] {"anexos", "attachments"}) { //$NON-NLS-1$ //$NON-NLS-2$
+            Path base = root.resolve(directory);
+            if (!Files.exists(base, LinkOption.NOFOLLOW_LINKS)) continue;
+            if (Files.isSymbolicLink(base) || !Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("A pasta de anexos legados não é um diretório seguro: " + base); //$NON-NLS-1$
+            }
+            try (Stream<Path> paths = Files.walk(base)) {
+                for (Path path : paths.collect(java.util.stream.Collectors.toList())) {
+                    if (Files.isSymbolicLink(path)) throw new IOException("Link simbólico não pode ser indexado para reuso: " + path); //$NON-NLS-1$
+                    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
+                    String relative = root.relativize(path).toString().replace('\\', '/');
+                    if (relative.length() > CaptureIntegrity.MAX_RELATIVE_PATH_CHARS) {
+                        throw new IOException("Caminho de anexo legado excede o limite seguro."); //$NON-NLS-1$
+                    }
+                    CaptureIntegrity.resolveContained(root, relative);
+                    long size = Files.size(path);
+                    if (size < 1 || size > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) continue;
+                    if (++files > 25000) throw new IOException("A captura legada excede o limite de anexos para reuso."); //$NON-NLS-1$
+                    totalBytes += size;
+                    if (totalBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) {
+                        throw new IOException("O total de anexos legados excede o orçamento seguro de reuso."); //$NON-NLS-1$
+                    }
+                    ReusableAttachment entry = new ReusableAttachment(path, CaptureIntegrity.sha256(path), size);
+                    indexed.computeIfAbsent(reusableAttachmentKey(entry.sha256, entry.size), key -> new ArrayList<>()).add(entry);
+                }
+            }
+        }
+        return indexed;
+    }
+
+    private String readLegacyAnnotationsForMigration(RecaptureJob job) throws IOException {
+        Path coordinates = job.folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
+        if (!Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) return ""; //$NON-NLS-1$
+        String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
+        String annotations = ChatAnnotationStore.extractObject(content, "annotations"); //$NON-NLS-1$
+        if (annotations == null || annotations.isBlank()) return ""; //$NON-NLS-1$
+        try {
+            JSONObject parsed = new JSONObject(annotations);
+            return parsed.toString(2) + System.lineSeparator();
+        } catch (RuntimeException invalid) {
+            throw new IOException("As anotações legadas estão inválidas; a captura antiga foi preservada.", invalid); //$NON-NLS-1$
+        }
+    }
+
+    private JSONObject buildLegacyMigrationMetadata(RecaptureJob job, String legacyAnnotationsJson) throws IOException {
+        Path oldManifestPath = job.folderPath.resolve("manifest.json"); //$NON-NLS-1$
+        String previousManifestSha256 = CaptureIntegrity.sha256(oldManifestPath);
+        String previousContentRootHash = ""; //$NON-NLS-1$
+        String previousRecordHash = ""; //$NON-NLS-1$
+        Path oldIntegrityPath = job.folderPath.resolve("integridade.json"); //$NON-NLS-1$
+        if (Files.isRegularFile(oldIntegrityPath, LinkOption.NOFOLLOW_LINKS)) {
+            JSONObject previous = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(oldIntegrityPath));
+            previousContentRootHash = previous.optString("contentRootHash", ""); //$NON-NLS-1$
+            JSONArray events = previous.optJSONArray("events"); //$NON-NLS-1$
+            if (events != null && events.length() > 0) {
+                JSONObject last = events.optJSONObject(events.length() - 1);
+                if (last != null) previousRecordHash = last.optString("recordHash", ""); //$NON-NLS-1$
+            }
+        }
+        return new JSONObject().put("schemaVersion", 1) //$NON-NLS-1$
+                .put("action", "legacy_screenshot_capture_migrated_to_html_message_v1") //$NON-NLS-1$
+                .put("sourceFormat", "legacy-screenshot") //$NON-NLS-1$
+                .put("previousIntegrityContentRootHash", previousContentRootHash) //$NON-NLS-1$
+                .put("previousIntegrityRecordHash", previousRecordHash) //$NON-NLS-1$
+                .put("previousManifestSha256", previousManifestSha256) //$NON-NLS-1$
+                .put("anchorsRecoveredFrom", "manifest-and-whatsapp-coordinates") //$NON-NLS-1$
+                .put("legacyAnnotationsPreserved", legacyAnnotationsJson != null && !legacyAnnotationsJson.isBlank()); //$NON-NLS-1$
+    }
+
+    private DecodedHtmlAttachment tryReuseLegacyAttachment(IItem item, String expectedSha256, Long declaredLength) {
+        RecaptureJob job = activeRecaptureJob;
+        if (job == null || !job.resetLegacyRecords || job.reusableAttachmentStaging == null
+                || declaredLength == null || declaredLength < 1 || job.reusableAttachmentsByHashAndSize == null) return null;
+        List<ReusableAttachment> candidates = job.reusableAttachmentsByHashAndSize
+                .get(reusableAttachmentKey(expectedSha256, declaredLength));
+        if (candidates == null || candidates.isEmpty()) return null;
+        String declaredMime = item.getMediaType() == null ? "" : item.getMediaType().toString().toLowerCase(Locale.ROOT); //$NON-NLS-1$
+        int semicolon = declaredMime.indexOf(';');
+        if (semicolon >= 0) declaredMime = declaredMime.substring(0, semicolon).trim();
+        String sourceExtension = item.getExt() == null ? "" : item.getExt().toLowerCase(Locale.ROOT); //$NON-NLS-1$
+        while (sourceExtension.startsWith(".")) sourceExtension = sourceExtension.substring(1); //$NON-NLS-1$
+        if (!sourceExtension.matches("[a-z0-9]{1,10}")) sourceExtension = ""; //$NON-NLS-1$ //$NON-NLS-2$
+        for (ReusableAttachment candidate : candidates) {
+            Path temporary = null;
+            Path target = null;
+            try {
+                if (Files.isSymbolicLink(candidate.path) || !Files.isRegularFile(candidate.path, LinkOption.NOFOLLOW_LINKS)
+                        || Files.size(candidate.path) != declaredLength
+                        || !CaptureIntegrity.sha256(candidate.path).equalsIgnoreCase(expectedSha256)) continue;
+                if (job.folderPath == null) continue;
+                CaptureIntegrity.resolveContained(job.folderPath,
+                        job.folderPath.toAbsolutePath().normalize().relativize(candidate.path.toAbsolutePath().normalize()).toString());
+                byte[] prefix = readFilePrefix(candidate.path, 64);
+                String mime = caseAttachmentMime(prefix, declaredMime, sourceExtension);
+                String extension = htmlAttachmentExtension(mime);
+                String relative = "attachments/" + expectedSha256.toLowerCase(Locale.ROOT) + "." + extension; //$NON-NLS-1$
+                target = job.reusableAttachmentStaging.resolve(relative).normalize();
+                if (!target.startsWith(job.reusableAttachmentStaging.normalize())) continue;
+                Files.createDirectories(target.getParent());
+                if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                        && Files.size(target) == declaredLength
+                        && CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
+                    job.stagedReusableAttachmentPaths.add(relative);
+                    return new DecodedHtmlAttachment(mime, null, expectedSha256.toLowerCase(Locale.ROOT), extension, declaredLength);
+                }
+                Files.deleteIfExists(target);
+                temporary = Files.createTempFile(target.getParent(), ".reuse-", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
+                try (InputStream source = Files.newInputStream(candidate.path, LinkOption.NOFOLLOW_LINKS);
+                        java.io.OutputStream destination = Files.newOutputStream(temporary, StandardOpenOption.WRITE,
+                                StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS)) {
+                    byte[] buffer = new byte[8192];
+                    long copied = 0;
+                    int count;
+                    while ((count = source.read(buffer)) != -1) {
+                        copied += count;
+                        if (copied > declaredLength) throw new IOException("Anexo reutilizado excedeu o tamanho esperado."); //$NON-NLS-1$
+                        destination.write(buffer, 0, count);
+                    }
+                    if (copied != declaredLength) throw new IOException("Anexo reutilizado terminou antes do tamanho esperado."); //$NON-NLS-1$
+                }
+                if (Files.size(temporary) != declaredLength
+                        || !CaptureIntegrity.sha256(temporary).equalsIgnoreCase(expectedSha256)) continue;
+                try {
+                    Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException unsupported) {
+                    Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                temporary = null;
+                if (Files.size(target) != declaredLength || !CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
+                    Files.deleteIfExists(target);
+                    continue;
+                }
+                job.stagedReusableAttachmentPaths.add(relative);
+                return new DecodedHtmlAttachment(mime, null, expectedSha256.toLowerCase(Locale.ROOT), extension, declaredLength);
+            } catch (Exception unsafeOrChanged) {
+                LOGGER.debug("Legacy attachment reuse failed; extracting from the current IPED source", unsafeOrChanged);
+            } finally {
+                if (temporary != null) try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+            }
+            if (target != null) try { Files.deleteIfExists(target); } catch (IOException ignored) { }
+        }
+        return null;
+    }
+
+    private byte[] readFilePrefix(Path file, int maximum) throws IOException {
+        byte[] buffer = new byte[maximum];
+        int total = 0;
+        try (InputStream input = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            while (total < buffer.length) {
+                int count = input.read(buffer, total, buffer.length - total);
+                if (count < 0) break;
+                total += count;
+            }
+        }
+        return total == buffer.length ? buffer : Arrays.copyOf(buffer, total);
+    }
+
+    private static String reusableAttachmentKey(String sha256, long size) {
+        return (sha256 == null ? "" : sha256.toLowerCase(Locale.ROOT)) + ":" + size; //$NON-NLS-1$
+    }
+
+    private String captureSourceFingerprint() throws IOException {
+        IItem source = captureSourceItem;
+        if (source == null) throw new IOException("O HTML fonte do item atual não está disponível para calcular o fingerprint."); //$NON-NLS-1$
+        Long length = source.getLength();
+        long maximum = 16L * 1024L * 1024L;
+        if (length != null && (length < 0 || length > maximum)) throw new IOException("HTML de origem acima do limite seguro de 16 MiB."); //$NON-NLS-1$
+        try (InputStream input = source.getBufferedInputStream()) {
+            return CaptureIntegrity.sha256(input, maximum);
+        }
+    }
+
+    private String caseAttachmentMime(byte[] bytes, String declaredMime, String extension) {
+        String sniffed = sniffHtmlAttachmentMime(bytes);
+        if (sniffed != null && (sniffed.startsWith("image/") || sniffed.startsWith("audio/") || sniffed.startsWith("video/") || "application/pdf".equals(sniffed))) return sniffed; //$NON-NLS-1$
+        if ("application/zip".equals(sniffed)) { //$NON-NLS-1$
+            if (declaredMime.startsWith("application/vnd.openxmlformats-officedocument.")) return declaredMime; //$NON-NLS-1$
+            return "application/zip"; //$NON-NLS-1$
+        }
+        if ("application/x-ole-storage".equals(sniffed)) { //$NON-NLS-1$
+            if ("application/msword".equals(declaredMime) || "application/vnd.ms-excel".equals(declaredMime) || "application/vnd.ms-powerpoint".equals(declaredMime)) return declaredMime; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            if ("doc".equals(extension)) return "application/msword"; //$NON-NLS-1$ //$NON-NLS-2$
+            if ("xls".equals(extension)) return "application/vnd.ms-excel"; //$NON-NLS-1$ //$NON-NLS-2$
+            if ("ppt".equals(extension)) return "application/vnd.ms-powerpoint"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if ("application/vnd.rar".equals(sniffed) || "application/x-7z-compressed".equals(sniffed)) return sniffed; //$NON-NLS-1$ //$NON-NLS-2$
+        if (("text/plain".equals(declaredMime) || "text/csv".equals(declaredMime)) && isTextAttachment(bytes)) return declaredMime; //$NON-NLS-1$ //$NON-NLS-2$
+        if (("txt".equals(extension) || "csv".equals(extension)) && isTextAttachment(bytes)) return "csv".equals(extension) ? "text/csv" : "text/plain"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return "application/octet-stream"; //$NON-NLS-1$
+    }
+
+    private boolean isTextAttachment(byte[] bytes) {
+        for (byte value : bytes) if (value == 0) return false;
+        try {
+            StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes));
+            return true;
+        } catch (java.nio.charset.CharacterCodingException invalidUtf8) {
+            return false;
+        }
+    }
+
+    private String htmlContentKind(String mime) {
+        if (mime.startsWith("image/")) return "image"; //$NON-NLS-1$
+        if (mime.startsWith("audio/")) return "audio"; //$NON-NLS-1$
+        if (mime.startsWith("video/")) return "video"; //$NON-NLS-1$
+        if ("application/pdf".equals(mime) || mime.startsWith("application/vnd.openxmlformats-officedocument.")) return "document"; //$NON-NLS-1$ //$NON-NLS-2$
+        return "file"; //$NON-NLS-1$
+    }
+
+    private String safeAttachmentName(String requested, String fallback) {
+        String value = requested == null || requested.isBlank() ? fallback : requested;
+        value = fileName(value.replace('\\', '/')).replaceAll("[\\p{Cntrl}\\\\/:*?\"<>|]+", "_").trim(); //$NON-NLS-1$ //$NON-NLS-2$
+        if (value.length() > 180) value = value.substring(value.length() - 180);
+        return value.isBlank() ? "anexo.bin" : value; //$NON-NLS-1$
+    }
+
+    private static String sniffHtmlAttachmentMime(byte[] bytes) {
+        if (bytes.length >= 8 && (bytes[0] & 255) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') return "image/png"; //$NON-NLS-1$
+        if (bytes.length >= 3 && (bytes[0] & 255) == 0xff && (bytes[1] & 255) == 0xd8 && (bytes[2] & 255) == 0xff) return "image/jpeg"; //$NON-NLS-1$
+        if (bytes.length >= 6) { String signature = new String(bytes, 0, 6, StandardCharsets.US_ASCII); if ("GIF87a".equals(signature) || "GIF89a".equals(signature)) return "image/gif"; } //$NON-NLS-1$ //$NON-NLS-2$
+        if (bytes.length >= 12 && "RIFF".equals(new String(bytes, 0, 4, StandardCharsets.US_ASCII)) && "WEBP".equals(new String(bytes, 8, 4, StandardCharsets.US_ASCII))) return "image/webp"; //$NON-NLS-1$ //$NON-NLS-2$
+        if (bytes.length >= 4 && "OggS".equals(new String(bytes, 0, 4, StandardCharsets.US_ASCII))) return "audio/ogg"; //$NON-NLS-1$
+        if (bytes.length >= 12 && "RIFF".equals(new String(bytes, 0, 4, StandardCharsets.US_ASCII)) && "WAVE".equals(new String(bytes, 8, 4, StandardCharsets.US_ASCII))) return "audio/wav"; //$NON-NLS-1$ //$NON-NLS-2$
+        if (bytes.length >= 3 && "ID3".equals(new String(bytes, 0, 3, StandardCharsets.US_ASCII))) return "audio/mpeg"; //$NON-NLS-1$
+        if (bytes.length >= 2 && (bytes[0] & 255) == 0xff && ((bytes[1] & 0xe0) == 0xe0)) return "audio/mpeg"; //$NON-NLS-1$
+        if (bytes.length >= 8 && "ftyp".equals(new String(bytes, 4, 4, StandardCharsets.US_ASCII))) return "video/mp4"; //$NON-NLS-1$
+        if (bytes.length >= 4 && (bytes[0] & 255) == 0x1a && (bytes[1] & 255) == 0x45 && (bytes[2] & 255) == 0xdf && (bytes[3] & 255) == 0xa3) return "video/webm"; //$NON-NLS-1$
+        if (bytes.length >= 5 && "%PDF-".equals(new String(bytes, 0, 5, StandardCharsets.US_ASCII))) return "application/pdf"; //$NON-NLS-1$
+        if (bytes.length >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && (bytes[2] == 3 || bytes[2] == 5 || bytes[2] == 7)) return "application/zip"; //$NON-NLS-1$
+        if (bytes.length >= 8 && (bytes[0] & 255) == 0xd0 && (bytes[1] & 255) == 0xcf && (bytes[2] & 255) == 0x11 && (bytes[3] & 255) == 0xe0 && (bytes[4] & 255) == 0xa1 && (bytes[5] & 255) == 0xb1 && (bytes[6] & 255) == 0x1a && (bytes[7] & 255) == 0xe1) return "application/x-ole-storage"; //$NON-NLS-1$
+        if (bytes.length >= 7 && "Rar!\u001a\u0007".equals(new String(bytes, 0, 6, StandardCharsets.US_ASCII))) return "application/vnd.rar"; //$NON-NLS-1$
+        if (bytes.length >= 6 && (bytes[0] & 255) == 0x37 && (bytes[1] & 255) == 0x7a && (bytes[2] & 255) == 0xbc && (bytes[3] & 255) == 0xaf && (bytes[4] & 255) == 0x27 && (bytes[5] & 255) == 0x1c) return "application/x-7z-compressed"; //$NON-NLS-1$
+        return null;
+    }
+
+    private static String htmlAttachmentExtension(String mime) {
+        if ("image/jpeg".equals(mime)) return "jpg"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("image/png".equals(mime)) return "png"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("image/gif".equals(mime)) return "gif"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("image/webp".equals(mime)) return "webp"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("audio/ogg".equals(mime)) return "ogg"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("audio/wav".equals(mime)) return "wav"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("audio/mpeg".equals(mime)) return "mp3"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("video/mp4".equals(mime)) return "mp4"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("video/webm".equals(mime)) return "webm"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/pdf".equals(mime)) return "pdf"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/zip".equals(mime)) return "zip"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(mime)) return "docx"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(mime)) return "xlsx"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.openxmlformats-officedocument.presentationml.presentation".equals(mime)) return "pptx"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/msword".equals(mime)) return "doc"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.ms-excel".equals(mime)) return "xls"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.ms-powerpoint".equals(mime)) return "ppt"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("text/plain".equals(mime)) return "txt"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("text/csv".equals(mime)) return "csv"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/vnd.rar".equals(mime)) return "rar"; //$NON-NLS-1$ //$NON-NLS-2$
+        if ("application/x-7z-compressed".equals(mime)) return "7z"; //$NON-NLS-1$ //$NON-NLS-2$
+        return "bin"; //$NON-NLS-1$
+    }
+
+    private String htmlAnnotationBlock(JSONObject item) {
+        JSONObject note = item.optJSONObject("note"); //$NON-NLS-1$
+        JSONArray links = item.optJSONArray("links"); //$NON-NLS-1$
+        if (note == null && (links == null || links.length() == 0)) return ""; //$NON-NLS-1$
+        StringBuilder block = new StringBuilder("<aside class=\"annotation\"><strong>Anotações do analista</strong>"); //$NON-NLS-1$
+        if (note != null) {
+            block.append("<p>").append(html(note.optString("text"))).append("</p>"); //$NON-NLS-1$ //$NON-NLS-2$
+            String author = note.optString("author", ""); //$NON-NLS-1$
+            String updated = note.optString("updatedAt", ""); //$NON-NLS-1$
+            if (!author.isEmpty() || !updated.isEmpty()) block.append("<small>").append(html(author)).append(author.isEmpty() || updated.isEmpty() ? "" : " · ").append(html(updated)).append("</small>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        }
+        if (links != null && links.length() > 0) {
+            block.append("<div class=\"annotation-links\">Conversas vinculadas: "); //$NON-NLS-1$
+            for (int i = 0; i < links.length(); i++) {
+                JSONObject link = links.optJSONObject(i);
+                if (link == null) continue;
+                if (i > 0) block.append("; "); //$NON-NLS-1$
+                String title = link.optString("title", link.optString("sourceName", "conversa")); //$NON-NLS-1$ //$NON-NLS-2$
+                block.append(html(title));
+            }
+            block.append("</div>"); //$NON-NLS-1$
+        }
+        return block.append("</aside>").toString(); //$NON-NLS-1$
+    }
+
+    private String htmlMessageHash(JSONObject message) throws IOException {
+        StringBuilder canonical = new StringBuilder("html-message-v1-message\n"); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("domId")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, Integer.toString(message.optInt("order", -1))); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("timestamp")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("sender")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("direction")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("type")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, Integer.toString(message.optInt("duplicateOrdinal", -1))); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("text")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, message.optString("classes")); //$NON-NLS-1$
+        JSONArray attachments = message.optJSONArray("attachments"); //$NON-NLS-1$
+        for (int i = 0; attachments != null && i < attachments.length(); i++) {
+            JSONObject attachment = attachments.getJSONObject(i);
+            appendHtmlMessageField(canonical, attachment.optString("path")); //$NON-NLS-1$
+            appendHtmlMessageField(canonical, attachment.optString("mime")); //$NON-NLS-1$
+            appendHtmlMessageField(canonical, Long.toString(attachment.optLong("size", -1))); //$NON-NLS-1$
+            appendHtmlMessageField(canonical, attachment.optString("sha256")); //$NON-NLS-1$
+        }
+        return CaptureIntegrity.sha256Text(canonical.toString());
+    }
+
+    private String htmlCaptureRootHash(JSONArray messages, String htmlSha256, String annotationsSha256,
+            String reconciliationSha256, String conversationKey, String sourceFingerprint, JSONObject sourceMetadata, String ipedVersion,
+            String pluginVersion, String startAnchor, String endAnchor) throws IOException {
+        StringBuilder canonical = new StringBuilder("html-message-v1-root\n"); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, htmlSha256);
+        appendHtmlMessageField(canonical, annotationsSha256);
+        appendHtmlMessageField(canonical, reconciliationSha256);
+        appendHtmlMessageField(canonical, conversationKey);
+        appendHtmlMessageField(canonical, sourceFingerprint);
+        appendHtmlMessageField(canonical, sourceMetadata == null ? "" : sourceMetadata.optString("name")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, sourceMetadata == null ? "" : Long.toString(sourceMetadata.optLong("size", -1))); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, sourceMetadata == null ? "" : sourceMetadata.optString("type")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, sourceMetadata == null ? "" : sourceMetadata.optString("itemHash")); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, sourceMetadata == null ? "" : Boolean.toString(sourceMetadata.optBoolean("deleted", false))); //$NON-NLS-1$
+        appendHtmlMessageField(canonical, ipedVersion);
+        appendHtmlMessageField(canonical, pluginVersion);
+        appendHtmlMessageField(canonical, startAnchor);
+        appendHtmlMessageField(canonical, endAnchor);
+        for (int i = 0; i < messages.length(); i++) {
+            JSONObject message = messages.getJSONObject(i);
+            appendHtmlMessageField(canonical, message.optString("key")); //$NON-NLS-1$
+            appendHtmlMessageField(canonical, message.optString("messageHash")); //$NON-NLS-1$
+        }
+        return CaptureIntegrity.sha256Text(canonical.toString());
+    }
+
+    private void appendHtmlMessageField(StringBuilder canonical, String value) {
+        String field = value == null ? "" : value; //$NON-NLS-1$
+        canonical.append(field.length()).append(':').append(field).append('\n');
+    }
+
+    private static class DecodedHtmlAttachment {
+        final String mime; final byte[] bytes; final String sha256; final String extension; final String name; final long size;
+        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension) {
+            this(mime, bytes, sha256, extension, bytes == null ? 0 : bytes.length);
+        }
+        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension, long size) {
+            this.mime = mime;
+            this.bytes = bytes;
+            this.sha256 = sha256;
+            this.extension = extension;
+            this.name = sha256 + "." + extension;
+            this.size = size;
+        }
+    }
+
+    private static class ReusableAttachment {
+        final Path path;
+        final String sha256;
+        final long size;
+        ReusableAttachment(Path path, String sha256, long size) {
+            this.path = path;
+            this.sha256 = sha256;
+            this.size = size;
         }
     }
 
@@ -2385,16 +3631,16 @@ if (Files.isRegularFile(manifest)) {
                 entry.contactsCount = (int) jsonLongField(counts, "contacts", 0L); //$NON-NLS-1$
             }
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$
+            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             entry.chatId = inferChatId(entry.title);
-            entry.sizeBytes = jsonLongField(source, "tamanho", 0); //$NON-NLS-1$
+            entry.sizeBytes = jsonLongField(source, "size", jsonLongField(source, "tamanho", 0)); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         Path coordinates = captureDir.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
         if ((entry.title == null || entry.title.isBlank()) && Files.isRegularFile(coordinates)) {
             String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$
+            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             entry.chatId = inferChatId(entry.title);
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
         }
@@ -3588,6 +4834,10 @@ out.println("{"); //$NON-NLS-1$
     }
 
     private void appendIntegrityHistory(Path newCapture, Path previousCapture) throws IOException {
+        appendIntegrityHistory(newCapture, previousCapture, "recapture_completed"); //$NON-NLS-1$
+    }
+
+    private void appendIntegrityHistory(Path newCapture, Path previousCapture, String action) throws IOException {
         Path oldPath = previousCapture.resolve("integridade.json"); //$NON-NLS-1$
         JSONObject previous = null;
         if (Files.isRegularFile(oldPath)) {
@@ -3597,7 +4847,7 @@ out.println("{"); //$NON-NLS-1$
                 LOGGER.warn("Previous integrity history is invalid for {}; keeping a new local history", previousCapture, e); //$NON-NLS-1$
             }
         }
-        JSONObject next = CaptureIntegrity.integrityRecord(newCapture, previous, "recapture_completed", CHAT_CAPTURE_PLUGIN_VERSION);
+        JSONObject next = CaptureIntegrity.integrityRecord(newCapture, previous, action, CHAT_CAPTURE_PLUGIN_VERSION);
         Path target = newCapture.resolve("integridade.json"); //$NON-NLS-1$
         CaptureIntegrity.writeAtomically(newCapture, target, next.toString(2) + System.lineSeparator());
     }
@@ -5511,6 +6761,32 @@ String status;
         }
     }
 
+    private static class CaptureRangeValidation {
+        final CaptureBoundaryResolver.Resolution start;
+        final CaptureBoundaryResolver.Resolution end;
+        final String errorCode;
+
+        private CaptureRangeValidation(CaptureBoundaryResolver.Resolution start,
+                CaptureBoundaryResolver.Resolution end, String errorCode) {
+            this.start = start;
+            this.end = end;
+            this.errorCode = errorCode == null ? "" : errorCode; //$NON-NLS-1$
+        }
+
+        static CaptureRangeValidation success(CaptureBoundaryResolver.Resolution start,
+                CaptureBoundaryResolver.Resolution end) {
+            return new CaptureRangeValidation(start, end, ""); //$NON-NLS-1$
+        }
+
+        static CaptureRangeValidation error(String errorCode) {
+            return new CaptureRangeValidation(null, null, errorCode);
+        }
+
+        boolean valid() {
+            return errorCode.isEmpty() && start != null && end != null;
+        }
+    }
+
     private static class RecaptureJob {
         String folder = ""; //$NON-NLS-1$
         Path folderPath;
@@ -5531,10 +6807,21 @@ String status;
         List<String> luceneQueries = new ArrayList<>();
 String invalidReason;
         boolean valid;
+        boolean htmlMessageCapture;
+        boolean legacyCapture;
+        boolean migrateLegacyToHtml;
+        boolean resetLegacyRecords;
         boolean legacyAnnotations = true;
+        Map<String, List<ReusableAttachment>> reusableAttachmentsByHashAndSize;
+        Path reusableAttachmentStaging;
+        final Set<String> stagedReusableAttachmentPaths = new HashSet<>();
         JSONObject captureFingerprint;
         JSONObject artifactGenerators;
         JSONArray expectedArtifacts;
+
+        boolean targetHtmlMessageCapture() {
+            return htmlMessageCapture || (legacyCapture && migrateLegacyToHtml);
+        }
 
         String displayLabel() {
             String base = folder + " | " + (title == null || title.isBlank() ? chatId : title) //$NON-NLS-1$

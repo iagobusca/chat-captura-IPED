@@ -16,13 +16,24 @@ import java.util.concurrent.ExecutionException;
 import java.util.regex.*;
 import java.util.function.IntConsumer;
 import javax.swing.*;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.2.8";
+    private static final String VERIFIER_VERSION = "1.3.4";
+    private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();";
+    private static final String LEGACY_CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}window.addEventListener('hashchange',function(){if(location.hash.indexOf('#preview-')!==0)stop();});document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-close'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-close'))stop();});})();";
+    private static final String CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-Pq7vIvwsQpte7OdNyOYYE9cKIEPmIFR7E/G7kB1JaJI='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
+    private static final String LEGACY_CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-sKvM90tshBmGWhuFsz3phQvtsDNpZr1gyyGXQe4mJDE='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
     private static final int MAX_METADATA_BYTES = 16 * 1024 * 1024;
     private static final int MAX_CAPTURE_FILES = 25010;
     private static final int MAX_RELATIVE_PATH_CHARS = 4096;
@@ -31,6 +42,7 @@ public final class IntegrityVerifier {
     private static final long MAX_SELECTED_ITEMS = 25000L;
     private static final long MAX_SELECTED_METADATA_BYTES = 32L * 1024L * 1024L;
     private static final long MAX_REPORT_ESTIMATED_CHARS = 4L * 1024L * 1024L;
+    private static final long MAX_HTML_CAPTURE_BYTES = 64L * 1024L * 1024L;
     private static Image verifierIcon() {
         // tenta carregar de "imagem doc/verificador-icon.png" relativo ao jar/dir de execucao
         String[] candidates = new String[] {
@@ -95,7 +107,7 @@ public final class IntegrityVerifier {
         writeReports(root, selected, setHash, generated, history);
         String hashList=publicHashList(selected,setHash);
         Path historyFile=root.resolve("integridade").resolve("historico-capturas.txt");
-        if(mode==1)comparePublicHistory(history,historyPublicHash);
+        if(mode==1)comparePublicHistory(history,historyPublicHash,selected);
         showSummaryDialog(root,selected,setHash,history,historyPublicHash,hashList,historyFile,mode);
         System.exit(0);
     }
@@ -191,12 +203,13 @@ public final class IntegrityVerifier {
         }
     }
     private static void openFile(Path file) { try { if(!Desktop.isDesktopSupported())throw new IOException("A abertura de arquivos não está disponível.");Desktop.getDesktop().open(file.toFile()); } catch(Exception e){JOptionPane.showMessageDialog(null,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);} }
-    private static void comparePublicHistory(String localHistory,String localHash) throws Exception {
-        JTextField publicHash=new JTextField(36);JTextArea publicRecord=new JTextArea(14,44);publicRecord.setLineWrap(false);JLabel result=new JLabel("Cole o SHA-256 público ou o histórico completo recebido por canal confiável.");
+    private static void comparePublicHistory(String localHistory,String localHash,List<Capture> selected) throws Exception {
+        JTextField publicHash=new JTextField(36);JTextArea publicRecord=new JTextArea(8,44);publicRecord.setLineWrap(false);JTextArea publicManifest=new JTextArea(8,44);publicManifest.setLineWrap(false);JTextArea manifestResult=new JTextArea(6,44);manifestResult.setEditable(false);manifestResult.setLineWrap(false);JLabel result=new JLabel("Cole o SHA-256 público ou o histórico completo recebido por canal confiável.");
         JButton compareHash=new JButton("Comparar hash público");compareHash.addActionListener(e->{String supplied=publicHash.getText().trim();boolean match=supplied.matches("(?i)[0-9a-f]{64}")&&supplied.equalsIgnoreCase(localHash);result.setText(supplied.isEmpty()?"Informe o hash público.":!supplied.matches("(?i)[0-9a-f]{64}")?"Formato inválido: informe 64 caracteres hexadecimais.":match?"CONFERE: o hash público corresponde ao histórico completo calculado.":"DIVERGE: o hash público não corresponde ao histórico calculado.");result.setForeground(supplied.isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
         JButton compareRecord=new JButton("Comparar histórico completo");compareRecord.addActionListener(e->{String supplied=publicRecord.getText();boolean match=!supplied.trim().isEmpty()&&normalizePublicRecord(supplied).equals(normalizePublicRecord(localHistory));result.setText(supplied.trim().isEmpty()?"Cole o histórico público completo.":match?"CONFERE: o registro público corresponde integralmente ao histórico calculado.":"DIVERGE: o registro público não corresponde ao histórico calculado.");result.setForeground(supplied.trim().isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
+        JButton compareMessages=new JButton("Comparar manifesto por mensagem");compareMessages.addActionListener(e->{compareMessages.setEnabled(false);manifestResult.setText("Comparando mensagens…");SwingWorker<String,Void> worker=new SwingWorker<String,Void>(){protected String doInBackground()throws Exception{return comparePublicMessageManifests(selected,publicManifest.getText());}protected void done(){try{manifestResult.setText(get());}catch(Exception failure){Throwable cause=failure.getCause()==null?failure:failure.getCause();manifestResult.setText("Comparação inconclusiva: "+(cause.getMessage()==null?cause.getClass().getSimpleName():cause.getMessage()));}compareMessages.setEnabled(true);}};worker.execute();});
         JButton copyHash=new JButton("Copiar hash calculado");
-        JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Cole o hash público ou copie o hash calculado:"));JPanel hashRow=new JPanel(new java.awt.BorderLayout(8,0));hashRow.add(copyHash,java.awt.BorderLayout.WEST);hashRow.add(publicHash,java.awt.BorderLayout.CENTER);panel.add(hashRow);panel.add(compareHash);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Ou cole abaixo o arquivo completo historico-capturas.txt:"));panel.add(new JScrollPane(publicRecord));panel.add(compareRecord);panel.add(result);
+        JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Cole o hash público ou copie o hash calculado:"));JPanel hashRow=new JPanel(new java.awt.BorderLayout(8,0));hashRow.add(copyHash,java.awt.BorderLayout.WEST);hashRow.add(publicHash,java.awt.BorderLayout.CENTER);panel.add(hashRow);panel.add(compareHash);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Ou cole abaixo o arquivo completo historico-capturas.txt:"));panel.add(new JScrollPane(publicRecord));panel.add(compareRecord);panel.add(result);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Manifesto JSON público de uma captura html-message-v1:"));panel.add(new JScrollPane(publicManifest));panel.add(compareMessages);panel.add(new JScrollPane(manifestResult));
         final CountDownLatch latch=new CountDownLatch(1);
         JFrame frame2=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Integridade Público",true);
         copyHash.addActionListener(e->copyToClipboard(frame2,localHash,"SHA-256 público do histórico copiado."));
@@ -206,6 +219,40 @@ public final class IntegrityVerifier {
         latch.await();
         frame2.dispose();
     }
+    private static String comparePublicMessageManifests(List<Capture> selected,String supplied)throws Exception{
+        if(selected==null||selected.size()!=1)throw new IOException("Selecione exatamente uma captura para a comparação por mensagem.");
+        Capture localCapture=selected.get(0);return comparePublicMessageManifest(localCapture.dir.resolve("manifest.json"),localCapture.name,supplied);
+    }
+    static String comparePublicMessageManifest(Path localPath,String localName,String supplied)throws Exception{
+        JSONObject local=parseBoundedJson(readUtf8Limited(localPath),localPath);
+        if(!"html-message-v1".equals(local.optString("captureFormat")))throw new IOException("A captura selecionada não usa html-message-v1.");
+        if(supplied==null||supplied.trim().isEmpty())throw new IOException("Cole o manifest.json público da captura.");
+        if(supplied.getBytes(StandardCharsets.UTF_8).length>MAX_METADATA_BYTES)throw new IOException("O manifesto público excede 16 MiB.");
+        JSONObject reference=parseBoundedJson(supplied,Paths.get("manifesto-publico.json"));
+        if(reference.optInt("schemaVersion",0)!=1||!"html-message-v1".equals(reference.optString("captureFormat"))||!local.optString("ipedVersion").equals(reference.optString("ipedVersion")))throw new IOException("Formato, esquema ou versão do IPED não corresponde à captura local.");
+        if(!local.optString("conversationKey").equals(reference.optString("conversationKey")))throw new IOException("O manifesto público pertence a outra origem ou conversa.");
+        JSONArray localRows=local.optJSONArray("messageHashes"),referenceRows=reference.optJSONArray("messageHashes");
+        if(localRows==null||referenceRows==null||localRows.length()!=local.optInt("messageCount",-1)||referenceRows.length()!=reference.optInt("messageCount",-1)||referenceRows.length()>MAX_SELECTED_ITEMS)throw new IOException("Resumo público de mensagens ausente ou acima do limite.");
+        String reconciliation=reference.optString("reconciliationSha256","");if(!reconciliation.isEmpty()&&!reconciliation.matches("(?i)[0-9a-f]{64}"))throw new IOException("Hash de reconciliação pública inválido.");
+        if(!reference.optString("htmlSha256","").matches("(?i)[0-9a-f]{64}")||!reference.optString("sourceFingerprint","").matches("(?i)[0-9a-f]{64}")||!reference.optString("captureRootHash","").matches("(?i)[0-9a-f]{64}")||reference.optJSONObject("sourceMetadata")==null||reference.optJSONObject("anchors")==null)throw new IOException("Campos necessários para validar o manifesto público estão ausentes.");
+        Map<String,String> localByKey=publicMessageMap(localRows),referenceByKey=publicMessageMap(referenceRows),localById=publicMessageDomMap(localRows),referenceById=publicMessageDomMap(referenceRows);
+        String computed=htmlCaptureRootHash(referenceRows,reference.optString("htmlSha256",""),reference.optString("annotationsSha256",""),reconciliation,reference);
+        if(!computed.equalsIgnoreCase(reference.optString("captureRootHash","")))throw new IOException("Hash raiz do manifesto público não confere com o resumo por mensagem.");
+        int same=0,changed=0,notInReference=0,referenceOnly=0;StringBuilder output=new StringBuilder();
+        for(Map.Entry<String,String> entry:localById.entrySet()){
+            String other=referenceById.get(entry.getKey());String state;
+            if(other==null){state="ausente_na_referencia";notInReference++;}
+            else if(other.equalsIgnoreCase(entry.getValue())){state="integra";same++;}
+            else{state="hash_divergente";changed++;}
+            output.append(entry.getKey()).append('|').append(state).append('\n');
+        }
+        for(String id:referenceById.keySet())if(!localById.containsKey(id)){referenceOnly++;output.append(id).append("|somente_na_referencia\n");}
+        return "Captura local: "+localName+"\nIntegras: "+same+" | divergentes: "+changed+" | ausentes na referência: "+notInReference+" | somente na referência: "+referenceOnly+"\nA ausência descreve a comparação; não identifica causa nem autoria.\n\n"+output.toString();
+    }
+    private static Map<String,String> publicMessageMap(JSONArray rows)throws IOException{
+        Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row==null)throw new IOException("Entrada inválida no resumo público.");String id=row.optString("domId",""),key=row.optString("key",""),hash=row.optString("messageHash","");if(!id.matches("[0-9]{1,32}")||!key.matches("(?i)[0-9a-f]{64}")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(key,hash)!=null)throw new IOException("ID, chave ou hash inválido/duplicado no resumo público.");}return result;
+    }
+    private static Map<String,String> publicMessageDomMap(JSONArray rows)throws IOException{Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);String id=row==null?"":row.optString("domId",""),hash=row==null?"":row.optString("messageHash","");if(!id.matches("[0-9]{1,32}")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(id,hash)!=null)throw new IOException("ID DOM inválido ou duplicado no resumo público.");}return result;}
     private static String normalizePublicRecord(String s){String n=s.replace("\r\n","\n").replace('\r','\n');while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
     private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(c.name).append('|').append(c.hash).append('\n');return out.toString();}
     private static void copyToClipboard(java.awt.Component owner,String value,String message){
@@ -242,12 +289,34 @@ public final class IntegrityVerifier {
     }
     private static void verify(Capture c) throws Exception {verify(c,MAX_CAPTURE_FILES);}
     private static void verify(Capture c,int maxItemsAllowed) throws Exception {
+        Path formatManifest=c.dir.resolve("manifest.json");
+        JSONObject format=null;
+        if(Files.isRegularFile(formatManifest,LinkOption.NOFOLLOW_LINKS)){
+            format=parseBoundedJson(readUtf8Limited(formatManifest),formatManifest);
+        }
         Path integrityPath=c.dir.resolve("integridade.json");
         JSONObject integrity=null;
         if(Files.isRegularFile(integrityPath, LinkOption.NOFOLLOW_LINKS)) {
             c.integrityFileHash=hash(integrityPath);
             try { integrity=parseBoundedJson(readUtf8Limited(integrityPath),integrityPath); }
             catch(RuntimeException invalid) { c.historyStatus="registro inválido"; }
+        }
+        if(format!=null&&"html-message-v1".equals(format.optString("captureFormat"))){
+            verifyMessageCapture(c,format);
+            String messageManifestStatus=c.historyStatus;
+            if(integrity!=null&&integrity.optInt("schemaVersion",0)>=2){
+                verifyHistory(c,integrity);
+                validateMigrationIntegrity(c,format,integrity);
+                String localHistoryStatus=c.historyStatus;
+                c.historyStatus=localHistoryStatus+"; "+messageManifestStatus;
+            }else{
+                if(format.has("migration"))
+                    throw new IOException("Uma captura migrada precisa de uma cadeia local de integridade para validar migration.json.");
+                if(Files.exists(c.dir.resolve("migration.json"),LinkOption.NOFOLLOW_LINKS)
+                        ||Files.exists(c.dir.resolve("legacy-annotations.json"),LinkOption.NOFOLLOW_LINKS))
+                    throw new IOException("Artefato legado de migração sem metadados no manifesto.");
+            }
+            return;
         }
         if(integrity!=null && integrity.optInt("schemaVersion",0)>=2) verifyHistory(c,integrity);
         Path inventoryFile=Files.isRegularFile(c.dir.resolve("integridade.json"),LinkOption.NOFOLLOW_LINKS)?c.dir.resolve("integridade.json"):c.dir.resolve("manifest.json");
@@ -282,6 +351,272 @@ public final class IntegrityVerifier {
         c.hash=hex(canonical.digest());
         c.items.sort(Comparator.comparing(i->i.path));
     }
+
+    private static void validateMigrationIntegrity(Capture c,JSONObject manifest,JSONObject integrity)throws Exception{
+        JSONObject migration=manifest.optJSONObject("migration");
+        Path migrationPath=resolve(c.dir,"migration.json");
+        Path annotationsPath=resolve(c.dir,"legacy-annotations.json");
+        if(migration==null){
+            if(Files.exists(c.dir.resolve("migration.json"),LinkOption.NOFOLLOW_LINKS)
+                    ||Files.exists(c.dir.resolve("legacy-annotations.json"),LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("Artefato legado de migração sem metadados no manifesto.");
+            return;
+        }
+        if(migration.optInt("schemaVersion",0)!=1
+                ||!"legacy_screenshot_capture_migrated_to_html_message_v1".equals(migration.optString("action"))
+                ||!"legacy-screenshot".equals(migration.optString("sourceFormat"))
+                ||!migration.optString("previousManifestSha256","").matches("(?i)[0-9a-f]{64}")
+                ||!migration.optString("anchorsRecoveredFrom","").equals("manifest-and-whatsapp-coordinates")
+                ||(!migration.optString("previousIntegrityContentRootHash","").isEmpty()
+                    &&!migration.optString("previousIntegrityContentRootHash").matches("(?i)[0-9a-f]{64}"))
+                ||(!migration.optString("previousIntegrityRecordHash","").isEmpty()
+                    &&!migration.optString("previousIntegrityRecordHash").matches("(?i)[0-9a-f]{64}")))
+            throw new IOException("Metadados da migração legada são inválidos.");
+        String migrationFile=manifest.optString("migrationFile","");
+        String migrationSha=manifest.optString("migrationSha256","");
+        if(!"migration.json".equals(migrationFile)||!migrationSha.matches("(?i)[0-9a-f]{64}")
+                ||migrationPath==null||!Files.isRegularFile(migrationPath,LinkOption.NOFOLLOW_LINKS)
+                ||Files.size(migrationPath)>MAX_METADATA_BYTES||!hash(migrationPath).equalsIgnoreCase(migrationSha))
+            throw new IOException("Arquivo migration.json ausente ou divergente do manifesto.");
+        JSONObject migrationFileJson=parseBoundedJson(readUtf8Limited(migrationPath),migrationPath);
+        if(migrationFileJson.optInt("schemaVersion",0)!=1||!migration.keySet().equals(migrationFileJson.keySet()))
+            throw new IOException("Schema ou campos de migration.json divergem do manifesto.");
+        String[] stringFields={"action","sourceFormat","previousIntegrityContentRootHash","previousIntegrityRecordHash",
+                "previousManifestSha256","anchorsRecoveredFrom"};
+        for(String name:stringFields)if(!migration.optString(name,"").equals(migrationFileJson.optString(name,"")))
+            throw new IOException("manifest.json e migration.json divergem no campo "+name+".");
+        if(migration.optBoolean("legacyAnnotationsPreserved",false)!=migrationFileJson.optBoolean("legacyAnnotationsPreserved",false))
+            throw new IOException("Manifesto e migration.json divergem sobre as anotações preservadas.");
+
+        JSONArray artifacts=integrity.optJSONArray("artifacts");
+        JSONObject migrationEntry=findIntegrityArtifact(artifacts,"migration.json");
+        if(migrationEntry==null||migrationEntry.optLong("size",-1)!=Files.size(migrationPath)
+                ||!migrationEntry.optString("sha256","").equalsIgnoreCase(hash(migrationPath)))
+            throw new IOException("migration.json não está vinculado ao inventário da cadeia local de integridade.");
+        addIntegrityArtifactItem(c,"migration.json",migrationEntry,"registro de migração íntegro");
+
+        boolean annotationsPreserved=migration.optBoolean("legacyAnnotationsPreserved",false);
+        boolean annotationsExist=annotationsPath!=null&&Files.isRegularFile(annotationsPath,LinkOption.NOFOLLOW_LINKS);
+        if(annotationsPreserved!=annotationsExist)throw new IOException("Arquivo de anotações legadas diverge dos metadados da migração.");
+        if(annotationsPreserved){
+            if(Files.size(annotationsPath)>MAX_METADATA_BYTES)throw new IOException("Anotações legadas excedem o limite de metadados.");
+            parseBoundedJson(readUtf8Limited(annotationsPath),annotationsPath);
+            JSONObject annotationEntry=findIntegrityArtifact(artifacts,"legacy-annotations.json");
+            if(annotationEntry==null||annotationEntry.optLong("size",-1)!=Files.size(annotationsPath)
+                    ||!annotationEntry.optString("sha256","").equalsIgnoreCase(hash(annotationsPath)))
+                throw new IOException("legacy-annotations.json não está vinculado à cadeia local de integridade.");
+            addIntegrityArtifactItem(c,"legacy-annotations.json",annotationEntry,"anotações legadas preservadas");
+        }else if(findIntegrityArtifact(artifacts,"legacy-annotations.json")!=null){
+            throw new IOException("Inventário declara anotações legadas que o manifesto não marcou como preservadas.");
+        }
+        c.fileCount+=(annotationsPreserved?2:1);
+        c.bytes+=Files.size(migrationPath)+(annotationsPreserved?Files.size(annotationsPath):0);
+        if(c.fileCount>MAX_CAPTURE_FILES||c.bytes>MAX_HTML_CAPTURE_BYTES)
+            throw new IOException("Artefatos de migração excedem os limites totais da captura.");
+    }
+
+    private static JSONObject findIntegrityArtifact(JSONArray artifacts,String path){
+        for(int i=0;artifacts!=null&&i<artifacts.length();i++){
+            JSONObject row=artifacts.optJSONObject(i);
+            if(row!=null&&path.equals(row.optString("path","")))return row;
+        }
+        return null;
+    }
+
+    private static void addIntegrityArtifactItem(Capture c,String path,JSONObject expected,String state)throws Exception{
+        Item item=new Item();item.path=path;item.expected=expected.optString("sha256","");item.size=expected.optLong("size",-1);
+        Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS))throw new IOException("Artefato local ausente: "+path);
+        item.actual=hash(file);item.bytes=Files.size(file);item.state=item.actual.equalsIgnoreCase(item.expected)&&item.bytes==item.size?state:"alterado";c.items.add(item);
+    }
+
+    private static void verifyMessageCapture(Capture c,JSONObject manifest) throws Exception {
+        if(manifest.optInt("schemaVersion",0)!=1||!"4.3.1".equals(manifest.optString("ipedVersion"))||!"completed".equals(manifest.optString("status"))||!"complete".equals(manifest.optString("state")))throw new IOException("Formato de captura HTML, estado ou versão IPED incompatível.");
+        JSONObject sourceMetadata=manifest.optJSONObject("sourceMetadata"),anchors=manifest.optJSONObject("anchors");
+        if(sourceMetadata==null||anchors==null||sourceMetadata.optString("name","").length()>1024||sourceMetadata.optLong("size",-1)<0||sourceMetadata.optString("type","").length()>256||sourceMetadata.optString("itemHash","").length()>128||!manifest.optString("sourceFingerprint","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("conversationKey","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("captureRootHash","").matches("(?i)[0-9a-f]{64}"))throw new IOException("Metadados de origem, âncoras ou hashes do manifesto são inválidos.");
+        String messagesName=manifest.optString("messagesFile","");if(!"messages.json".equals(messagesName))throw new IOException("Arquivo de mensagens inválido.");
+        Path messagesPath=resolve(c.dir,messagesName);if(messagesPath==null)throw new IOException("Caminho do manifesto de mensagens inválido.");
+        JSONObject wrapper=parseBoundedJson(readUtf8Limited(messagesPath),messagesPath);JSONArray messages=wrapper.optJSONArray("messages");
+        if(messages==null||messages.length()!=manifest.optInt("messageCount",-1))throw new IOException("Contagem de mensagens diverge do manifesto.");
+        if(messages.length()>MAX_SELECTED_ITEMS)throw new IOException("Captura excede o limite global de mensagens.");
+        Set<String> ids=new HashSet<>(),keys=new HashSet<>(),attachmentPaths=new HashSet<>();Map<String,String> attachmentMimeByPath=new HashMap<>();Map<String,JSONObject> currentMessages=new HashMap<>();Map<String,Integer> naturalOrdinals=new HashMap<>();long attachmentBytes=0;
+        for(int n=0;n<messages.length();n++){
+            JSONObject row=messages.optJSONObject(n);if(row==null||row.optInt("order",-1)!=n)throw new IOException("Ordem/estrutura inválida em messages.json, índice "+n);
+            String id=row.optString("domId",""),key=row.optString("key",""),messageHash=row.optString("messageHash","");
+            if(!id.matches("[0-9]{1,32}")||!key.matches("(?i)[0-9a-f]{64}")||!messageHash.matches("(?i)[0-9a-f]{64}")||!ids.add(id)||!keys.add(key))throw new IOException("ID/chave duplicada ou hash inválido na mensagem "+n);
+            String conversation=manifest.optString("conversationKey","");if(!conversation.matches("(?i)[0-9a-f]{64}"))throw new IOException("Chave de conversa inválida.");
+            String natural=row.optString("timestamp","")+"\n"+row.optString("sender","")+"\n"+row.optString("direction","")+"\n"+row.optString("type","");
+            int expectedOrdinal=naturalOrdinals.containsKey(natural)?naturalOrdinals.get(natural):0;naturalOrdinals.put(natural,expectedOrdinal+1);
+            if(row.optInt("duplicateOrdinal",-1)!=expectedOrdinal||row.optString("text","").length()>1024*1024)throw new IOException("Ordinal duplicado ou texto excessivo na mensagem "+id);
+            String expectedKey=hashText(conversation+"\n"+id+"\n"+natural+"\n"+expectedOrdinal);if(!key.equalsIgnoreCase(expectedKey))throw new IOException("Chave de identidade divergente na mensagem "+id);
+            JSONArray attachments=row.optJSONArray("attachments");
+            if(attachments==null)throw new IOException("Lista de anexos ausente na mensagem "+id);
+            for(int i=0;i<attachments.length();i++){
+                JSONObject attachment=attachments.optJSONObject(i);if(attachment==null)throw new IOException("Anexo inválido na mensagem "+id);
+                String path=attachment.optString("path",""),mime=attachment.optString("mime",""),sha=attachment.optString("sha256","");long size=attachment.optLong("size",-1);
+                if(!path.matches("attachments/[0-9a-fA-F]{64}\\.(?:png|jpe?g|gif|webp|ogg|wav|mp3|mp4|webm|pdf|zip|docx|xlsx|pptx|doc|xls|ppt|txt|csv|rar|7z|bin)")||!mime.matches("(?i)(?:image/(?:png|jpeg|gif|webp)|audio/(?:ogg|wav|mpeg)|video/(?:mp4|webm)|application/(?:pdf|zip|msword|vnd\\.ms-(?:excel|powerpoint)|vnd\\.openxmlformats-officedocument\\.(?:wordprocessingml\\.document|spreadsheetml\\.sheet|presentationml\\.presentation)|vnd\\.rar|x-7z-compressed|octet-stream)|text/(?:plain|csv))")||!sha.matches("(?i)[0-9a-f]{64}")||!path.substring("attachments/".length()).split("\\.",2)[0].equalsIgnoreCase(sha)||size<1||size>MAX_METADATA_BYTES)throw new IOException("Metadado de anexo inválido na mensagem "+id);
+                Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)!=size||!hash(file).equalsIgnoreCase(sha)||!mimeSignatureMatches(mime,file))throw new IOException("Anexo divergente ou MIME incompatível na mensagem "+id+": "+path);
+                String oldMime=attachmentMimeByPath.putIfAbsent(path,mime);if(oldMime!=null&&!oldMime.equalsIgnoreCase(mime))throw new IOException("Um mesmo anexo possui MIME divergente entre mensagens: "+path);
+                if(attachmentPaths.add(path)){attachmentBytes+=size;if(attachmentBytes>MAX_METADATA_BYTES*4L)throw new IOException("Anexos da captura excedem o orçamento seguro.");Item attachmentItem=new Item();attachmentItem.path=path;attachmentItem.expected=sha;attachmentItem.actual=sha;attachmentItem.bytes=size;attachmentItem.state="anexo íntegro";c.items.add(attachmentItem);}
+            }
+            if(!messageHash.equalsIgnoreCase(htmlMessageHash(row)))throw new IOException("Hash da mensagem diverge: "+id);
+            currentMessages.put(key,row);
+            Item item=new Item();item.path="mensagem:"+id;item.expected=messageHash;item.actual=messageHash;item.state="mensagem estruturada";item.bytes=row.optString("text","").getBytes(StandardCharsets.UTF_8).length;c.items.add(item);
+        }
+        if(messages.length()==0||!anchors.optString("start","").equals(messages.getJSONObject(0).optString("domId"))||!anchors.optString("end","").equals(messages.getJSONObject(messages.length()-1).optString("domId")))throw new IOException("Âncoras do manifesto não correspondem aos limites da captura.");
+        if((long)messages.length()+attachmentPaths.size()>MAX_SELECTED_ITEMS)throw new IOException("Mensagens e anexos excedem o limite global de itens.");
+        JSONArray publicHashes=manifest.optJSONArray("messageHashes");if(publicHashes==null||publicHashes.length()!=messages.length())throw new IOException("Resumo público de hashes por mensagem ausente ou divergente.");for(int i=0;i<messages.length();i++){JSONObject summary=publicHashes.optJSONObject(i),message=messages.getJSONObject(i);if(summary==null||!summary.optString("domId","").equals(message.optString("domId"))||!summary.optString("key","").equals(message.optString("key"))||!summary.optString("messageHash","").equalsIgnoreCase(message.optString("messageHash")))throw new IOException("Resumo público de hash diverge da mensagem "+message.optString("domId"));}
+        Path htmlPath=c.dir.resolve("whatsapp.html");if(!Files.isRegularFile(htmlPath,LinkOption.NOFOLLOW_LINKS))throw new IOException("HTML da captura não encontrado.");
+        if(Files.size(htmlPath)>MAX_METADATA_BYTES*4L)throw new IOException("HTML da captura excede o limite de leitura segura.");
+        String html=readUtf8Limited(htmlPath);String htmlSha=manifest.optString("htmlSha256","");if(!htmlSha.matches("(?i)[0-9a-f]{64}")||!hash(htmlPath).equalsIgnoreCase(htmlSha))throw new IOException("Hash do HTML ausente ou divergente.");
+        validateRenderedCaptureHtml(html,attachmentPaths,attachmentMimeByPath,keys,manifest.optInt("presentationVersion",0));
+        String annotationsSha=manifest.optString("annotationsSha256","");if(!annotationsSha.isEmpty()){if(!annotationsSha.matches("(?i)[0-9a-f]{64}"))throw new IOException("Hash de anotações inválido.");Path annotationPath=resolve(c.dir,"annotations.json");if(annotationPath==null||!Files.isRegularFile(annotationPath,LinkOption.NOFOLLOW_LINKS)||Files.size(annotationPath)>MAX_METADATA_BYTES||!hash(annotationPath).equalsIgnoreCase(annotationsSha))throw new IOException("Arquivo de anotações ausente, excessivo ou divergente.");parseBoundedJson(readUtf8Limited(annotationPath),annotationPath);Item annotationsItem=new Item();annotationsItem.path="annotations.json";annotationsItem.expected=annotationsSha;annotationsItem.actual=annotationsSha;annotationsItem.bytes=Files.size(annotationPath);annotationsItem.state="anotações íntegras";c.items.add(annotationsItem);}else if(Files.exists(c.dir.resolve("annotations.json"),LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo de anotações sem hash no manifesto.");
+        String reconciliationSha=manifest.optString("reconciliationSha256","");
+        Map<String,String> reconciliationStates=verifyMessageReconciliation(c,manifest,currentMessages,reconciliationSha);
+        for(Item item:c.items){if(item.path.startsWith("mensagem:")){String id=item.path.substring("mensagem:".length());String state=reconciliationStates.get(id);if(state!=null)item.state=state;}}
+        c.hash=htmlCaptureRootHash(messages,htmlSha,annotationsSha,reconciliationSha,manifest);
+        c.items.sort(Comparator.comparing(i->i.path));c.fileCount=messages.length()+attachmentPaths.size()+2+(annotationsSha.isEmpty()?0:1)+(reconciliationSha.isEmpty()?0:1);c.bytes=Files.size(htmlPath)+Files.size(messagesPath)+Files.size(c.dir.resolve("manifest.json"))+attachmentBytes+(annotationsSha.isEmpty()?0:Files.size(c.dir.resolve("annotations.json")))+(reconciliationSha.isEmpty()?0:Files.size(c.dir.resolve("message-reconciliation.json")));if(c.bytes>MAX_HTML_CAPTURE_BYTES||c.fileCount>MAX_CAPTURE_FILES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
+        c.historyStatus=manifest.optString("captureRootHash","").equalsIgnoreCase(c.hash)?"consistente com registro local (manifesto de mensagens)":"manifesto de mensagens requer referência pública";
+    }
+
+    private static void validateRenderedCaptureHtml(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,int presentationVersion)throws Exception{
+        if(presentationVersion==0){validateLegacyRenderedHtml(html,attachmentPaths,messageKeys);return;}
+        if(presentationVersion!=2)throw new IOException("Versão de apresentação HTML desconhecida.");
+        String csp=validateCaptureMeta(html,true);
+        Matcher scripts=Pattern.compile("(?is)<script\\b([^>]*)>(.*?)</script\\s*>").matcher(html);int scriptCount=0;String script="";while(scripts.find()){scriptCount++;if(!scripts.group(1).trim().isEmpty())throw new IOException("Atributos de script não são permitidos.");script=scripts.group(2);}Matcher scriptOpen=Pattern.compile("(?is)<script\\b").matcher(html);int scriptOpenCount=0;while(scriptOpen.find())scriptOpenCount++;if(scriptCount!=1||scriptOpenCount!=1)throw new IOException("HTML deve conter somente um script fixo de mídia.");boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(script),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(script);if(!currentScript&&!legacyScript)throw new IOException("HTML contém script diferente dos scripts fixos autorizados.");if(currentScript&&!CAPTURE_CSP.equals(csp)||legacyScript&&!LEGACY_CAPTURE_CSP.equals(csp))throw new IOException("A CSP não corresponde ao script fixo autorizado.");
+        validateHtmlStructure(html,attachmentPaths,mimeByPath,messageKeys,true);
+        Matcher styles=Pattern.compile("(?is)<style\\b[^>]*>(.*?)</style\\s*>").matcher(html);int styleCount=0;while(styles.find()){styleCount++;validateCaptureCss(styles.group(1));}if(styleCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
+    }
+
+    private static void validateLegacyRenderedHtml(String html,Set<String> attachmentPaths,Set<String> messageKeys)throws Exception{
+        validateCaptureMeta(html,false);
+        if(Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math)\\b|\\son[a-z0-9_-]+\\s*=|javascript:").matcher(html).find())throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
+        validateHtmlStructure(html,attachmentPaths,Collections.emptyMap(),messageKeys,false);
+        Matcher styles=Pattern.compile("(?is)<style\\b[^>]*>(.*?)</style\\s*>").matcher(html);while(styles.find())validateCaptureCss(styles.group(1));
+    }
+
+    private static String validateCaptureMeta(String html,boolean modern)throws IOException{
+        Matcher tags=Pattern.compile("(?is)<meta\\b([^>]*)>").matcher(html);int count=0,charset=0,csp=0;
+        String legacyCsp="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'";
+        String cspContent="";
+        while(tags.find()){
+            count++;Map<String,String> attrs=parseHtmlAttributes(tags.group(1));
+            if(attrs.containsKey("charset")){
+                if(attrs.size()!=1||!"utf-8".equalsIgnoreCase(attrs.get("charset")))throw new IOException("Meta charset fora da allowlist.");charset++;
+            }else if(attrs.containsKey("http-equiv")){
+                String content=attrs.get("content");boolean allowed=modern?(CAPTURE_CSP.equals(content)||LEGACY_CAPTURE_CSP.equals(content)):legacyCsp.equals(content);
+                if(attrs.size()!=2||!"content-security-policy".equalsIgnoreCase(attrs.get("http-equiv"))||!allowed)throw new IOException("Política CSP ausente ou não canônica.");csp++;cspContent=content;
+            }else throw new IOException("Meta não permitido no HTML da captura.");
+        }
+        if(modern?(count!=2||charset!=1||csp!=1):!((count==0)||(count==2&&charset==1&&csp==1)))throw new IOException("Quantidade de metadados HTML fora da allowlist.");
+        return cspContent;
+    }
+
+    private static Map<String,String> parseHtmlAttributes(String input)throws IOException{
+        Map<String,String> attrs=new HashMap<>();Matcher matcher=Pattern.compile("(?is)([a-z_:][a-z0-9_:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+)))?").matcher(input);int end=0;
+        while(matcher.find()){String gap=input.substring(end,matcher.start()).trim();if(!gap.isEmpty()&&!gap.matches("(?is)/?"))throw new IOException("Atributo HTML malformado.");String name=matcher.group(1).toLowerCase(Locale.ROOT);String value=matcher.group(2)!=null?matcher.group(2):matcher.group(3)!=null?matcher.group(3):matcher.group(4)!=null?matcher.group(4):"";if(attrs.put(name,value)!=null)throw new IOException("Atributo HTML duplicado.");end=matcher.end();}
+        String tail=input.substring(end).trim();if(!tail.isEmpty()&&!tail.matches("(?is)/?"))throw new IOException("Atributo HTML sem valor entre aspas.");return attrs;
+    }
+
+    private static void validateHtmlStructure(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,boolean modern)throws Exception{
+        Matcher tags=Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b([^>]*)>").matcher(html);Set<String> ids=new HashSet<>(),renderedKeys=new HashSet<>(),resources=new HashSet<>();List<String> pendingFragments=new ArrayList<>();
+        while(tags.find()){
+            String tag=tags.group(1).toLowerCase(Locale.ROOT);Map<String,String> attrs=parseHtmlAttributes(tags.group(2));
+            if("meta".equals(tag)||"script".equals(tag))continue;
+            if("object".equals(tag)||"embed".equals(tag)||"form".equals(tag)||"link".equals(tag)||"base".equals(tag)||"svg".equals(tag)||"math".equals(tag))throw new IOException("HTML contém elemento ativo ou não permitido.");
+            for(String name:attrs.keySet())if(name.startsWith("on")||"style".equals(name)||"srcdoc".equals(name)||"action".equals(name)||"formaction".equals(name))throw new IOException("HTML contém atributo ativo não permitido.");
+            String id=attrs.get("id");if(id!=null&&!ids.add(id))throw new IOException("HTML contém ID duplicado.");
+            String key=attrs.get("data-capture-message-key");if(key!=null&&!renderedKeys.add(key))throw new IOException("HTML contém chave de mensagem duplicada.");
+            if("iframe".equals(tag)){
+                if(!modern||!attrs.containsKey("src")||!attrs.containsKey("sandbox")||attrs.size()>4||!Arrays.asList("class","title","src","sandbox").containsAll(attrs.keySet())||!"".equals(attrs.get("sandbox"))||!"application/pdf".equals(mimeByPath.get(attrs.get("src"))))throw new IOException("Pré-visualização PDF não está confinada por sandbox vazio.");
+            }
+            if(("audio".equals(tag)||"video".equals(tag))&&modern){String prefix="audio".equals(tag)?"audio/":"video/";if(!attrs.containsKey("controls")||attrs.containsKey("autoplay")||!"none".equals(attrs.get("preload")))throw new IOException("Controles de mídia exigem preload none e sem autoplay.");String mediaPath=attrs.get("src");if(mediaPath!=null&&!mimeByPath.getOrDefault(mediaPath,"").startsWith(prefix))throw new IOException("MIME da mídia não corresponde ao player.");}
+            for(String attr:new String[]{"src","href","poster","action","formaction"}){
+                String value=attrs.get(attr);if(value==null)continue;
+                if("href".equals(attr)&&value.startsWith("#")){String fragment=value.substring(1);if(!fragment.isEmpty())pendingFragments.add(fragment);continue;}
+                if(value.startsWith("data:")){
+                    if(!modern||!"src".equals(attr)||!"img".equals(tag)||!validateEmbeddedImage(value))throw new IOException("Imagem embutida HTML não validada.");continue;
+                }
+                if(!("src".equals(attr)||"href".equals(attr))||!attachmentPaths.contains(value))throw new IOException("HTML contém URL externa, absoluta ou recurso não inventariado: "+attr);
+                resources.add(value);
+                String mime=mimeByPath.get(value);
+                if(modern&&"img".equals(tag)&&"src".equals(attr)&&(mime==null||!mime.startsWith("image/")))throw new IOException("Imagem HTML não corresponde ao MIME inventariado.");
+                if("iframe".equals(tag)&&!"application/pdf".equals(mime))throw new IOException("Iframe só pode referenciar PDF inventariado.");
+            }
+            if(attrs.containsKey("target")&&(!"_blank".equals(attrs.get("target"))||!Arrays.asList(attrs.getOrDefault("rel","").toLowerCase(Locale.ROOT).split("\\s+")).containsAll(Arrays.asList("noopener","noreferrer"))))throw new IOException("Link em nova aba sem noopener/noreferrer.");
+        }
+        if(!renderedKeys.equals(messageKeys))throw new IOException("HTML não corresponde exatamente às mensagens do manifesto.");
+        if(!resources.equals(attachmentPaths))throw new IOException("Recursos locais do HTML não correspondem aos anexos do manifesto.");
+        for(String fragment:pendingFragments)if(!ids.contains(fragment))throw new IOException("Link de fragmento sem destino único: #"+fragment);
+    }
+
+    private static boolean validateEmbeddedImage(String uri)throws IOException{
+        Matcher m=Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp));base64,([a-z0-9+/=\\r\\n]+)$").matcher(uri);if(!m.matches())return false;byte[] bytes;try{bytes=Base64.getMimeDecoder().decode(m.group(2));}catch(IllegalArgumentException invalid){return false;}if(bytes.length==0||bytes.length>8*1024*1024)return false;String mime=m.group(1).toLowerCase(Locale.ROOT);if(captureRasterSignatureMatches(mime,bytes))return true;return "image/jpg".equals(mime)&&captureRasterSignatureMatches("image/png",bytes);
+    }
+
+    private static void validateCaptureCss(String css)throws Exception{
+        if(css.getBytes(StandardCharsets.UTF_8).length>2*1024*1024||Pattern.compile("(?i)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:").matcher(css).find())throw new IOException("CSS da captura contém regra ativa ou excede o limite.");
+        Pattern urlPattern=Pattern.compile("(?is)url\\(\\s*([\\\"']?)(.*?)\\1\\s*\\)");Matcher urls=urlPattern.matcher(css);String clean=urlPattern.matcher(css).replaceAll("");if(Pattern.compile("(?i)url\\s*\\(").matcher(clean).find())throw new IOException("URL CSS malformada.");long total=0;
+        while(urls.find()){Matcher image=Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp|svg\\+xml));base64,([a-z0-9+/=\\r\\n]+)$").matcher(urls.group(2).trim());if(!image.matches())throw new IOException("CSS contém dependência externa ou URL não permitida.");byte[] bytes;try{bytes=Base64.getMimeDecoder().decode(image.group(2));}catch(IllegalArgumentException invalid){throw new IOException("Base64 inválido em recurso CSS.",invalid);}if(bytes.length==0||bytes.length>8*1024*1024)throw new IOException("Imagem CSS acima de 8 MiB.");total+=bytes.length;if(total>16*1024*1024)throw new IOException("Imagens CSS acima de 16 MiB no total.");String mime=image.group(1).toLowerCase(Locale.ROOT);if("image/svg+xml".equals(mime))validateCaptureSvg(bytes);else if(!captureRasterSignatureMatches(mime,bytes))throw new IOException("Assinatura/MIME divergente em imagem CSS.");}
+    }
+
+    private static boolean captureRasterSignatureMatches(String mime,byte[] b){if("image/jpg".equals(mime))mime="image/jpeg";if("image/png".equals(mime))return b.length>=8&&(b[0]&255)==0x89&&b[1]=='P'&&b[2]=='N'&&b[3]=='G'&&b[4]==13&&b[5]==10&&b[6]==26&&b[7]==10;if("image/jpeg".equals(mime))return b.length>=3&&(b[0]&255)==0xff&&(b[1]&255)==0xd8&&(b[2]&255)==0xff;if("image/gif".equals(mime))return b.length>=6&&("GIF87a".equals(new String(b,0,6,StandardCharsets.US_ASCII))||"GIF89a".equals(new String(b,0,6,StandardCharsets.US_ASCII)));return "image/webp".equals(mime)&&b.length>=12&&"RIFF".equals(new String(b,0,4,StandardCharsets.US_ASCII))&&"WEBP".equals(new String(b,8,4,StandardCharsets.US_ASCII));}
+
+    private static void validateCaptureSvg(byte[] bytes)throws Exception{
+        if(bytes.length>512*1024)throw new IOException("SVG CSS acima de 512 KiB.");String xml=new String(bytes,StandardCharsets.UTF_8);if(Pattern.compile("(?i)<!\\s*(?:DOCTYPE|ENTITY)").matcher(xml).find())throw new IOException("SVG não pode conter DTD ou entidade.");DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true);f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD,"");f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");Document d=f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(xml)));Element root=d.getDocumentElement();if(root==null||!"svg".equalsIgnoreCase(root.getLocalName()==null?root.getTagName():root.getLocalName()))throw new IOException("Raiz SVG inválida.");NodeList all=d.getElementsByTagName("*");if(all.getLength()>4096)throw new IOException("SVG excede 4.096 elementos.");for(int i=0;i<all.getLength();i++){Element e=(Element)all.item(i);String name=e.getLocalName()==null?e.getTagName():e.getLocalName();if("script".equalsIgnoreCase(name)||"foreignObject".equalsIgnoreCase(name)||"iframe".equalsIgnoreCase(name)||"object".equalsIgnoreCase(name)||"embed".equalsIgnoreCase(name))throw new IOException("SVG contém elemento ativo.");NamedNodeMap attrs=e.getAttributes();for(int j=0;j<attrs.getLength();j++){Node a=attrs.item(j);String n=a.getNodeName().toLowerCase(Locale.ROOT),v=a.getNodeValue();if(n.startsWith("on")||(("href".equals(n)||n.endsWith(":href")||"src".equals(n))&&!v.startsWith("#"))||Pattern.compile("(?i)url\\s*\\(\\s*(?:https?:|file:|javascript:|//)").matcher(v).find())throw new IOException("SVG contém referência externa ou evento.");}}
+    }
+
+    private static String htmlMessageHash(JSONObject message)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-message\n");appendHtmlField(canonical,message.optString("domId",""));appendHtmlField(canonical,Integer.toString(message.optInt("order",-1)));appendHtmlField(canonical,message.optString("timestamp",""));appendHtmlField(canonical,message.optString("sender",""));appendHtmlField(canonical,message.optString("direction",""));appendHtmlField(canonical,message.optString("type",""));appendHtmlField(canonical,Integer.toString(message.optInt("duplicateOrdinal",-1)));appendHtmlField(canonical,message.optString("text",""));appendHtmlField(canonical,message.optString("classes",""));JSONArray attachments=message.optJSONArray("attachments");for(int i=0;attachments!=null&&i<attachments.length();i++){JSONObject a=attachments.getJSONObject(i);appendHtmlField(canonical,a.optString("path",""));appendHtmlField(canonical,a.optString("mime",""));appendHtmlField(canonical,Long.toString(a.optLong("size",-1)));appendHtmlField(canonical,a.optString("sha256",""));}return hashText(canonical.toString());}
+    private static boolean mimeSignatureMatches(String mime,Path file)throws IOException{
+        byte[] b=new byte[12];int length=0;
+        try(InputStream in=Files.newInputStream(file)){while(length<b.length){int n=in.read(b,length,b.length-length);if(n<0)break;length+=n;}}
+        if("image/png".equalsIgnoreCase(mime))return length>=8&&(b[0]&255)==0x89&&b[1]=='P'&&b[2]=='N'&&b[3]=='G'&&b[4]==13&&b[5]==10&&b[6]==26&&b[7]==10;
+        if("image/jpeg".equalsIgnoreCase(mime))return length>=3&&(b[0]&255)==0xff&&(b[1]&255)==0xd8&&(b[2]&255)==0xff;
+        if("image/gif".equalsIgnoreCase(mime)){String s=length<6?"":new String(b,0,6,StandardCharsets.US_ASCII);return "GIF87a".equals(s)||"GIF89a".equals(s);}
+        if("image/webp".equalsIgnoreCase(mime))return length>=12&&"RIFF".equals(new String(b,0,4,StandardCharsets.US_ASCII))&&"WEBP".equals(new String(b,8,4,StandardCharsets.US_ASCII));
+        if("audio/ogg".equalsIgnoreCase(mime))return length>=4&&"OggS".equals(new String(b,0,4,StandardCharsets.US_ASCII));
+        if("audio/wav".equalsIgnoreCase(mime))return length>=12&&"RIFF".equals(new String(b,0,4,StandardCharsets.US_ASCII))&&"WAVE".equals(new String(b,8,4,StandardCharsets.US_ASCII));
+        if("audio/mpeg".equalsIgnoreCase(mime)){boolean id3=length>=3&&"ID3".equals(new String(b,0,3,StandardCharsets.US_ASCII));boolean frame=length>=2&&(b[0]&255)==0xff&&(b[1]&0xe0)==0xe0;return id3||frame;}
+        if("video/mp4".equalsIgnoreCase(mime))return length>=8&&"ftyp".equals(new String(b,4,4,StandardCharsets.US_ASCII));
+        if("video/webm".equalsIgnoreCase(mime))return length>=4&&(b[0]&255)==0x1a&&(b[1]&255)==0x45&&(b[2]&255)==0xdf&&(b[3]&255)==0xa3;
+        if("application/pdf".equalsIgnoreCase(mime))return length>=5&&"%PDF-".equals(new String(b,0,5,StandardCharsets.US_ASCII));
+        if("application/zip".equalsIgnoreCase(mime)||mime.toLowerCase(Locale.ROOT).startsWith("application/vnd.openxmlformats-officedocument."))return length>=4&&b[0]=='P'&&b[1]=='K'&&(b[2]==3||b[2]==5||b[2]==7);
+        if("application/msword".equalsIgnoreCase(mime)||"application/vnd.ms-excel".equalsIgnoreCase(mime)||"application/vnd.ms-powerpoint".equalsIgnoreCase(mime))return length>=8&&(b[0]&255)==0xd0&&(b[1]&255)==0xcf&&(b[2]&255)==0x11&&(b[3]&255)==0xe0&&(b[4]&255)==0xa1&&(b[5]&255)==0xb1&&(b[6]&255)==0x1a&&(b[7]&255)==0xe1;
+        if("application/vnd.rar".equalsIgnoreCase(mime))return length>=7&&"Rar!\u001a\u0007".equals(new String(b,0,6,StandardCharsets.US_ASCII));
+        if("application/x-7z-compressed".equalsIgnoreCase(mime))return length>=6&&(b[0]&255)==0x37&&(b[1]&255)==0x7a&&(b[2]&255)==0xbc&&(b[3]&255)==0xaf&&(b[4]&255)==0x27&&(b[5]&255)==0x1c;
+        if("application/octet-stream".equalsIgnoreCase(mime))return file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".bin");
+        if("text/plain".equalsIgnoreCase(mime)||"text/csv".equalsIgnoreCase(mime)){for(int i=0;i<length;i++)if(b[i]==0)return false;return true;}
+        return false;
+    }
+    private static Map<String,String> verifyMessageReconciliation(Capture c,JSONObject manifest,Map<String,JSONObject> currentMessages,String reconciliationSha)throws Exception{
+        Map<String,String> statesById=new HashMap<>();String reconciliationName=manifest.optString("reconciliationFile","");Path path=c.dir.resolve("message-reconciliation.json");
+        if(reconciliationSha.isEmpty()){
+            if(!reconciliationName.isEmpty()||Files.exists(path,LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo de reconciliação sem hash no manifesto.");
+            return statesById;
+        }
+        if(!reconciliationSha.matches("(?i)[0-9a-f]{64}")||!"message-reconciliation.json".equals(reconciliationName)||!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)||Files.size(path)>MAX_METADATA_BYTES||!hash(path).equalsIgnoreCase(reconciliationSha))throw new IOException("Arquivo de reconciliação ausente, excessivo ou divergente.");
+        JSONObject reconciliation=parseBoundedJson(readUtf8Limited(path),path);JSONArray entries=reconciliation.optJSONArray("entries");
+        if(reconciliation.optInt("schemaVersion",0)!=1||!"html-message-v1".equals(reconciliation.optString("captureFormat"))||entries==null||entries.length()>MAX_SELECTED_ITEMS*2)throw new IOException("Estrutura de reconciliação inválida.");
+        String previousRoot=reconciliation.optString("previousCaptureRootHash","");String previousReconciliation=reconciliation.optString("previousReconciliationSha256","");String source=reconciliation.optString("currentSourceFingerprint","");
+        if(!previousRoot.matches("(?i)[0-9a-f]{64}")||(!previousReconciliation.isEmpty()&&!previousReconciliation.matches("(?i)[0-9a-f]{64}"))||!source.equalsIgnoreCase(manifest.optString("sourceFingerprint","")))throw new IOException("Origem ou hash anterior inválido na reconciliação.");
+        Set<String> seen=new HashSet<>();int unchanged=0,changed=0,missing=0,added=0;
+        for(int i=0;i<entries.length();i++){
+            JSONObject entry=entries.optJSONObject(i);if(entry==null)throw new IOException("Registro de reconciliação inválido.");
+            String key=entry.optString("key",""),state=entry.optString("state",""),previous=entry.optString("previousMessageHash",""),current=entry.optString("currentMessageHash",""),id=entry.optString("domId","");
+            if(!key.matches("(?i)[0-9a-f]{64}")||!seen.add(key)||!id.matches("[0-9]{1,32}"))throw new IOException("Chave/ID duplicado ou inválido na reconciliação.");
+            JSONObject currentMessage=currentMessages.get(key);String actualCurrent=currentMessage==null?"":currentMessage.optString("messageHash","");
+            if(!actualCurrent.equalsIgnoreCase(current))throw new IOException("Hash atual da reconciliação não corresponde à captura: "+id);
+            if("unchanged".equals(state)){if(!previous.matches("(?i)[0-9a-f]{64}")||!previous.equalsIgnoreCase(current)||currentMessage==null)throw new IOException("Estado unchanged inválido na mensagem "+id);unchanged++;statesById.put(id,"inalterada desde a captura anterior");}
+            else if("changed".equals(state)){if(!previous.matches("(?i)[0-9a-f]{64}")||!current.matches("(?i)[0-9a-f]{64}")||previous.equalsIgnoreCase(current)||currentMessage==null)throw new IOException("Estado changed inválido na mensagem "+id);changed++;statesById.put(id,"alterada desde a captura anterior");}
+            else if("missing_in_current_source".equals(state)){if(!previous.matches("(?i)[0-9a-f]{64}")||!current.isEmpty()||currentMessage!=null)throw new IOException("Estado missing inválido na mensagem "+id);missing++;Item absent=new Item();absent.path="mensagem-ausente:"+id;absent.expected=previous;absent.actual="";absent.state="não encontrada na fonte atual";c.items.add(absent);}
+            else if("new_in_interval".equals(state)){if(!previous.isEmpty()||!current.matches("(?i)[0-9a-f]{64}")||currentMessage==null)throw new IOException("Estado new inválido na mensagem "+id);added++;statesById.put(id,"adicionada desde a captura anterior");}
+            else throw new IOException("Estado desconhecido na reconciliação: "+state);
+        }
+        for(Map.Entry<String,JSONObject> current:currentMessages.entrySet())if(!seen.contains(current.getKey()))throw new IOException("Mensagem atual ausente da reconciliação: "+current.getValue().optString("domId",""));
+        JSONObject counts=reconciliation.optJSONObject("counts");if(counts==null||counts.optInt("unchanged",-1)!=unchanged||counts.optInt("changed",-1)!=changed||counts.optInt("missingInCurrentSource",-1)!=missing||counts.optInt("newInInterval",-1)!=added)throw new IOException("Contagens da reconciliação divergem dos registros.");
+        Item report=new Item();report.path="message-reconciliation.json";report.expected=reconciliationSha;report.actual=reconciliationSha;report.bytes=Files.size(path);report.state="reconciliação por mensagem íntegra";c.items.add(report);return statesById;
+    }
+    private static String htmlCaptureRootHash(JSONArray messages,String htmlSha,String annotationsSha,String reconciliationSha,JSONObject manifest)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-root\n");appendHtmlField(canonical,htmlSha);appendHtmlField(canonical,annotationsSha);appendHtmlField(canonical,reconciliationSha);appendHtmlField(canonical,manifest.optString("conversationKey",""));appendHtmlField(canonical,manifest.optString("sourceFingerprint",""));JSONObject source=manifest.optJSONObject("sourceMetadata");appendHtmlField(canonical,source==null?"":source.optString("name",""));appendHtmlField(canonical,source==null?"":Long.toString(source.optLong("size",-1)));appendHtmlField(canonical,source==null?"":source.optString("type",""));appendHtmlField(canonical,source==null?"":source.optString("itemHash",""));appendHtmlField(canonical,source==null?"":Boolean.toString(source.optBoolean("deleted",false)));appendHtmlField(canonical,manifest.optString("ipedVersion",""));appendHtmlField(canonical,manifest.optString("pluginVersion",""));JSONObject anchors=manifest.optJSONObject("anchors");appendHtmlField(canonical,anchors==null?"":anchors.optString("start",""));appendHtmlField(canonical,anchors==null?"":anchors.optString("end",""));for(int i=0;i<messages.length();i++){JSONObject message=messages.getJSONObject(i);appendHtmlField(canonical,message.optString("key",""));appendHtmlField(canonical,message.optString("messageHash",""));}return hashText(canonical.toString());}
+    private static void appendHtmlField(StringBuilder canonical,String value){String field=value==null?"":value;canonical.append(field.length()).append(':').append(field).append('\n');}
     private static void verifyHistory(Capture c,JSONObject record) throws Exception {
         JSONArray artifacts=record.optJSONArray("artifacts"), events=record.optJSONArray("events");
         if(artifacts==null||events==null||events.length()==0){c.historyStatus="registro incompleto";return;}

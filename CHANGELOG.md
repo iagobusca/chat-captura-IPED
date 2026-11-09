@@ -4,6 +4,100 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.5.5-beta] - 2026-11-08
+
+### Adicionado
+
+- Re-Extrair pode migrar capturas legadas em frames para `html-message-v1` por meio do toggle opt-in **Migrar capturas legadas para HTML por mensagem**, disponível em todas as páginas da seleção.
+- Toggle dependente **Limpar registros e criar como nova captura**, que inicia a nova captura em `capture_created` e descarta a cadeia, os registros de reconciliação, a auditoria e as anotações da captura anterior.
+- Preservação das anotações legadas em `legacy-annotations.json` quando o histórico é mantido, com registro de `migration.legacyAnnotationsPreserved` no manifesto; as anotações não são vinculadas automaticamente às mensagens novas.
+- Reuso de anexos legados no modo limpo somente após conferir SHA-256 e tamanho; MIME, nome, tipo e caminho são recalculados pela origem atual.
+- Verificador de Integridade 1.3.4, que valida a cadeia local também em capturas `html-message-v1` e exige o vínculo de `migration.json` e `legacy-annotations.json` ao inventário.
+
+### Modificado
+
+- A primeira migração registra a proveniência da captura legada e não afirma que as mensagens dos frames eram iguais às da fonte atual; depois da migração, a comparação por hash de mensagens permite ignorar intervalos sem alteração.
+- Capturas já em `html-message-v1` com `changed`, `missingInCurrentSource` e `newInInterval` iguais a zero não são substituídas; a candidata é descartada e a auditoria registra `recapture_skipped_content_unchanged`.
+- A promoção usa pasta temporária irmã, renomeia a pasta antiga para uma pasta transacional e restaura o nome original se a promoção falhar.
+
+### Segurança
+
+- A migração é bloqueada antes de processar o primeiro item quando há pasta de imagens de referência para censura, pois o formato HTML ainda não aplica blur por similaridade.
+- `migration.json` e `legacy-annotations.json` entram no inventário de `integridade.json`; o Verificador detecta alteração no registro de migração mesmo que o manifesto seja atualizado junto.
+- Nenhum arquivo da pasta legada é alterado antes de a candidata passar na validação de manifesto, HTML, mensagens, anexos e inventário.
+
+## [2.5.4-beta] - 2026-11-07
+
+### Corrigido
+
+- Fechar o preview de imagem, áudio, vídeo, documento ou arquivo restaura a posição anterior do chat; os controles “Fechar” e “×” usam a navegação nativa do fragmento para fechar o modal no WebView do IPED.
+- O script fixo do HTML captura a rolagem ao abrir o preview e a restaura depois do evento `hashchange`, preservando a pausa de áudio e vídeo ao fechar.
+
+## [2.5.3-beta] - 2026-11-07
+
+### Corrigido
+
+- O cabeçalho preservado do IPED agora normaliza o MIME de cada imagem embutida pela assinatura dos bytes. Isso corrige avatares PNG fornecidos como `data:image/jpg`, que eram rejeitados pelo Verificador como imagem embutida HTML inválida.
+- Adicionado teste de regressão que confirma a rejeição do MIME divergente e a aceitação da imagem normalizada pelo Verificador 1.3.2.
+
+## [2.5.2-beta] - 2026-11-07
+
+### Corrigido
+
+- O menu não permite marcar um separador de data como mensagem final; datas continuam válidas como início e são resolvidas para a primeira mensagem seguinte.
+- Start valida IDs numéricos únicos e a ordem do intervalo antes de instalar verificadores ou iniciar o worker; o worker repete a validação para detectar mudanças no DOM.
+- Falhas de validação não atualizam os índices da pasta de capturas. Capturas HTML e PNG são preparadas em staging e só promovidas quando o inventário está completo.
+- Mensagens localizadas distinguem marcador ausente, ambíguo, fora de ordem e data sem mensagem seguinte.
+- O instalador confere os bundles já compilados e atualiza os idiomas externos sem reescrever o JAR.
+
+## [2.5.1-beta] - 2026-11-07
+
+### Corrigido
+
+- Captura HTML não falha ao validar o SVG do tema WhatsApp com o Xerces 2.12.2 do IPED 4.3.1; o parser rejeita DTD e referências externas usando recursos compatíveis com essa implementação.
+- Pacote mantém `org.json` 20260719 também com o nome legado `json-20250517.jar`, evitando `NoClassDefFoundError` em classpaths fixos do IPED.
+- Testes de contrato acompanham a assinatura atual do sanitizador SVG.
+
+## [2.5.0-beta] - 2026-11-07
+
+### Adicionado
+
+- Apresentação autônoma de `html-message-v1` com tema WhatsApp preservado do IPED 4.3.1, limitada às mensagens selecionadas.
+- Modal local para imagem, PDF, documentos e arquivos, com ações de baixar/abrir; áudio e vídeo usam controles sem reprodução automática.
+
+### Corrigido
+
+- Ao fechar o modal ou navegar para fora dele, a mídia é pausada e reiniciada.
+- CSP, CSS, anexos, SVGs e preview PDF são validados pelo Verificador 1.3.1; somente o script fixo com hash autorizado é aceito.
+
+## [2.4.1-beta] - 2026-11-07
+
+### Corrigido
+
+- Marcador de início colocado sobre uma data agora resolve para a primeira mensagem seguinte, registra a ID numérica no manifesto para o Re-Extrair e evita `start_anchor_missing_or_ambiguous` e capturas vazias.
+- Seleção da origem do Verificador agora exige SHA-256 autorizado; cópias antigas em `iped/lib` não são propagadas para a pasta de captura.
+- Substituição dos verificadores inválidos usa arquivo temporário, confere o hash e promove o arquivo somente após a validação.
+
+## [2.4.0-beta] - 2026-11-07
+
+### Adicionado
+
+- Formato `html-message-v1` para novas capturas: HTML offline do intervalo, `messages.json`, chaves e hashes canônicos por mensagem e anexos locais identificados por SHA-256.
+- Verificação específica do formato HTML por mensagem no Verificador de Integridade 1.3.0, incluindo ordem, IDs, caminhos confinados, hashes de anexos e hash-raiz.
+- Extração de anexos que o HTML do caso referencia por `app.open('sha-256:...')`, incluindo imagem, áudio, vídeo, PDF, Office, arquivos compactados e itens genéricos `.bin` suportados.
+- Reconciliação do Re-Extrair com registro por mensagem: inalterada, alterada, nova, ausente na fonte atual ou ambígua.
+
+### Modificado
+
+- Re-Extrair reconhece capturas HTML e localiza as âncoras pelos IDs DOM registrados antes de promover uma captura temporária.
+- A impressão digital da origem usa os bytes do HTML fonte; anexos são resolvidos pelo hash SHA-256 do item do caso.
+- A propriedade `-Diped.chat.capture.htmlMessageV1=false` desativa novas capturas no formato novo durante a beta. Capturas já em `html-message-v1` continuam usando Re-Extrair nesse formato.
+- A censura por similaridade ainda não foi portada para HTML; a captura HTML é interrompida com aviso enquanto uma pasta de blur estiver ativa, evitando salvar mídia sem a censura solicitada.
+
+### Segurança
+
+- A sanitização remove conteúdo ativo e URLs externas; anexos são limitados, conferidos contra o hash do item IPED, verificados por assinatura/MIME e gravados dentro de `attachments/`.
+
 ## [2.3.6-beta] - 2026-11-06
 
 ### Otimizado
@@ -15,7 +109,7 @@ Mudanças relevantes do plugin.
 - Corrigida a falha que impedia a janela de seleção do Re-Extrair de abrir quando os descritores descartavam as âncoras.
 - Atualizados os hashes aceitos para o Verificador 1.2.8; binários antigos 1.2.7 deixam de ser aceitos.
 
-### Incluído
+### Adicionado
 
 - Plugin Chat Captura IPED 2.3.6-beta e pacote do instalador atualizado.
 - Verificador de Integridade 1.2.8 em JAR e EXE; hashes publicados em `versao_hash.md`.

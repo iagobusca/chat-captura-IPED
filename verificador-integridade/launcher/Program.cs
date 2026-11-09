@@ -1,4 +1,4 @@
-// Versão 1.2.8 — runtime atualizado e extração/verificação do pacote com execução concorrente isolada.
+// Versão 1.3.4 — valida o histórico de integridade de capturas HTML por mensagem e a proveniência de migrações legadas.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
