@@ -1419,6 +1419,11 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             job.priorCensorshipDigest = priorCensorship == null ? "" : priorCensorship.optString("presentationDigest", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             job.htmlMessageCapture = "html-message-v1".equals(savedManifest.optString("captureFormat")); //$NON-NLS-1$ //$NON-NLS-2$
             job.legacyCapture = !job.htmlMessageCapture;
+            // Legacy captures may store the numeric message ids separately; enrich anchors with them.
+            if (job.legacyCapture) {
+                if (job.startAnchor.id.isBlank()) job.startAnchor.id = safe(job.startMessageId);
+                if (job.endAnchor.id.isBlank()) job.endAnchor.id = safe(job.endMessageId);
+            }
             job.legacyAnnotations = !job.htmlMessageCapture && jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
             job.status = jsonField(content, "status"); //$NON-NLS-1$
             job.startMessageId = jsonField(content, "startMessageId"); //$NON-NLS-1$
@@ -2300,8 +2305,9 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         if (job == null || job.luceneQueries == null || job.luceneQueries.isEmpty()) {
             return false;
         }
-        if (!job.htmlMessageCapture && (!job.startAnchor.isUsable() || !job.endAnchor.isUsable())) {
-            LOGGER.warn("Skipping recapture job without usable anchors: {}", job.folder); //$NON-NLS-1$
+        if (!job.htmlMessageCapture && job.startAnchor.id.isBlank() && job.endAnchor.id.isBlank()
+                && !job.startAnchor.isUsable() && !job.endAnchor.isUsable()) {
+            LOGGER.warn("Skipping recapture job without usable anchors or saved ids: {}", job.folder); //$NON-NLS-1$
             return false;
         }
         for (String query : job.luceneQueries) {
@@ -2359,6 +2365,20 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         }
         executeScriptAndWait("window.scrollTo(0,0);"); //$NON-NLS-1$
         sleep(600);
+
+        // Fallback: if the legacy capture saved numeric message ids, try to locate them directly
+        // before relying on the slower anchor-resolution script.
+        if (job.startMessageId != null && !job.startMessageId.isBlank()
+                && job.endMessageId != null && !job.endMessageId.isBlank()) {
+            String direct = "(function(a,b){return document.getElementById(a)&&document.getElementById(b)?a+'|'+b:'|';})(" //$NON-NLS-1$
+                    + js(job.startMessageId) + "," + js(job.endMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+            Object directResult = executeScriptAndWait(direct);
+            RecaptureLocatedRange directRange = RecaptureLocatedRange.parse(directResult == null ? "|" : directResult.toString()); //$NON-NLS-1$
+            if (!directRange.startId.isBlank() && !directRange.endId.isBlank()) {
+                LOGGER.info("Recapture DOM resolved directly for {}: {} -> {}", job.folder, directRange.startId, directRange.endId); //$NON-NLS-1$
+                return directRange;
+            }
+        }
 
         RecaptureLocatedRange lastRange = new RecaptureLocatedRange("", ""); //$NON-NLS-1$ //$NON-NLS-2$
         double lastY = -1;
@@ -7004,6 +7024,9 @@ String invalidReason;
 
         boolean isUsable() {
             normalized();
+            if (!id.isBlank()) {
+                return true;
+            }
             return !date.isBlank() && (!hash.isBlank() || !text.isBlank());
         }
 
