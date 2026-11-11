@@ -7400,7 +7400,10 @@ String invalidReason;
             List<Path> candidates = Arrays.asList(
                     Path.of(System.getProperty("user.dir", "."), "../plugins/opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
                     Path.of(System.getProperty("user.dir", "."), "plugins/opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
-                    Path.of("..", "plugins", "opencv_java4120.dll")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    Path.of(System.getProperty("user.dir", "."), "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
+                    Path.of(System.getProperty("user.dir", "."), "lib", "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    Path.of("..", "plugins", "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    Path.of("..", "opencv_java4120.dll")); //$NON-NLS-1$ //$NON-NLS-2$
             for (Path candidate : candidates) {
                 Path absolute = candidate.toAbsolutePath().normalize();
                 if (Files.isRegularFile(absolute)) {
@@ -7409,6 +7412,15 @@ String invalidReason;
                     LOGGER.info("OpenCV loaded for sensitive image blur: {}", Core.VERSION); //$NON-NLS-1$
                     return;
                 }
+            }
+            // Fallback: try loading from system library path.
+            try {
+                System.loadLibrary("opencv_java4120"); //$NON-NLS-1$
+                opencvLoaded = true;
+                LOGGER.info("OpenCV loaded via System.loadLibrary: {}", Core.VERSION); //$NON-NLS-1$
+                return;
+            } catch (UnsatisfiedLinkError e) {
+                LOGGER.warn("System.loadLibrary(opencv_java4120) failed: {}", e.getMessage()); //$NON-NLS-1$
             }
             throw new IOException("opencv_java4120.dll nao encontrada na pasta plugins"); //$NON-NLS-1$
         }
