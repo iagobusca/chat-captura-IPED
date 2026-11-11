@@ -107,7 +107,7 @@ public final class IntegrityVerifier {
         writeReports(root, selected, setHash, generated, history);
         String hashList=publicHashList(selected,setHash);
         Path historyFile=root.resolve("integridade").resolve("historico-capturas.txt");
-        if(mode==1)comparePublicHistory(history,historyPublicHash,selected);
+        if(mode==1)comparePublicHistory(history,historyPublicHash);
         showSummaryDialog(root,selected,setHash,history,historyPublicHash,hashList,historyFile,mode);
         System.exit(0);
     }
@@ -203,25 +203,72 @@ public final class IntegrityVerifier {
         }
     }
     private static void openFile(Path file) { try { if(!Desktop.isDesktopSupported())throw new IOException("A abertura de arquivos não está disponível.");Desktop.getDesktop().open(file.toFile()); } catch(Exception e){JOptionPane.showMessageDialog(null,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);} }
-    private static void comparePublicHistory(String localHistory,String localHash,List<Capture> selected) throws Exception {
-        JTextField publicHash=new JTextField(36);JTextArea publicRecord=new JTextArea(8,44);publicRecord.setLineWrap(false);JTextArea publicManifest=new JTextArea(8,44);publicManifest.setLineWrap(false);JTextArea manifestResult=new JTextArea(6,44);manifestResult.setEditable(false);manifestResult.setLineWrap(false);JLabel result=new JLabel("Cole o SHA-256 público ou o histórico completo recebido por canal confiável.");
-        JButton compareHash=new JButton("Comparar hash público");compareHash.addActionListener(e->{String supplied=publicHash.getText().trim();boolean match=supplied.matches("(?i)[0-9a-f]{64}")&&supplied.equalsIgnoreCase(localHash);result.setText(supplied.isEmpty()?"Informe o hash público.":!supplied.matches("(?i)[0-9a-f]{64}")?"Formato inválido: informe 64 caracteres hexadecimais.":match?"CONFERE: o hash público corresponde ao histórico completo calculado.":"DIVERGE: o hash público não corresponde ao histórico calculado.");result.setForeground(supplied.isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
-        JButton compareRecord=new JButton("Comparar histórico completo");compareRecord.addActionListener(e->{String supplied=publicRecord.getText();boolean match=!supplied.trim().isEmpty()&&normalizePublicRecord(supplied).equals(normalizePublicRecord(localHistory));result.setText(supplied.trim().isEmpty()?"Cole o histórico público completo.":match?"CONFERE: o registro público corresponde integralmente ao histórico calculado.":"DIVERGE: o registro público não corresponde ao histórico calculado.");result.setForeground(supplied.trim().isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));});
-        JButton compareMessages=new JButton("Comparar manifesto por mensagem");compareMessages.addActionListener(e->{compareMessages.setEnabled(false);manifestResult.setText("Comparando mensagens…");SwingWorker<String,Void> worker=new SwingWorker<String,Void>(){protected String doInBackground()throws Exception{return comparePublicMessageManifests(selected,publicManifest.getText());}protected void done(){try{manifestResult.setText(get());}catch(Exception failure){Throwable cause=failure.getCause()==null?failure:failure.getCause();manifestResult.setText("Comparação inconclusiva: "+(cause.getMessage()==null?cause.getClass().getSimpleName():cause.getMessage()));}compareMessages.setEnabled(true);}};worker.execute();});
-        JButton copyHash=new JButton("Copiar hash calculado");
-        JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(new JLabel("Cole o hash público ou copie o hash calculado:"));JPanel hashRow=new JPanel(new java.awt.BorderLayout(8,0));hashRow.add(copyHash,java.awt.BorderLayout.WEST);hashRow.add(publicHash,java.awt.BorderLayout.CENTER);panel.add(hashRow);panel.add(compareHash);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Ou cole abaixo o arquivo completo historico-capturas.txt:"));panel.add(new JScrollPane(publicRecord));panel.add(compareRecord);panel.add(result);panel.add(Box.createVerticalStrut(8));panel.add(new JLabel("Manifesto JSON público de uma captura html-message-v1:"));panel.add(new JScrollPane(publicManifest));panel.add(compareMessages);panel.add(new JScrollPane(manifestResult));
+    private static void comparePublicHistory(String localHistory,String localHash) throws Exception {
+        JTextField publicHash=new JTextField(44);
+        JTextArea publicRecord=new JTextArea(12,52);
+        publicRecord.setLineWrap(false);
+        JLabel result=new JLabel("Informe o SHA-256 público ou cole o conteúdo de historico-capturas.txt para conferir.");
+        result.setForeground(java.awt.Color.DARK_GRAY);
+
+        JButton compareHash=new JButton("Comparar hash público");
+        compareHash.addActionListener(e->{
+            String supplied=publicHash.getText().trim();
+            boolean match=supplied.matches("(?i)[0-9a-f]{64}")&&supplied.equalsIgnoreCase(localHash);
+            result.setText(supplied.isEmpty()?"Informe o hash público.":!supplied.matches("(?i)[0-9a-f]{64}")?"Formato inválido: informe 64 caracteres hexadecimais.":match?"CONFERE: o hash público corresponde ao historico-capturas.txt calculado.":"DIVERGE: o hash público não corresponde ao historico-capturas.txt calculado.");
+            result.setForeground(supplied.isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
+        });
+
+        JButton compareRecord=new JButton("Comparar histórico completo");
+        compareRecord.addActionListener(e->{
+            String supplied=publicRecord.getText();
+            boolean match=!supplied.trim().isEmpty()&&normalizePublicRecord(supplied).equals(normalizePublicRecord(localHistory));
+            result.setText(supplied.trim().isEmpty()?"Cole o conteúdo de historico-capturas.txt.":match?"CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt calculado.":"DIVERGE: o texto informado não corresponde ao historico-capturas.txt calculado.");
+            result.setForeground(supplied.trim().isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
+        });
+
         final CountDownLatch latch=new CountDownLatch(1);
-        JFrame frame2=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Integridade Público",true);
-        copyHash.addActionListener(e->copyToClipboard(frame2,localHash,"SHA-256 público do histórico copiado."));
-        frame2.setContentPane(panel);
-        frame2.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){latch.countDown();}});
-        frame2.pack();frame2.setLocationRelativeTo(null);frame2.setVisible(true);
+        final JFrame frame2=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Integridade Público",true);
+        frame2.addWindowListener(new java.awt.event.WindowAdapter(){
+            @Override public void windowClosing(java.awt.event.WindowEvent e){latch.countDown();}
+        });
+
+        JPanel hashInputRow=new JPanel(new java.awt.BorderLayout(8,0));
+        hashInputRow.add(publicHash,java.awt.BorderLayout.CENTER);
+        hashInputRow.add(compareHash,java.awt.BorderLayout.EAST);
+
+        JPanel sectionHash=new JPanel(new java.awt.BorderLayout(0,6));
+        sectionHash.add(new JLabel("1. Hash SHA-256 público (de historico-capturas.txt):"),java.awt.BorderLayout.NORTH);
+        sectionHash.add(hashInputRow,java.awt.BorderLayout.CENTER);
+
+        JPanel recordButtonRow=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,0,0));
+        recordButtonRow.add(compareRecord);
+
+        JPanel sectionRecord=new JPanel(new java.awt.BorderLayout(0,6));
+        sectionRecord.add(new JLabel("2. Histórico de capturas completo (historico-capturas.txt):"),java.awt.BorderLayout.NORTH);
+        sectionRecord.add(new JScrollPane(publicRecord),java.awt.BorderLayout.CENTER);
+        sectionRecord.add(recordButtonRow,java.awt.BorderLayout.SOUTH);
+
+        JButton closeBtn=new JButton("Continuar para o resumo");
+        closeBtn.addActionListener(e->latch.countDown());
+        JPanel footerRight=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,0,0));
+        footerRight.add(closeBtn);
+
+        JPanel footer=new JPanel(new java.awt.BorderLayout(8,8));
+        footer.add(result,java.awt.BorderLayout.CENTER);
+        footer.add(footerRight,java.awt.BorderLayout.EAST);
+
+        JPanel content=new JPanel(new java.awt.BorderLayout(10,12));
+        content.setBorder(BorderFactory.createEmptyBorder(14,14,14,14));
+        content.add(sectionHash,java.awt.BorderLayout.NORTH);
+        content.add(sectionRecord,java.awt.BorderLayout.CENTER);
+        content.add(footer,java.awt.BorderLayout.SOUTH);
+
+        frame2.setContentPane(content);
+        frame2.pack();
+        frame2.setLocationRelativeTo(null);
+        frame2.setVisible(true);
         latch.await();
         frame2.dispose();
-    }
-    private static String comparePublicMessageManifests(List<Capture> selected,String supplied)throws Exception{
-        if(selected==null||selected.size()!=1)throw new IOException("Selecione exatamente uma captura para a comparação por mensagem.");
-        Capture localCapture=selected.get(0);return comparePublicMessageManifest(localCapture.dir.resolve("manifest.json"),localCapture.name,supplied);
     }
     static String comparePublicMessageManifest(Path localPath,String localName,String supplied)throws Exception{
         JSONObject local=parseBoundedJson(readUtf8Limited(localPath),localPath);

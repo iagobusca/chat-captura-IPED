@@ -54,8 +54,18 @@ class ProductionMigrationContractTests(unittest.TestCase):
         self.assertIn("migration.json não está vinculado ao inventário", VERIFIER)
         self.assertIn("legacy-annotations.json não está vinculado à cadeia", VERIFIER)
 
+    def test_clean_mode_deletes_root_integrity_reports_without_creating_backups(self):
+        self.assertNotIn("archiveStaleRootIntegrityReports", VIEWER)
+        self.assertNotIn('resolve("_backup_integridade_"', VIEWER)
+        self.assertIn("if (resetLegacyRecords && replaced > 0) deleteRootIntegrityReportsIfExists(outputRoot);", VIEWER)
+        self.assertIn('Path reportsDir = outputRoot.resolve("integridade");', VIEWER)
+        self.assertIn('Path reportHtml = outputRoot.resolve("integridade.html");', VIEWER)
+        self.assertIn("deleteDirectoryIfExists(reportsDir)", VIEWER)
+        self.assertIn("Files.deleteIfExists(reportHtml)", VIEWER)
+        self.assertIn('name.startsWith("_backup_integridade_")', VIEWER)
+
     def test_ui_strings_are_available_in_both_bundles(self):
-        for key in ("MigrateLegacyToHtml", "ResetLegacyRecords", "MigrateLegacyBlurUnsupported", "MigrateExtracting"):
+        for key in ("MigrateLegacyToHtml", "ResetLegacyRecords", "MigrateLegacyNoReferenceWarning", "CensorshipReferenceUnavailable", "CensorshipWouldBeLost", "MigrateExtracting"):
             self.assertIn("ChatCapturePanel." + key + "=", MESSAGES_EN)
             self.assertIn("ChatCapturePanel." + key + "=", MESSAGES_PT)
 

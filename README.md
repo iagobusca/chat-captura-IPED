@@ -4,14 +4,14 @@ Plugin/customizacao para o IPED 4.3.1 que captura intervalos de mensagens do vie
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.5.6-beta**
+Versao atual do plugin: **2.5.8-beta**
 Verificador de Integridade: **1.3.4**
 
 ## About
 
 Plugin Java para IPED 4.3.1 que captura intervalos de conversas WhatsApp e gera HTML offline, manifesto por mensagem e anexo, anotações, inventários e hashes para revisão forense. Capturas anteriores baseadas em screenshots continuam compatíveis.
 
-A versão 2.5.6-beta permite limpar os registros também de uma captura já existente em `html-message-v1`, recriando-a como captura nova, e ajusta a janela **Re-Extrair capturas** à área útil do monitor. A versão 2.5.5-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.3-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
+A versão 2.5.8-beta aplica a censura visual por imagens de referência (blur CSS) também em capturas `html-message-v1` (captura nova, Re-Extrair e migração de legado), sem JavaScript adicional e mantendo total compatibilidade com o Verificador 1.3.4, e remove `integridade/` e `integridade.html` da raiz ao re-extrair com "Limpar registros" (sem criar backups). A versão 2.5.7-beta deixa de marcar capturas `html-message-v1` como anotações legadas, para que um Re-Extrair não deixe resíduos de uma execução anterior. A versão 2.5.6-beta permite limpar os registros também de uma captura já existente em `html-message-v1`, recriando-a como captura nova, e ajusta a janela **Re-Extrair capturas** à área útil do monitor. A versão 2.5.5-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.4-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.3-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
 
 ## Getting Started
 
@@ -31,6 +31,7 @@ Arquivos principais alterados:
 
 ```text
 src/iped/viewers/HtmlLinkViewer.java
+src/iped/viewers/CaptureCensorship.java
 src/iped/viewers/CaptureIntegrity.java
 src/iped/viewers/ChatCapturePanel.java
 src/iped/viewers/ChatCaptureLinkedWindow.java
@@ -77,10 +78,10 @@ As capturas novas da versão 2.5.6-beta incluem:
 - Verificador 1.3.4 valida a cadeia local de integridade também em capturas `html-message-v1` e confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário. Mantém as validações de CSS/CSP, scripts de mídia das versões 1.3.2 e 1.3.3, PDF isolado e compatibilidade de assinatura para avatares PNG legados declarados como `image/jpg`.
 - Compatibilidade de leitura com capturas legadas em screenshots.
 
-O formato HTML ainda não aplica censura por similaridade de imagens. Se a pasta de
-blur estiver ativa, o plugin interrompe a captura com uma mensagem explícita. Para
-usar essa censura, inicie o IPED com `-Diped.chat.capture.htmlMessageV1=false` e
-use o formato PNG legado.
+O formato `html-message-v1` aplica censura por similaridade de imagens via CSS puro e atributos HTML (`CaptureCensorship`) e registra o resumo em `manifest.json` (`censorship`). **Aviso:** o blur CSS é supressão visual de apresentação (não tarja definitiva: os bytes originais permanecem em `attachments/` e abrem no modal).
+
+
+
 
 Os recursos abaixo descrevem o fluxo legado baseado em screenshots, ainda suportado para capturas antigas:
 
@@ -105,7 +106,7 @@ Os recursos abaixo descrevem o fluxo legado baseado em screenshots, ainda suport
 
 ## Notas e Links por mensagem
 
-Este recurso foi introduzido na versão 2.0.0 e continua disponível no plugin 2.5.6-beta. A indicação 2.0.0 descreve a versão em que a funcionalidade surgiu; não é a versão atual do plugin.
+Este recurso foi introduzido na versão 2.0.0 e continua disponível no plugin 2.5.8-beta. A indicação 2.0.0 descreve a versão em que a funcionalidade surgiu; não é a versão atual do plugin.
 
 **Recurso opcional.** Nada e obrigatorio: quem nao usar continua com o fluxo anterior,
 com saida identica.
@@ -285,14 +286,14 @@ chat-captura IPED/
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Artefatos locais preparados para teste beta 2.5.6
+## Artefatos locais preparados para teste beta 2.5.8
 
 Os artefatos locais preparados para validação são:
 
 | Arquivo | Para que serve |
 |---|---|
-| `instalador-chat-captura-IPED-2.5.6-beta-verificador-1.3.4.zip` | Pacote local com o reset em capturas novas, a janela ajustável e o verificador 1.3.4 |
-| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.6-beta.jar` | JAR compilado do plugin para instalação manual |
+| `instalador-chat-captura-IPED-2.5.8-beta-verificador-1.3.4.zip` | Pacote local com censura de imagens sensíveis em `html-message-v1` e o verificador 1.3.4 |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.8-beta.jar` | JAR compilado do plugin para instalação manual |
 | `verificador-integridade/integridade-verifier.jar` | Verificador independente com Java 8 (1.8) ou superior |
 | `verificador-integridade/integridade-verifier.exe` | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
 | `SPEC_CAPTURA_HTML_POR_MENSAGEM.md e SPEC_RENDERIZACAO_WHATSAPP_HTML.md` | Contrato, formato de captura, limites, testes e pendência de validação manual no IPED |
@@ -303,21 +304,21 @@ Os arquivos ainda são artefatos locais e não foram publicados em uma release. 
 
 ### Hashes do Verificador de Integridade 1.3.4
 
-JAR — SHA-256: `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44`<br>
-EXE — SHA-256: `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE`
+JAR — SHA-256: `241FD904C02F65E19EE3D663C24A9AA15B685E8A43DD7F545AD5D07133BC79DB`<br>
+EXE — SHA-256: `E4137082FE2A025DD406891A82313B2094A6C15A2F6D2F0804E2BE342ED57C38`
 
-JAR do plugin 2.5.6-beta — SHA-256: `9A34DB5F07B0AD279887C9411D1629D2793E03EA92D746F6113CF971B1221DD7`<br>
-ZIP do instalador 2.5.6-beta — SHA-256: `5195CB02265A1BF1D07024C9262CCF9D7FA598951A5E09080E1DE8A26787E4BB`
+JAR do plugin 2.5.8-beta — SHA-256: `2D5FB8EE5312E9E1F99707272E833FDCDCBD8994F82D97E3E1D95A7DF3C90EA6`<br>
+ZIP do instalador 2.5.8-beta — SHA-256: `49ACB11EE33689304072176712B0FAEC775E3CBA76693C3D49F194DCFAEF030F`
 
 O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia `instalador-chat-captura-IPED-2.5.6-beta-verificador-1.3.4.zip`.
+2. Baixe e extraia `instalador-chat-captura-IPED-2.5.8-beta-verificador-1.3.4.zip`.
 3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP inclui o JAR 2.5.6-beta, o instalador, o validador, `org.json` 20260719, os dois bundles de idioma e o Verificador 1.3.4 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
+O ZIP inclui o JAR 2.5.8-beta, o instalador, o validador, `org.json` 20260719, os dois bundles de idioma e o Verificador 1.3.4 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
 
 ## O que o BAT faz
 
@@ -355,8 +356,8 @@ Na abertura, escolha **Integridade Local** para comparar com o registro presente
 3. Clique com o botao direito na mensagem inicial e marque como inicio.
 4. Clique com o botao direito na mensagem final e marque como fim.
 5. Escolha a pasta de saida.
-6. Informe uma pasta de imagens para censura por similaridade somente no fluxo legado PNG.
-7. Para usar o formato HTML, deixe a censura desativada; o plugin interrompe a captura se ela estiver ativa. Use `-Diped.chat.capture.htmlMessageV1=false` para selecionar o fluxo PNG legado.
+6. Opcionalmente, informe uma pasta de imagens de referência para censura por similaridade (blur CSS em `html-message-v1` ou pixelização no fluxo legado PNG).
+7. O formato padrão é `html-message-v1` (use `-Diped.chat.capture.htmlMessageV1=false` apenas se precisar selecionar o fluxo PNG legado).
 8. Opcionalmente, adicione Notas e Links nas mensagens (ver secao "Notas e Links por mensagem" acima).
 9. Execute a captura ou use `Re-Extrair` para refazer capturas ja salvas.
 
@@ -377,9 +378,9 @@ do formato legado.
 
 As capturas anteriores podem continuar contendo `screenshots/frame_*.png` e `whatsapp-coordinates.json`. O formato antigo só é reescrito quando o analista marca a migração no Re-Extrair; sem essa opção, ele permanece intacto. As seções abaixo que mencionam frames, PNG ou coordenadas descrevem esse formato legado.
 
-## Censura por imagem de referencia no fluxo legado
+## Censura por imagem de referência (`html-message-v1` e fluxo legado)
 
-No formato legado PNG, o campo `Pasta imagens blur` aceita uma pasta com imagens de referência que devem ser censuradas quando miniaturas semelhantes aparecerem no chat. O formato HTML não aplica esse tratamento e interrompe a captura se a pasta estiver ativa.
+O campo `Pasta imagens blur` aceita uma pasta com imagens de referência que devem ser censuradas quando imagens semelhantes aparecerem no chat. Em `html-message-v1`, a miniatura recebe filtro CSS (`filter: blur(...)`) e faixa de aviso, abrindo o anexo original no modal ao clicar (supressão visual de apresentação, não tarja irreversível).
 
 No fluxo PNG legado, o plugin compara as imagens encontradas no intervalo inicial/final com as imagens da pasta informada e aplica blur ao frame capturado, sem alterar a imagem original do caso.
 
@@ -396,7 +397,7 @@ Para `html-message-v1`, o fluxo localiza as âncoras DOM inicial e final, exige 
 
 Para as capturas legadas, o diálogo oferece **Migrar capturas legadas para HTML por mensagem**. Quando marcado, o plugin localiza as âncoras persistidas no manifesto e nas coordenadas, gera uma candidata `html-message-v1` em pasta temporária irmã, valida manifesto, HTML, mensagens, anexos e inventário e só então substitui a pasta antiga. Sem o toggle, o fluxo de screenshots é mantido.
 
-O toggle dependente **Limpar registros e criar como nova captura** só fica habilitado com a migração marcada. Ele inicia uma nova cadeia em `capture_created` e descarta `migration.json`, `legacy-annotations.json`, reconciliação e auditoria antigas. No modo com histórico, as anotações legadas são preservadas em `legacy-annotations.json` e o manifesto registra a proveniência da migração. A migração é bloqueada quando há pasta de imagens de referência para censura, pois o formato HTML ainda não aplica esse tratamento.
+O toggle dependente **Limpar registros e criar como nova captura** fica habilitado para capturas novas e para capturas legadas com a migração marcada. Ele inicia uma nova cadeia em `capture_created` e descarta `migration.json`, `legacy-annotations.json`, reconciliação e auditoria antigas. No modo com histórico, as anotações legadas são preservadas em `legacy-annotations.json` e o manifesto registra a proveniência da migração. A migração aceita pasta de imagens de referência para censura visual e exibe aviso de confirmação quando executada sem pasta de referência.
 
 O fluxo de captura legada e:
 

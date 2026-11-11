@@ -6,8 +6,8 @@ Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.3.4 está p
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
-| 1.3.4 | `integridade-verifier.jar` | `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44` | Build com JDK 8; bytecode 52; 133.702 bytes |
-| 1.3.4 | `integridade-verifier.exe` | `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE` | Build Windows x64 autocontido; `--self-test` código 0; 77.839.428 bytes |
+| 1.3.4 | `integridade-verifier.jar` | `241FD904C02F65E19EE3D663C24A9AA15B685E8A43DD7F545AD5D07133BC79DB` | Build com JDK 8; bytecode 52; 132.353 bytes |
+| 1.3.4 | `integridade-verifier.exe` | `E4137082FE2A025DD406891A82313B2094A6C15A2F6D2F0804E2BE342ED57C38` | Build Windows x64 autocontido; `--self-test` código 0; 77.838.404 bytes |
 | 1.3.3 | `integridade-verifier.jar` | `22FBAA2A8D4EA32940B4555E95207A22982B7FCDD308020950A667853420D921` | Build com JDK 8; bytecode 52; 131.972 bytes |
 | 1.3.3 | `integridade-verifier.exe` | `933F27A61AEDDAC5E4F1D8D7CA7AFC057AA2F04062A9267783FC56BB00DCE25B` | Build Windows x64 autocontido; `--self-test` código 0; 78.384.708 bytes |
 | 1.3.2 | `integridade-verifier.jar` | `F6D21DC4DAAFBF0BB241B66790EE2FE137AF5DBD5609EF9CED8D1336D622A7A7` | Build com JDK 8; bytecode 52; 131.464 bytes |

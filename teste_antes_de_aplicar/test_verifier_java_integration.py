@@ -395,5 +395,71 @@ class JavaVerifierIntegration(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("reconciliação", result.stdout + result.stderr)
 
+    def test_censored_html_message_capture_is_accepted_and_tampering_detected(self):
+        with tempfile.TemporaryDirectory() as root:
+            cap = self.create_capture(root, modern=True)
+            manifest_path = cap / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            record = json.loads((cap / "messages.json").read_text(encoding="utf-8"))["messages"][0]
+            ah = DEFAULT_ATTACHMENT_SHA
+            rel = "attachments/" + ah + ".png"
+            key = record["key"]
+            censored_css = (
+                ".capture-modal{display:none}.capture-modal:target{display:flex}"
+                ".capture-censored{position:relative;display:inline-block;overflow:hidden;border-radius:6px;vertical-align:top}"
+                ".capture-censored img{display:block;transform:scale(1.06)}"
+                ".capture-censored img,img[data-capture-censored]{-webkit-filter:blur(22px) saturate(.25) brightness(.55);filter:blur(22px) saturate(.25) brightness(.55)}"
+                ".capture-censored::after{content:\"Censurado - clique para ampliar\";position:absolute;left:0;right:0;bottom:0;z-index:1;box-sizing:border-box;padding:3px 6px;background:rgba(0,0,0,.68);color:#fff;font:600 11px/1.3 Arial,sans-serif;text-align:center;pointer-events:none}"
+            )
+            html = (
+                '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' + MODERN_CSP + '">'
+                '<title>WhatsApp</title><style>body{background:#eee}#capture-topbar{background:#47595a}#capture-conversation{padding-top:90px}</style>'
+                '<style>' + censored_css + '</style></head><body>'
+                '<div id="capture-topbar">Conversa</div><div id="capture-conversation"><div class="linha" data-capture-message-key="' + key + '">'
+                '<a href="#preview-' + ah + '" class="capture-media-link capture-censored" data-capture-censored="1" title="imagem.png">'
+                '<img data-capture-censored="1" class="thumb" src="' + rel + '"></a></div></div>'
+                '<section class="capture-modal" id="preview-' + ah + '"><img class="capture-preview-image" src="' + rel + '" alt="imagem.png">'
+                '<a href="' + rel + '" download="imagem.png">Baixar</a>'
+                '<a href="' + rel + '" target="_blank" rel="noopener noreferrer">Abrir</a><a href="#" class="capture-close">Fechar</a></section>'
+                '<script>' + STOP_MEDIA_SCRIPT + '</script></body></html>'
+            )
+            html_sha = hashlib.sha256(html.encode("utf-8")).hexdigest()
+            (cap / "whatsapp.html").write_text(html, encoding="utf-8")
+            manifest["htmlSha256"] = html_sha
+            manifest["captureRootHash"] = root_hash([record], html_sha=html_sha)
+            manifest["censorship"] = {
+                "schemaVersion": 1,
+                "mode": "css-blur",
+                "source": "reference-folder",
+                "similarityPercent": 75,
+                "levelPercent": 90,
+                "cssPixels": 22,
+                "referenceImageCount": 1,
+                "censoredImageCount": 1,
+                "censoredMessageCount": 1,
+                "images": [{"sha256": ah, "messageKeys": [key]}],
+                "presentationDigest": sha(f"censorship-presentation-v1\n22\n{ah}:{key},\n"),
+                "notice": "Supressão visual por CSS; os bytes originais permanecem em attachments/ e abrem no modal.",
+            }
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = self.verify(root)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            # Removing the censorship class from whatsapp.html must be detected by the Verifier
+            tampered_html = html.replace('class="capture-media-link capture-censored"', 'class="capture-media-link"')
+            (cap / "whatsapp.html").write_text(tampered_html, encoding="utf-8")
+            tampered_result = self.verify(root)
+            self.assertNotEqual(tampered_result.returncode, 0)
+
+    def test_public_history_dialog_clean_layout(self):
+        source = (ROOT / "verificador-integridade" / "src" / "IntegrityVerifier.java").read_text(encoding="utf-8")
+        self.assertNotIn("Manifesto JSON público de uma captura html-message-v1:", source)
+        self.assertNotIn("Comparar manifesto por mensagem", source)
+        self.assertNotIn("Copiar hash calculado", source)
+        self.assertNotIn("ou copie o hash calculado", source)
+        self.assertIn("1. Hash SHA-256 público (de historico-capturas.txt):", source)
+        self.assertIn("2. Histórico de capturas completo (historico-capturas.txt):", source)
+        self.assertIn("Continuar para o resumo", source)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

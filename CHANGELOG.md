@@ -4,6 +4,33 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.5.8-beta] - 2026-11-09
+
+### Adicionado
+
+- Censura visual por imagens de referência (blur) em capturas `html-message-v1` (captura nova, Re-Extrair e migração de legado), implementada em `CaptureCensorship` com CSS puro e atributos HTML (`class="capture-media-link capture-censored"` e `data-capture-censored="1"`), sem JavaScript adicional e mantendo total compatibilidade com o Verificador de Integridade 1.3.4.
+- Sobrecarga em `SensitiveImageMatcher` para casamento direto sobre bytes em memória (`MatOfByte` / `Imgcodecs.imdecode` e hash exato MD5/SHA-256), com cache por SHA-256 em `runHtmlMessageCapture` cobrindo anexos do caso (`resources`) e miniaturas inline (`media`).
+- Registro auditável `censorship` em `manifest.json` (com `presentationDigest`, `images`, `cssPixels`, `levelPercent`, `similarityPercent` e aviso explícito de que o blur CSS é supressão visual de apresentação, não tarja irreversível), mantendo `messageHash` e a fórmula de `captureRootHash` inalterados.
+
+### Modificado
+
+- A migração de capturas legadas para `html-message-v1` no Re-Extrair aceita pasta de imagens de referência e exibe aviso de confirmação quando executada sem pasta de referência.
+- O Re-Extrair compara `presentationDigest` além de `isHtmlReconciliationUnchanged`, substituindo a captura quando a censura é ligada, alterada ou removida (via modo de cadeia limpa) e registrando `recapture_censorship_presentation_changed`.
+- A janela **Integridade Público** do Verificador de Integridade 1.3.4 foi reorganizada para exibir apenas o campo de hash SHA-256 público e o campo único de `historico-capturas.txt` (removendo o campo duplicado de manifesto `html-message-v1` e o botão de cópia de hash calculado).
+- No Re-Extrair, a opção "Limpar registros e criar como nova captura" agora apaga diretamente a pasta `integridade/` e o arquivo `integridade.html` da raiz quando capturas são substituídas, sem criar pastas `_backup_integridade_*`, deixando a raiz limpa como uma captura nova.
+
+### Segurança
+
+- Comportamento *fail-closed* para censura em `html-message-v1`: pasta de referência configurada porém sem imagens válidas ou sem OpenCV disponível (`CensorshipReferenceUnavailable`), erro no matcher, imagem casada sem elemento HTML correspondente ou tentativa de Re-Extrair sem pasta sobre captura previamente censurada sem o modo de cadeia limpa (`CensorshipWouldBeLost`) interrompem a operação sem promover captura sem censura.
+
+## [2.5.7-beta] - 2026-11-09
+
+### Corrigido
+
+- O Re-Extrair arquiva a pasta `integridade/` da raiz quando alguma captura é realmente substituída. Os relatórios derivados de uma execução anterior deixavam de representar o conjunto atual e sugeriam uma cadeia que não existe mais; a pasta é renomeada para `_backup_integridade_<data>`, sem apagar evidência, e o próximo Verificador gera um retrato novo.
+- O índice geral não marca mais `annotations.legacy` em capturas `html-message-v1`; o campo `version` do manifesto só identifica anotações legadas nos formatos antigos. Isso mantém o resultado de um Re-Extrair indistinguível de uma primeira captura.
+- Somente capturas efetivamente promovidas contam para o arquivamento dos relatórios da raiz; intervalos ignorados por conteúdo inalterado não alteram a pasta `integridade/`.
+
 ## [2.5.6-beta] - 2026-11-09
 
 ### Corrigido

@@ -1,208 +1,160 @@
 # Especificação consolidada — Chat Captura IPED
 
-**Versão deste documento:** 1.0  
-**Estado de referência:** plugin `2.3.2-beta`; verificador independente `1.2.5`
-**Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-06.
+**Versão deste documento:** 2.0  
+**Estado de referência:** plugin `2.5.8-beta`; Verificador de Integridade `1.3.4`  
+**Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-09.  
+**Fontes consolidadas:** `SPEC_ajustes_plugin_verificador.md`, `SPEC_CAPTURA_HTML_POR_MENSAGEM.md`, `SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md`, `SPEC_CORRECAO_MARCADORES_CAPTURA_HTML.md`, `SPEC_CORRECOES_SEGURANCA_PLUGIN_VERIFICADOR.md`, `SPEC_LIMPEZA_REGISTROS_RAIZ_REEXTRACAO.md`, `SPEC_MIGRACAO_REEXTRACAO_LEGADA_HTML.md`, `SPEC_ORGANIZACAO_INTEGRIDADE_PUBLICO.md`, `SPEC_PAGINACAO_SELECAO_INCREMENTAL.md`, `SPEC_RENDERIZACAO_WHATSAPP_HTML.md`, `SPEC_verificador_integridade_plugin.md`.
 
-Este documento substitui as especificações dispersas do projeto. Ele descreve o comportamento confirmado no código, registra as diferenças em relação às propostas antigas e separa o que ainda não está implementado. “Implementado” significa que há código correspondente; não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.
+Este documento substitui as especificações dispersas do projeto. Ele descreve o comportamento confirmado no código, registra o que foi aplicado, o que não foi aplicado e o que foi removido (não se aplica mais). "Implementado" significa que há código correspondente; não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.
 
 ## 1. Legenda de situação
 
-- **Implementado:** comportamento presente no código distribuído.
+- **Aplicado:** comportamento presente no código distribuído (plugin 2.5.8-beta / verificador 1.3.4).
 - **Parcial:** existe parte da estrutura, mas falta o comportamento de ponta a ponta descrito.
-- **Fora da versão 2.3.1-beta:** consta de proposta anterior, mas não foi entregue nesta versão. Não deve ser anunciado como recurso disponível.
-- **Substituído:** uma decisão posterior mudou a forma de atender ao requisito antigo.
-- **Decisão futura:** não há evidência suficiente de que o requisito foi cancelado pelo usuário. Mantê-lo aqui como item não entregue, sem tratá-lo como compromisso ativo.
+- **Não aplicado:** consta de proposta anterior, mas não foi entregue nesta versão. Não deve ser anunciado como recurso disponível.
+- **Removido / não se aplica mais:** uma decisão posterior mudou a forma de atender ao requisito antigo; o item não será implementado como proposto.
 
 ## 2. Auditoria das especificações anteriores
 
 | Documento anterior | Situação apurada | Decisão consolidada |
 |---|---|---|
-| `ESPECIFICACAO_NOTAS_LINKS.md` | Parcialmente aplicado e revisado durante a implementação. Notas, vínculos, preflight, exportação e leitura legada têm código. O modelo antigo fala em vincular pessoas/contatos, enquanto o código atual vincula **chats** (`LinkedChatRef`, `chatRefId`). | A especificação pessoa/contato foi **substituída** por vínculo entre chats. Campos antigos como `contactId` continuam apenas como compatibilidade de leitura. A versão atual deste documento define o comportamento vigente. |
-| `ESPEC_ANOTAR_CHAT_SALVO.md` | Implementado com alterações de interface. Há seleção de chat salvo, carregamento das anotações e gravação explícita; o botão atual é `Salvar Trecho-Notas`. | Aplicado com o fluxo e rótulos atuais. A gravação não acontece a cada digitação: fica em memória até salvar explicitamente ou realizar captura. |
-| `ESPEC_COMPATIBILIDADE_JAVA11.md` | Correção aplicada. Nesta revisão, as 256 classes do JAR do plugin 2.3.1-beta foram lidas diretamente e todas têm major version 55. | Mantido como requisito permanente de build. Os hashes antigos de builds de teste foram substituídos pelos valores atuais em `CHECKSUMS.md`. |
-| `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md` | Núcleo aplicado: bundles dentro do JAR, mesclagem de chaves ausentes na localização externa do IPED, backups e fallback de chave. Os dois bundles distribuídos têm 160 chaves cada e seus conjuntos coincidem nesta revisão. O validador verifica classes e chaves representativas, mas não compara automaticamente o conjunto completo em builds futuros. | Manter o fluxo de idioma; registrar validação completa/paridade de chaves como parcial. O arquivo separado foi incorporado aqui. |
-| `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md` | **Parcial.** `mediaX/Y/Width/Height` e `textX/Y/Width/Height` são calculados e gravados nas coordenadas. O HTML ainda posiciona o botão `T` usando os limites gerais da mensagem; não consome os retângulos separados. | Não declarar posicionamento preciso dos botões como concluído. A parte de armazenamento está aplicada; a parte visual permanece incompleta, sem evidência de cancelamento explícito. |
-| `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md` | O núcleo está implementado: fingerprint, assinatura por mensagem/frame, inventário, atalho para captura inalterada, regeneração permitida de `whatsapp.html`, recaptura integral para outras divergências e auditoria. O `integridade.json` mantém inventário e eventos encadeados. | Consolidado nas seções 6 e 7. Similaridade visual não autoriza pular atualização. O histórico registra hashes, não arquiva os bytes antigos. |
-| `ESPEC_VERIFICADOR_INTEGRIDADE.md` | Verificador independente implementado como JAR e EXE, com modos local/público, seleção de capturas, hashes e relatórios. O plugin procura os binários em pastas conhecidas, verifica os hashes aceitos e copia os arquivos oficiais para a saída da captura. Se não estiverem disponíveis, o usuário pode copiá-los ao lado do índice. O botão “Histórico de registro” no card do índice também não foi localizado no código atual. |
+| `SPEC_ajustes_plugin_verificador.md` | Parcialmente aplicado. O alerta do verificador virou informativo (`INFORMATION_MESSAGE`, `alertShown`), mas a conversão dos diálogos do verificador para `JFrame`/`JDialog` com ícone, botões "sempre no topo"/"minimizar" e pasta `imagem doc/` não foi implementada. | Manter o alerta informativo. A parte de janela/ícone do verificador permanece **não aplicada**. |
+| `SPEC_CAPTURA_HTML_POR_MENSAGEM.md` | Aplicado. Formato `html-message-v1`, manifesto por mensagem, anexos por SHA-256, reconciliação, migração e verificação no verificador 1.3.0+. | Consolidado nas seções 4 e 6. |
+| `SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md` | Aplicado em 2.5.8-beta. Censura por CSS puro + atributos HTML em `html-message-v1` (captura nova, Re-Extrair e migração), com `CaptureCensorship`, cache por SHA-256 e bloco `censorship` no manifesto. | Consolidado na seção 5. |
+| `SPEC_CORRECAO_MARCADORES_CAPTURA_HTML.md` | Aplicado em 2.5.2-beta. Validação de marcadores, resolução de separador de data, falha segura. | Consolidado na seção 4. |
+| `SPEC_CORRECOES_SEGURANCA_PLUGIN_VERIFICADOR.md` | Aplicado. Confinamento de caminhos, limites de tamanho, escaping, parser JSON. | Consolidado na seção 7. |
+| `SPEC_LIMPEZA_REGISTROS_RAIZ_REEXTRACAO.md` | Aplicado em 2.5.8-beta. `archiveStaleRootIntegrityReports` removido; `deleteRootIntegrityReportsIfExists` apaga `integridade/` e `integridade.html` no modo "Limpar registros"; `_backup_integridade_*` tratado como auxiliar. | Consolidado na seção 4. |
+| `SPEC_MIGRACAO_REEXTRACAO_LEGADA_HTML.md` | Aplicado em 2.5.5/2.5.6-beta. Migração opt-in de capturas legadas para `html-message-v1`, toggle "Limpar registros", validação completa da candidata, preservação de anotações legadas. | Consolidado na seção 4. |
+| `SPEC_ORGANIZACAO_INTEGRIDADE_PUBLICO.md` | Aplicado. Janela "Integridade Público" reorganizada: removidos campo de manifesto, botão "Copiar hash calculado" e botão "Comparar manifesto por mensagem"; layout em 2 blocos + "Continuar para o resumo". | Consolidado na seção 6. |
+| `SPEC_PAGINACAO_SELECAO_INCREMENTAL.md` | Aplicado em 2.3.3-beta. Até 100 capturas por página, navegação anterior/próximo, validação sob demanda. | Consolidado na seção 6. |
+| `SPEC_RENDERIZACAO_WHATSAPP_HTML.md` | Aplicado. Apresentação autônoma de `html-message-v1` com tema WhatsApp do IPED 4.3.1, modal local para anexos, controles de mídia. | Consolidado na seção 5. |
+| `SPEC_verificador_integridade_plugin.md` | Aplicado. `VerifierIntegrity` valida SHA-256 do verificador contra allowlist, alerta uma vez por sessão, substitui binários inválidos. | Consolidado na seção 6. |
 
-Não foi encontrada outra solicitação explicitamente cancelada pelo usuário nas especificações analisadas. Requisitos ausentes do código são chamados de “fora da versão”, “parciais” ou “decisão futura”, em vez de serem atribuídos como rejeitados pelo usuário.
+## 3. Itens não aplicados / removidos (não se aplica mais)
 
-### 2.1 Mudanças entre propostas antigas e o comportamento atual
-
-| Proposta/assunção anterior | Estado atual |
-|---|---|
-| Vincular contatos/pessoas à mensagem e abrir conversa por identidade do contato. | Substituído por referência a chats e trechos de captura; a identidade pessoal não é inferida pelo vínculo. |
-| Anotações só persistem quando se captura. | Ampliado: o fluxo de chat salvo tem ação explícita `Salvar Trecho-Notas`; as alterações não salvas continuam em RAM. |
-| Fazer a página local calcular todos os hashes diretamente no JavaScript. | Substituído pelo verificador Java independente, que lê os arquivos; o HTML apresenta o resultado. |
-| O plugin copiar automaticamente JAR/EXE para cada raiz capturada. | Implementado na 2.3.1-beta: procura binários conhecidos, valida SHA-256 e copia somente versões aceitas. |
-| Guardar somente JSONL como registro de auditoria. | Evoluiu: `integridade.json` contém o inventário atual e cadeia cumulativa; JSONL continua como log operacional de Re-Extrair. |
-| Hash local como prova de imutabilidade/autoria. | Corrigido: hash local verifica consistência com a referência local; hash público externo permite comparação com um checkpoint compartilhado, sem assinar autoria. |
-| Versão 2.0.0 e hashes de builds de teste no documento antigo. | Substituídos por plugin 2.3.1-beta/verificador 1.2.4 e hashes oficiais registrados em `CHECKSUMS.md`. |
-
-## 3. Compatibilidade e distribuição
-
-- Plugin: IPED `4.3.1`, Java `11` como alvo mínimo. O JAR indicado em `CHECKSUMS.md` tem 256 classes, todas com major version `55` nesta revisão.
-- Verificador JAR: Java `11` ou superior.
-- Verificador EXE: Windows x64; contém os runtimes necessários e não exige Java instalado na máquina de execução.
-- A release beta contém seis downloads: ZIP do instalador, JAR e EXE do verificador, ZIP `src-plugin` e ZIP `src-integridade-verifier`.
-- Tamanhos e SHA-256 dos artefatos publicados ficam em `CHECKSUMS.md`. Qualquer rebuild precisa recalcular e atualizar esses valores.
-- O instalador distribui o JAR modificado, bundles de idioma e validador. Ele cria backup antes de substituir o JAR instalado.
-
-### 3.1 Fluxo base do plugin
-
-O analista marca o início e o fim do trecho, define a pasta de saída e inicia a captura. O plugin gera frames PNG, coordenadas/metadata, conteúdo HTML e relatórios. A opção de censura compara thumbnails com uma pasta de referência; os controles existentes incluem similaridade e intensidade do blur. No diálogo de `Re-Extrair`, o botão alterna entre `Marcar todos` e `Desmarcar todos` para as capturas selecionáveis.
-
-O fluxo-base está documentado no README e no viewer. Os valores atuais dos seletores e o comportamento do IPED continuam sendo fonte da verdade do código; esta especificação não cria uma nova opção visual.
-### 3.2 Idiomas e falha segura de recursos
-
-O pacote do instalador inclui bundles padrão em inglês e `pt_BR`. O instalador valida o JAR antes de substituir o instalado, cria backup, inclui bundles no JAR e mescla no diretório externo `iped/localization` apenas as chaves ausentes, preservando traduções já existentes e criando backups dos arquivos alterados. Se a instalação de idiomas falha, o BAT tenta restaurar o JAR anterior.
-
-A classe `iped.viewers.localization.Messages` tem fallback para chave ausente: registra aviso e devolve a própria chave em vez de deixar a construção Swing abortar com `MissingResourceException`. O validador atual exige classes/arquivos e checa chaves representativas (`ChatCapturePanel.IncludeAnnotations` e `HexViewerPlus.appName`); embora o par atualmente distribuído tenha 160 chaves em cada idioma, com conjuntos iguais nesta revisão, o script não compara automaticamente o conjunto completo nem comprova cobertura de toda chamada do código. A inicialização no IPED continua sendo uma verificação funcional necessária.
-
-## 4. Anotações e vínculos entre chats
-
-### 4.1 Modelo atual
-
-O recurso é opcional. O analista pode adicionar nota de texto e vincular um ou mais chats à mensagem. Vínculos são referências a chats, não afirmações de identidade de uma pessoa. Dados antigos com campos de contato podem ser lidos por compatibilidade, mas novas gravações usam a referência de chat.
-
-As anotações são armazenadas em `anotacoes.json`, organizadas por chat e chave de mensagem. A leitura de arquivo ausente não cria arquivo. Alterações ficam em memória até a ação de salvar ou a captura; a gravação usa arquivo temporário e substituição atômica. Em **Anotar chat salvo**, o analista escolhe uma captura existente, abre o chat de origem quando disponível, edita e usa **Salvar Trecho-Notas**. Depois de salvar, `Re-Extrair` é necessário para atualizar os HTMLs/imagens derivados da captura quando aplicável.
-
-### 4.2 Interface e exportação
-
-- As ações de anotação dependem da posição da mensagem em relação às marcas de início/fim e não se aplicam a separadores de data.
-- O preflight informa anotações dentro/fora do intervalo; confirmar exclui do resultado as que estão fora, cancelar preserva os dados.
-- A interface do viewer e `whatsapp.html` mostram notas e chats vinculados sem inserir os ícones na imagem PNG capturada.
-- Um chat vinculado pode exibir seu trecho quando há captura. Um vínculo sem captura mostra indicação apropriada.
-- `manifest.json`, `whatsapp-coordinates.json` e `texto.txt` recebem os dados de anotação conforme o fluxo atual; quando não há anotações, os campos opcionais podem ficar ausentes.
-- `anotacoes.json` é dado de trabalho do analista, não evidência original; o manifesto identifica essa condição.
-
-## 5. Coordenadas de mídia e texto
-
-O capturador calcula coordenadas da mensagem e, quando detecta subelementos, coordenadas independentes para mídia e texto/transcrição. Os campos são serializados para os dados da captura.
-
-**Lacuna atual:** a página gerada usa o retângulo da mensagem para o hotspot e posiciona o botão de transcrição no limite do bloco. Os campos `mediaX/Y/Width/Height` e `textX/Y/Width/Height` não são usados para posicionar esses controles. Assim, a gravação de coordenadas está implementada, mas o requisito de sobreposição precisa sobre os subelementos não está concluído.
-
-Capturas antigas sem esses campos continuam legíveis porque o HTML usa a área geral do bloco. A compatibilidade deve ser preservada ao concluir a sobreposição.
-
-## 6. Re-Extrair incremental e auditável
-
-### 6.1 Identidade e decisão
-
-A captura grava fingerprint de origem/intervalo/configuração, versão do plugin/geradores, assinaturas semânticas de mensagens e frames, hashes SHA-256 dos arquivos e inventário. Transcrição auxiliar de IA não participa da identidade de áudio/vídeo. Para mídia, o hash do arquivo original é necessário para uma assinatura completa; sem ele, não se deve afirmar igualdade confirmada.
-
-O fluxo pode pular o trabalho somente quando origem e fingerprint conferem, o inventário está íntegro e não há mudança de gerador/formato que exija migração. Hashes exatos autorizam a decisão; similaridade visual não serve como prova de igualdade.
-
-### 6.2 Reutilização, recaptura e auditoria
-
-- `whatsapp.html` pode ser regenerado usando `whatsapp-coordinates.json` válido quando os dados existentes bastam.
-- Para frame, anexo ou outros artefatos cuja regeneração seletiva não esteja implementada, divergência ou ausência leva à recaptura completa pelo fluxo atual.
-- A recaptura usa staging e promoção com recuperação em caso de falha. Uma falha não deve publicar evento como concluído.
-- `reextracao-auditoria.jsonl` registra operações de Re-Extrair e hashes esperados/observados. O `integridade.json` mantém o inventário atual e eventos com sequência, ação, mudanças, raiz de conteúdo e referência ao evento anterior.
-- Um arquivo ausente pode ser recriado durante recaptura. Hash igual ao anterior confirma igualdade com o valor registrado; hash diferente indica conteúdo diferente. O histórico não mantém cópia dos bytes anteriores e não restaura conteúdo histórico por si só.
-- Capturas legadas ou sem dados suficientes seguem recaptura completa; não são ignoradas por falta de metadados.
-
-### 6.3 Limites do histórico
-
-O histórico é uma cadeia de hashes, não uma assinatura digital. Quem altera os arquivos e todos os registros locais pode recalcular a cadeia. Um hash/registro público guardado fora da pasta permite comparar a cópia com aquele ponto de referência.
-
-A implementação atual calcula `recordHash` sobre a representação textual do evento JSON e o verificador valida a mesma regra. Antes de tratar isso como formato interoperável entre implementações independentes, a serialização deve ser formalizada/canônica e coberta por vetores de teste compartilhados. O SHA-256 público do relatório determinístico do verificador é um formato separado (`HISTORICO_PUBLICO_V1`).
-
-## 7. `integridade.json` e verificador independente
-
-### 7.1 Registro da captura
-
-Cada captura nova recebe `integridade.json` com versão de schema, algoritmo SHA-256, versão do plugin, inventário relativo de caminhos/tamanhos/hashes, raiz de conteúdo e eventos. O próprio `integridade.json`, `manifest.json` e o log JSONL ficam fora do inventário que ele descreve, evitando autorreferência e mudanças circulares. O verificador recalcula o conteúdo no disco e compara com o inventário.
-
-### 7.2 Operação do verificador
-
-O verificador funciona sem IPED. Localiza a raiz pela própria pasta ou por argumento de diretório, lista capturas encontradas e permite selecionar uma, várias ou todas. Ele calcula hashes atuais e aponta itens íntegros, divergentes, ausentes, extras ou não verificáveis, sem corrigir arquivos.
-
-- **Integridade Local:** compara os arquivos com o registro local e valida a cadeia registrada. Isso confirma consistência com a referência local, não autenticidade do autor.
-- **Integridade Público:** compara o hash do histórico completo ou o texto público fornecido com o resultado determinístico recalculado. A referência pública precisa vir de fora da pasta verificada para servir de checkpoint externo.
-- Os resultados incluem hash por captura, hash do conjunto selecionado e histórico completo copiável. A interface deixa os botões de cópia junto aos hashes para caber na janela.
-- O relatório `integridade.html` informa quando foi gerado, apresenta hashes e comparação pública e permite consultar/filtrar resultados. O HTML apresenta o resultado do programa; não substitui o verificador como autoridade de leitura e cálculo dos arquivos.
-- Arquivos auxiliares ficam na pasta `integridade/`, ignorada como captura e no cálculo do índice. O EXE extrai runtimes para uma pasta temporária exclusiva por execução e limpa seus próprios resíduos sem remover arquivos de outra instância ativa.
-
-### 7.3 Instalação na raiz das capturas
-
-Na versão entregue, a pessoa baixa o JAR ou EXE e o coloca manualmente ao lado de `index.html` e `relatorio.htm`. O plugin **não** copia os verificadores automaticamente durante captura ou Re-Extrair. Essa integração não pode aparecer como funcionalidade concluída nesta versão.
-
-## 8. Arquivos e formatos principais
-
-| Arquivo | Função |
-|---|---|
-| `manifest.json` | Metadados da captura, origem, configuração, versões e referências do conteúdo. |
-| `whatsapp-coordinates.json` | Frames, blocos, coordenadas, dados para HTML e assinaturas. |
-| `anotacoes.json` | Notas e referências a chats, persistidas pelo analista. |
-| `integridade.json` | Inventário SHA-256 e histórico cumulativo da captura. |
-| `reextracao-auditoria.jsonl` | Eventos de execução/auditoria de Re-Extrair. |
-| `hashes.txt` | Lista legada dos hashes exportados; não substitui o inventário completo. |
-| `index.html`, `relatorio.htm` | Índice e relatório legados da coleção/capturas. |
-| `integridade.html` | Relatório criado pelo verificador Java independente. |
-| `integridade/historico-capturas.txt` | Registro público determinístico gerado pelo verificador. |
-
-O hash de pasta legado do índice e a raiz de conteúdo do `integridade.json` usam regras diferentes. Sempre identificar algoritmo/versão e não comparar valores de esquemas diferentes como se fossem equivalentes.
-
-## 9. Segurança e interpretação dos resultados
-
-- SHA-256 identifica igualdade de bytes em relação a um valor conhecido; sozinho não identifica autor, hora, nem impede edição.
-- Registro local consistente significa que os arquivos conferem com o registro presente na pasta. Conteúdo e registro podem ter sido substituídos juntos.
-- Comparação pública significa que o valor recalculado confere com o código/registro fornecido. A confiança depende de obter essa referência por canal externo confiável.
-- O verificador não deve alterar, restaurar ou “consertar” arquivos durante a checagem.
-- Caminhos de inventário devem permanecer dentro da pasta de captura; caminhos absolutos, travessia (`..`) e links que escapem da raiz são recusados.
-- Estados devem distinguir pelo menos: consistente localmente, confere com referência pública, divergente, arquivo ausente/extra, registro inválido/quebrado, legado/não verificável e sem referência externa.
-- Não exibir selo verde sem dizer qual referência foi usada.
-
-## 10. Matriz de aceite e estado conhecido
-
-| Verificação | Evidência no projeto/release | Estado |
+| Item (origem) | Situação | Motivo |
 |---|---|---|
-| Plugin e viewer em bytecode Java 11 | JAR atual tem 256 classes com major version 55 e seu SHA-256 confere com `CHECKSUMS.md`. | Implementado e conferido nesta revisão. |
-| Instalação de idioma e fallback de chave | Bundle no JAR, merge externo de chaves ausentes, backups e fallback implementados; o BAT chama o script de instalação e restaura o JAR em erro. A paridade completa de chaves não é testada automaticamente. | Parcial: os bundles atuais têm paridade de 160 chaves; falta automatizar a comparação completa e comprovar cobertura de todas as chamadas. |
-| Anotações e vínculo entre chats | `ChatAnnotationStore`, diálogos, seleção de chat salvo, exportação no HTML/manifesto. | Implementado com o modelo de chat atual; especificação antiga de contatos substituída. |
-| Anotar chat salvo e salvar sem recaptura imediata | `SavedChatPickerDialog`, `annotateSavedChat()` e `saveAnnotations()`. | Implementado com botão atual `Salvar Trecho-Notas`. |
-| Coordenadas específicas de mídia/texto | Campos calculados e gravados; não usados na posição do botão `T`. | Parcial. |
-| Assinatura e inventário do plugin | `CaptureIntegrity`, inventário, fingerprint, hashes por frame/mensagem e auditoria. | Implementado no código; verificação de uso em GUI real não cobre todos os cenários. |
-| Re-Extrair sem mudança | Comparação de fingerprint/inventário e registro de captura ignorada. | Implementado no código. |
-| Regenerar somente `whatsapp.html` | Regeneração a partir das coordenadas salvas. | Implementado para esse artefato; demais divergências usam recaptura completa. |
-| Histórico em `integridade.json` | Eventos, `previousRecordHash`, `recordHash`, alterações e inventário; verificador valida a cadeia. | Implementado localmente; não é assinatura e a serialização requer formalização para interoperabilidade. |
-| Verificador JAR/EXE e modos Local/Público | Código, CHANGELOG, binários publicados e checksums. | Implementado na versão 1.2.4. |
-| Comparação pública e cópia de histórico/hash | UI Java e relatório HTML gerado pelo programa. | Implementado; depende de referência obtida externamente para confiança externa. |
-| Copiar JAR/EXE automaticamente pelo plugin | Não há rotina nos fontes do plugin. | Fora da versão entregue; fluxo atual é cópia manual. |
-| Botão “Histórico de registro” no card do índice | Não localizado no HTML do índice gerado. | Não implementado na versão entregue. |
-| Teste completo de Re-Extrair pela UI 2.3.1-beta | A especificação anterior registra compilação/testes utilitários e declara que não reproduziu toda a reextração em GUI real. | Não comprovado aqui; não alegar validação integral. |
+| Conversão dos diálogos do verificador para `JFrame`/`JDialog` com ícone, botões "sempre no topo"/"minimizar" e pasta `imagem doc/` (`SPEC_ajustes_plugin_verificador.md`, seção 2-3) | **Não aplicado** | O verificador permanece com diálogos baseados em `JOptionPane`/`JFrame` padrão com barra do SO. A proposta de botões customizados não foi implementada. |
+| `getRangeMediaHashes()` (MD5) para censura no formato novo (`SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md`, correção 1) | **Removido / não se aplica mais** | O formato `html-message-v1` usa SHA-256; a censura casa sobre bytes dos anexos diretamente, com cache por SHA-256. |
+| `matchesSensitiveImageFromPreviousCapture` (MD5 de bloco do legado) no novo caminho (`SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md`, correção 6) | **Removido / não se aplica mais** | Não é usada no caminho `html-message-v1`; anexos originais são resolvidos do caso e casados diretamente. |
+| Regra CSS `.capture-modal .capture-preview-image{filter:none}` (`SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md`, correção 7) | **Removido / não se aplica mais** | O modal não é descendente de `.capture-censored`, portanto a regra é desnecessária. |
+| Vinculação de contatos/pessoas à mensagem (`ESPECIFICACAO_NOTAS_LINKS` antiga) | **Substituído** | Substituído por referência a chats (`LinkedChatRef`, `chatRefId`). Campos antigos como `contactId` permanecem apenas como compatibilidade de leitura. |
+| Cálculo de hashes no JavaScript da página local | **Substituído** | Substituído pelo verificador Java independente. |
+| Cópia automática de JAR/EXE do verificador para cada raiz capturada (proposta antiga) | **Substituído** | Implementado na 2.3.1-beta com validação de SHA-256 e cópia somente de versões aceitas. |
+| Guardar somente JSONL como registro de auditoria | **Substituído** | Evoluiu para `integridade.json` (inventário + cadeia cumulativa); JSONL continua como log operacional do Re-Extrair. |
+| Hash local como prova de imutabilidade/autoria | **Corrigido** | Hash local verifica consistência com a referência local; hash público externo permite comparação com checkpoint compartilhado, sem assinar autoria. |
+| Versão 2.0.0 e hashes de builds de teste no documento antigo | **Substituído** | Substituídos por plugin 2.5.8-beta / verificador 1.3.4 e hashes oficiais em `CHECKSUMS.md`. |
+| `censoredItemHashes` / `sensitiveMediaHashes` (inexistente no código) | **Não aplicado** | Nunca existiu; a censura usa cache por SHA-256 dentro de `runHtmlMessageCapture`. |
 
+## 4. Captura HTML por mensagem (formato `html-message-v1`)
 
-### 10.1 Cenários de aceite que devem continuar cobertos
+### 4.1 Formato e contrato
 
-| Área | Cenário | Resultado esperado | Estado de validação registrado |
-|---|---|---|---|
-| Anotações | Captura sem nota/vínculo, toggle desligado ou toggle ligado sem itens | Captura segue sem annotations opcionais; leitura não cria arquivo de anotação vazio. | Comportamento documentado e implementado; regressão gráfica total não comprovada nesta revisão. |
-| Anotações | Anotação fora do intervalo e ação de cancelar/confirmar | Cancelar preserva; confirmar exclui somente as fora e registra contagens. | Implementado no preflight; cenários devem continuar no roteiro. |
-| Anotações | Nota com HTML, aspas e texto longo | Mostrar texto escapado sem executar marcação e persistir sem corromper o JSON. | O HTML usa escape; teste de interface longo não confirmado aqui. |
-| Vínculos | Um chat, vários chats e chat sem captura | Um vínculo abre trecho quando existe; vários exibem seleção; vínculo sem captura informa ausência sem quebrar página. | Código presente; teste manual integral não reexecutado aqui. |
-| Anotar chat salvo | Origem encontrada, origem indisponível, editar e salvar | Carregar captura existente; falhar de forma controlada sem origem; salvar anotações sem exigir recaptura imediata. | Classes e métodos presentes; fluxo de UI não reexecutado nesta revisão. |
-| Legado | Captura sem schema/campos novos | Leitor mantém fallback e não afirma que campos inexistentes foram verificados. | Fallback presente no projeto; compatibilidade ampla depende de amostras legadas. |
-| Coordenadas | Áudio/vídeo com transcrição e captura antiga sem retângulos | Overlay preciso usa sub-retângulos; dados antigos usam retângulo geral. | Primeiro requisito ainda parcial: retângulos são gravados, mas o HTML não os usa no posicionamento. |
-| Re-Extrair | Fingerprint e arquivos intactos | Marcar captura inalterada somente depois de verificar origem, opções e hashes. | Caminho existe; execução em UI IPED real não comprovada nesta revisão. |
-| Re-Extrair | Somente `whatsapp.html` inválido/ausente e coordenadas válidas | Regenerar HTML, validar resultado e auditar hash sem recapturar frames. | Caminho implementado em código; teste gráfico não reexecutado aqui. |
-| Re-Extrair | Frame/anexo ausente ou alterado, captura antiga ou manifesto incompleto | Não presumir igualdade; executar recaptura completa e registrar resultado/hash anterior e recuperado quando disponível. | Caminho implementado; sem arquivo antigo em bytes, o histórico não restaura conteúdo antigo por si só. |
-| Re-Extrair | Falha antes/durante promoção | Manter a captura anterior e não publicar evento como concluído. | Lógica staged/rollback presente; falha real não simulada nesta revisão. |
-| Verificador | Captura íntegra, arquivo alterado, ausente, extra e registro inválido | Classificar cada caso sem modificar os arquivos. | Testes/utilitários e verificação de capturas foram registrados antes do release; não repetidos nesta revisão. |
-| Verificador | Referência pública correta/incorreta, histórico colado, várias capturas | Comparar hash ou conteúdo completo e mostrar a referência usada; permitir copiar hashes/histórico. | UI/código presentes; canal de confiança continua externo. |
-| Verificador | Reexecução e duas instâncias do EXE | Substituir relatório somente ao terminar; runtimes temporários não colidem nem apagam instância ativa. | Rotina e autoteste do EXE registrados no histórico de release; não reexecutados nesta revisão. |
-| Distribuição | JAR/EXE/fontes e ZIP do instalador | Cinco assets publicados e checksums correspondentes em `CHECKSUMS.md`. | Conferido na release `v2.3.1-beta`. |
+- Novas capturas usam `captureFormat: "html-message-v1"` no `manifest.json`.
+- Conteúdo: `whatsapp.html`, `messages.json`, `manifest.json`, diretório `attachments/` quando o recurso não estiver embutido.
+- Intervalo inclusivo entre as mensagens marcadas; mensagens auxiliares/interface não entram no inventário.
+- Leitura polimórfica por `captureFormat`; capturas antigas (screenshots) permanecem verificáveis e não são convertidas automaticamente.
+- Alvo fixo: IPED 4.3.1. Uma atualização de IPED exige revisão explícita do contrato e novos testes.
 
-## 11. Pendências e requisitos não entregues
+### 4.2 Marcadores e validação (2.5.2-beta)
 
-Estes itens ficam registrados para separar o que foi pedido do que está no pacote 2.3.1-beta. Sua presença documenta a pendência; não significa que a implementação ocorreu nem cancela solicitações anteriores:
+- Separador de data como início é resolvido para a primeira mensagem seguinte; a ID resolvida vai ao manifesto como âncora persistente.
+- Validação de IDs numéricos únicos e ordem do intervalo antes de instalar verificadores ou iniciar o worker; o worker repete a validação.
+- Falhas de validação não atualizam os índices da pasta de capturas; HTML/PNG são preparados em staging e promovidos apenas quando o inventário está completo.
+- Mensagens localizadas distinguem marcador ausente, ambíguo, fora de ordem e data sem mensagem seguinte.
 
-1. Posicionar hotspots de áudio/vídeo e botão de transcrição usando os retângulos específicos já gravados.
-2. Implementar o atalho **Histórico de registro** no card do índice e definir a página/fluxo que deve abrir.
-3. Implementar a cópia e validação automáticas do JAR/EXE pelo plugin, conforme solicitação anterior; a versão atual ainda orienta cópia manual.
-4. Formalizar serialização canônica de `recordHash` com vetores de teste que possam ser reproduzidos fora da implementação Java atual.
-5. Testar Re-Extrair 2.3.1-beta em interface IPED real para captura intacta, arquivo ausente/alterado, regeneração de HTML e falha/rollback.
-## 12. Documentos e evidências mantidos
+### 4.3 Migração de capturas legadas (2.5.5/2.5.6-beta)
 
-Esta especificação substitui os documentos `ESPECIFICACAO_NOTAS_LINKS.md`, `ESPEC_ANOTAR_CHAT_SALVO.md`, `ESPEC_COMPATIBILIDADE_JAVA11.md`, `ESPEC_COORDENADAS_MIDIA_TRANSCRICAO.md`, `ESPEC_REEXTRAIR_INCREMENTAL_AUDITAVEL.md`, `ESPEC_VERIFICADOR_INTEGRIDADE.md` e `instalar_captura_chat_zap/ESPECIFICACAO_IDIOMAS.md`. As implementações e testes continuam nos diretórios `src/`, `tests/` e `verificador-integridade/`; este documento é a única especificação consolidada, não substitui código, changelog ou checksums.
+- Toggle opt-in "Migrar capturas legadas para HTML por mensagem" no Re-Extrair.
+- Toggle dependente "Limpar registros e criar como nova captura": inicia nova captura em `capture_created`, descarta cadeia, reconciliação, auditoria e anotações anteriores.
+- Preservação das anotações legadas em `legacy-annotations.json` quando o histórico é mantido, com registro de `migration.legacyAnnotationsPreserved` no manifesto.
+- Reuso de anexos legados no modo limpo somente após conferir SHA-256 e tamanho; MIME, nome, tipo e caminho recalculados pela origem atual.
+- Capturas já em `html-message-v1` com `changed`/`missingInCurrentSource`/`newInInterval` iguais a zero não são substituídas; auditoria registra `recapture_skipped_content_unchanged`.
+- Promoção usa pasta temporária irmã, renomeia a pasta antiga para transacional e restaura o nome original se a promoção falhar.
+- `migration.json` e `legacy-annotations.json` entram no inventário de `integridade.json`.
+
+### 4.4 Limpeza da raiz no modo "Limpar registros" (2.5.8-beta)
+
+- `archiveStaleRootIntegrityReports` removido; `deleteRootIntegrityReportsIfExists` apaga `integridade/` e `integridade.html` da raiz quando `resetLegacyRecords && replaced > 0`.
+- `_backup_integridade_*` tratado como pasta auxiliar em `isRecaptureAuxiliaryFolder` e removido por `cleanupRecaptureAuxiliaryFolders`.
+- A raiz fica no estado de uma captura recém-criada, sem vestígio de relatórios anteriores.
+
+### 4.5 Censura por imagens de referência (2.5.8-beta)
+
+- Censura visual por CSS puro + atributos HTML (`class="capture-media-link capture-censored"` e `data-capture-censored="1"`) em `html-message-v1` (captura nova, Re-Extrair e migração de legado), sem JavaScript adicional.
+- `CaptureCensorship` com CSS na segunda `<style>` somente quando houver imagem censurada; miniatura e original casados por SHA-256 (cache positivo/negativo).
+- `SensitiveImageMatcher` com sobrecarga para bytes em memória (`MatOfByte` / `Imgcodecs.imdecode` e hash exato MD5/SHA-256).
+- Bloco `censorship` no `manifest.json` (`presentationDigest`, `images`, `cssPixels`, `levelPercent`, `similarityPercent`, `notice`).
+- `messageHash` e fórmula de `captureRootHash` inalterados.
+- Fail-closed: pasta configurada mas inutilizável, erro no matcher, imagem casada sem elemento HTML correspondente ou tentativa de Re-Extrair sem pasta sobre captura previamente censurada sem modo de cadeia limpa interrompem a operação.
+- Re-Extrair compara `presentationDigest` além de `isHtmlReconciliationUnchanged`, substituindo a captura quando a censura é ligada/alterada/removida e registrando `recapture_censorship_presentation_changed`.
+- Aviso: blur CSS é supressão visual de apresentação, não tarja irreversível; bytes originais permanecem em `attachments/`.
+
+## 5. Apresentação e visualização de anexos (`whatsapp.html`)
+
+- Apresentação autônoma de `html-message-v1` com tema WhatsApp preservado do IPED 4.3.1, limitada às mensagens selecionadas.
+- Modal local para imagem, PDF, documentos e arquivos, com ações baixar/abrir; áudio/vídeo usam controles sem reprodução automática.
+- Ao fechar o modal ou navegar para fora dele, a mídia é pausada e reiniciada (2.5.4-beta).
+- CSP, CSS, anexos, SVGs e preview PDF validados pelo verificador; somente o script fixo com hash autorizado é aceito.
+- Normalização do MIME de imagens embutidas no cabeçalho pela assinatura dos bytes (2.5.3-beta), corrigindo PNGs declarados como `image/jpg`.
+
+## 6. Verificador de Integridade
+
+### 6.1 Versão e compatibilidade
+
+- Verificador 1.3.4: JAR Java 8+; EXE Windows x64 autocontido.
+- Valida a cadeia local de integridade também em capturas `html-message-v1` e confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário.
+- Mantém validação do script fixo de preview e o par anterior exato de script e CSP da 1.3.2; aceita a combinação legada `data:image/jpg` com assinatura PNG do IPED 4.3.1.
+- Tipos MIME/assinaturas reconhecidos: imagens, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z, texto/CSV e conteúdo genérico `.bin`.
+
+### 6.2 Janela "Integridade Público" (2.5.8-beta)
+
+- Removidos: campo "Manifesto JSON público de uma captura html-message-v1", botão "Comparar manifesto por mensagem", área `manifestResult`, botão "Copiar hash calculado" e texto "ou copie o hash calculado".
+- Layout em 2 blocos: (1) Hash SHA-256 público, (2) Histórico completo `historico-capturas.txt`, mais botão "Continuar para o resumo".
+- `comparePublicMessageManifest` (método estático package-private) mantido por compatibilidade com testes.
+
+### 6.3 Paginação e seleção incremental (2.3.3-beta)
+
+- Até 100 capturas por página no seletor do verificador e na janela Re-Extrair, com navegação anterior/próximo e contagem.
+- Validação de detalhes de metadados sob demanda por página e em lotes de até 25 antes de executar os jobs selecionados.
+- "Marcar todos" usa seleção global compacta; ao editar uma caixa, converte a seleção atual em IDs explícitos e novas capturas ficam desmarcadas.
+
+### 6.4 Verificação no plugin (`VerifierIntegrity`)
+
+- O plugin procura os binários em pastas conhecidas, verifica os hashes aceitos (allowlist) e copia os arquivos oficiais para a saída da captura.
+- Se não estiverem disponíveis, o usuário pode copiá-los ao lado do índice.
+- Alerta informativo (não bloqueante) uma vez por sessão em Start e Re-Extrair, com tom informativo (`INFORMATION_MESSAGE`).
+- Hashes permitidos sincronizados com o verificador 1.3.4 (JAR `241FD904...`, EXE `E4137082...`).
+
+## 7. Segurança, memória e estabilidade
+
+- Confinamento dos caminhos do `capturas-index.json` à raiz de saída; rejeita caminhos absolutos, segmentos ambíguos, links e entradas duplicadas sem comparação quadrática.
+- Re-Extrair carrega metadados no diálogo em segundo plano, limita cada página a 16 MiB e mantém apenas IDs selecionados; jobs carregados individualmente durante o processamento.
+- Inventário, histórico e metadados cumulativos respeitam limites de tamanho antes de substituir os registros anteriores.
+- Limites globais para candidatos, itens e metadados selecionados; descoberta do verificador ocorre em segundo plano e pode ser cancelada.
+- Relatórios acima do orçamento recusados antes da montagem; os cinco relatórios preparados e promovidos com rollback se alguma promoção falhar.
+- HTML, JSON e texto usam escaping adequado; falhas de limite preservam os relatórios anteriores.
+- Sanitização remove conteúdo ativo e URLs externas; anexos limitados, conferidos contra o hash do item IPED, verificados por assinatura/MIME e gravados dentro de `attachments/`.
+- Dependência `org.json` 20260719 (CVE-2026-59171); limites de 16 MiB em JSON e 25.000 arquivos em inventários; hashes canônicos em fluxo.
+- Leituras de manifestos e anotações limitadas para impedir consumo excessivo de memória.
+- Plugin continua gerando bytecode Java 11; verificador JAR Java 8+.
+
+## 8. Idiomas e instalador
+
+- Bundles padrão em inglês e `pt_BR` dentro do JAR; instalador valida o JAR antes de substituir, cria backup, inclui bundles e mescla no diretório externo `iped/localization` apenas as chaves ausentes.
+- Falha na instalação de idiomas tenta restaurar o JAR anterior.
+- Instalador distribui o JAR modificado, bundles de idioma e validador.
+
+## 9. Compatibilidade e distribuição
+
+- Plugin: IPED 4.3.1, Java 11 como alvo mínimo. Verificador JAR: Java 8+. Verificador EXE: Windows x64, runtimes incluídos.
+- Release beta contém: ZIP do instalador, JAR e EXE do verificador, ZIP `src-plugin` e ZIP `src-integridade-verifier`.
+- Tamanhos e SHA-256 dos artefatos publicados em `CHECKSUMS.md`. Qualquer rebuild precisa recalcular e atualizar esses valores.
+- O instalador distribui o JAR modificado, bundles de idioma e validador; cria backup antes de substituir o JAR instalado.
+- Capturas novas usam `html-message-v1`; capturas legadas em screenshots permanecem compatíveis de leitura.
+
+## 10. Notas sobre validação
+
+- A maior parte das funcionalidades foi validada por testes automatizados de contrato (`teste_antes_de_aplicar/run_all_tests.ps1`), que passam na versão atual.
+- A validação manual dentro do IPED 4.3.1 (interface gráfica) depende de execução em ambiente real e permanece pendente para alguns fluxos (captura, Re-Extrair, migração, censura).
+- "Implementado" não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.

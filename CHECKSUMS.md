@@ -1,5 +1,25 @@
 # Checksums
 
+## Build 2.5.8-beta / Verificador 1.3.4 (censura de imagens sensíveis por CSS em `html-message-v1`)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.8-beta.jar` | 646.622 | `2D5FB8EE5312E9E1F99707272E833FDCDCBD8994F82D97E3E1D95A7DF3C90EA6` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 646.622 | `2D5FB8EE5312E9E1F99707272E833FDCDCBD8994F82D97E3E1D95A7DF3C90EA6` |
+| `instalador-chat-captura-IPED-2.5.8-beta-verificador-1.3.4.zip` | 72.933.991 | `49ACB11EE33689304072176712B0FAEC775E3CBA76693C3D49F194DCFAEF030F` |
+| `verificador-integridade/integridade-verifier.jar` | 132.353 | `241FD904C02F65E19EE3D663C24A9AA15B685E8A43DD7F545AD5D07133BC79DB` |
+| `verificador-integridade/integridade-verifier.exe` | 77.838.404 | `E4137082FE2A025DD406891A82313B2094A6C15A2F6D2F0804E2BE342ED57C38` |
+
+## Build 2.5.7-beta / Verificador 1.3.4 (arquivamento dos relatórios da raiz e índice de anotações)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.7-beta.jar` | 640.743 | `150D1036134291F84E6FF6D90214271CA314EE4B0040BFF13947F0B2D881A135` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 640.743 | `150D1036134291F84E6FF6D90214271CA314EE4B0040BFF13947F0B2D881A135` |
+| `instalador-chat-captura-IPED-2.5.7-beta-verificador-1.3.4.zip` | 72.930.196 | `43C57F37002A55BBFF417E5B01B1712DC3E41FD4091C2626FCA8DF6A06C27BA5` |
+| `verificador-integridade/integridade-verifier.jar` | 133.702 | `034DC3369C7AC00C80D6F2034745E5B1242B2DD2055C9DD583B97C6DD041CB44` |
+| `verificador-integridade/integridade-verifier.exe` | 77.839.428 | `FD136842AE223C3AE8E09E1C1670884249390D37CDB763E1D247CBC3462A4FDE` |
+
 ## Build 2.5.6-beta / Verificador 1.3.4 (reset em capturas novas e janela ajustável)
 
 | Arquivo | Bytes | SHA-256 |

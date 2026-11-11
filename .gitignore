@@ -22,6 +22,9 @@ __pycache__/
 # Build outputs and release assets
 /build/
 /release-assets/
+
+# Installer artifacts (large binaries; publish via Gitea releases)
+instalador-*.zip
 /verificador-integridade/build/
 /verificador-integridade/build-native/
 /verificador-integridade/build-single-exe/
