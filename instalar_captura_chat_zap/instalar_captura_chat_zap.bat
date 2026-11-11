@@ -7,6 +7,10 @@ REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
 if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar"
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
+set "OPENCV_SOURCE=%SCRIPT_DIR%dependencies\opencv-4120.jar"
+set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
+set "OPENCV_TARGET=%IPED_ROOT%\lib\opencv-4120.jar"
+set "OPENCV_DLL_TARGET=%IPED_ROOT%\opencv_java4120.dll"
 
 REM Sobe ate a pasta raiz do IPED, procurando o iped.exe.
 set "IPED_ROOT="
@@ -131,6 +135,19 @@ if errorlevel 1 (
     copy /Y "%BACKUP_JAR%" "%TARGET_JAR%" >nul
     pause
     exit /b 1
+)
+
+REM Instala o OpenCV (necessario para censura por similaridade em capturas html-message-v1).
+if exist "%OPENCV_SOURCE%" (
+    if not exist "%OPENCV_TARGET%" (
+        copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
+    ) else (
+        REM Atualiza apenas se o hash diferir.
+        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_SOURCE%' -Algorithm SHA256).Hash"') do set "OPENCV_SRC_HASH=%%i"
+        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_TARGET%' -Algorithm SHA256).Hash"') do set "OPENCV_DST_HASH=%%i"
+        if not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
+    )
+    if exist "%OPENCV_DLL_SOURCE%" copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_DLL_TARGET%" >nul
 )
 
 REM Injeta os bundles de idioma do plugin no JAR instalado.
