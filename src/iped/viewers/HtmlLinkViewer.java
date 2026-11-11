@@ -6037,10 +6037,16 @@ private void setCaptureInteractionEnabled(boolean enabled) {
                 sensitiveImageMatcher = matcher;
                 chatCapturePanel.setStatusText("Blur sensivel ativo (" + sensitiveSimilarityPercent + "%): " //$NON-NLS-1$ //$NON-NLS-2$
                         + sensitiveImagesFolder);
+            } else {
+                // Pasta de referencia vazia ou sem imagens validas: trata como sem censura.
+                LOGGER.warn("Sensitive image folder has no usable references; disabling blur: {}", sensitiveImagesFolder); //$NON-NLS-1$
+                chatCapturePanel.setStatusText("Blur sensivel desativado: pasta sem imagens validas."); //$NON-NLS-1$
+                sensitiveImagesFolder = null;
             }
         } catch (Throwable e) {
             LOGGER.warn("Unable to initialize sensitive image blur from {}", sensitiveImagesFolder, e); //$NON-NLS-1$
             chatCapturePanel.setStatusText("Blur sensivel desativado: " + e.getMessage()); //$NON-NLS-1$
+            sensitiveImagesFolder = null;
         }
     }
 
