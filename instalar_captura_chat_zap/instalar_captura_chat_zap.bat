@@ -147,7 +147,12 @@ if exist "%OPENCV_SOURCE%" (
         for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_TARGET%' -Algorithm SHA256).Hash"') do set "OPENCV_DST_HASH=%%i"
         if not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
     )
-    if exist "%OPENCV_DLL_SOURCE%" copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_DLL_TARGET%" >nul
+    if exist "%OPENCV_DLL_SOURCE%" (
+        copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_DLL_TARGET%" >nul
+        REM Instala tambem na pasta plugins/, onde o plugin procura por padrao.
+        if not exist "%IPED_ROOT%\plugins" mkdir "%IPED_ROOT%\plugins"
+        copy /Y "%OPENCV_DLL_SOURCE%" "%IPED_ROOT%\plugins\opencv_java4120.dll" >nul
+    )
 )
 
 REM Injeta os bundles de idioma do plugin no JAR instalado.
