@@ -134,7 +134,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.5.8-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.5.9-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -360,7 +360,7 @@ htmlViewer.setContextMenuEnabled(false);
     }
 
     private List<CaptureBoundaryResolver.Row> readCaptureBoundaryRows() throws IOException {
-        String script = "(function(){var out=[];document.querySelectorAll('div.linha').forEach(function(row){var raw=row.id||'',messageId=/^\\d+$/.test(raw)?raw:'',dates=[];if(row.hasAttribute('data-iped-capture-date')&&row.id)dates.push(row.id);row.querySelectorAll('[data-iped-capture-date][id]').forEach(function(date){dates.push(date.id);});if(messageId||dates.length)out.push({messageId:messageId,dateIds:dates});});return JSON.stringify(out);})()"; //$NON-NLS-1$
+        String script = "(function(){var out=[];document.querySelectorAll('div.linha').forEach(function(row){var raw=row.id||'',messageId=/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(raw)?raw:'',dates=[];if(row.hasAttribute('data-iped-capture-date')&&row.id)dates.push(row.id);row.querySelectorAll('[data-iped-capture-date][id]').forEach(function(date){dates.push(date.id);});if(messageId||dates.length)out.push({messageId:messageId,dateIds:dates});});return JSON.stringify(out);})()"; //$NON-NLS-1$
         Object raw = executeScriptAndWait(script);
         if (!(raw instanceof String)) throw new IOException("Não foi possível ler os marcadores de mensagem do DOM."); //$NON-NLS-1$
         JSONArray jsonRows = new JSONArray((String) raw);
@@ -1502,7 +1502,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             job.luceneQueries = buildRecaptureQueries(job);
             job.luceneQuery = job.luceneQueries.isEmpty() ? "" : job.luceneQueries.get(0); //$NON-NLS-1$
             boolean hasAnchors = job.htmlMessageCapture
-                    ? job.startMessageId.matches("[0-9]{1,32}") && job.endMessageId.matches("[0-9]{1,32}")
+                    ? job.startMessageId.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?") && job.endMessageId.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")
                     : job.startAnchor.isUsable() && job.endAnchor.isUsable();
             boolean hasQueries = !job.luceneQueries.isEmpty();
             // Capturas legadas podem nao ter todos os dados de assinatura; aceita
@@ -2029,7 +2029,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         JSONObject anchors = manifest.optJSONObject("anchors"); //$NON-NLS-1$
         String start = anchors == null ? "" : anchors.optString("start"); //$NON-NLS-1$
         String end = anchors == null ? "" : anchors.optString("end"); //$NON-NLS-1$
-        if (!start.matches("[0-9]{1,32}") || !end.matches("[0-9]{1,32}")
+        if (!start.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?") || !end.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")
                 || !start.equals(captureStartMessageId) || !end.equals(captureEndMessageId)) {
             throw new IOException("As âncoras HTML não correspondem ao intervalo localizado para Re-Extrair."); //$NON-NLS-1$
         }
@@ -2049,7 +2049,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         for (int i = 0; i < messages.length(); i++) {
             JSONObject message = messages.optJSONObject(i);
             if (message == null || message.optInt("order", -1) != i
-                    || !message.optString("domId").matches("[0-9]{1,32}")
+                    || !message.optString("domId").matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")
                     || !message.optString("key").matches("(?i)[0-9a-f]{64}")
                     || !message.optString("messageHash").matches("(?i)[0-9a-f]{64}")
                     || !ids.add(message.optString("domId")) || !keys.add(message.optString("key"))
@@ -2340,9 +2340,58 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         if (captureEndMessageId == null || captureEndMessageId.isBlank()) {
             throw new IOException("Mensagem final nao localizada no DOM: " + job.endAnchor.display()); //$NON-NLS-1$
         }
+        normalizeRecaptureBoundariesFromDom();
         scrollToCaptureStartMessage();
         highlightCaptureMarks();
         sleep(800);
+    }
+
+    private void normalizeRecaptureBoundariesFromDom() {
+        try {
+            List<CaptureBoundaryResolver.Row> rows = readCaptureBoundaryRows();
+            CaptureBoundaryResolver.Resolution start = CaptureBoundaryResolver.resolve(rows, captureStartMessageId,
+                    CaptureBoundaryResolver.Role.START);
+            int startIdx = 0;
+            if (start.isValid()) {
+                captureStartMessageId = start.messageId;
+                startIdx = start.rowIndex;
+            }
+            CaptureBoundaryResolver.Resolution end = CaptureBoundaryResolver.resolve(rows, captureEndMessageId,
+                    CaptureBoundaryResolver.Role.END);
+            if (end.isValid()) {
+                captureEndMessageId = end.messageId;
+            } else if ("end_date_not_supported".equals(end.errorCode)) { //$NON-NLS-1$
+                int dateIdx = -1;
+                for (int i = 0; i < rows.size(); i++) {
+                    if (rows.get(i).dateIds.contains(captureEndMessageId)) {
+                        dateIdx = i;
+                        break;
+                    }
+                }
+                if (dateIdx >= 0) {
+                    String fallbackEnd = ""; //$NON-NLS-1$
+                    for (int i = dateIdx - 1; i >= startIdx; i--) {
+                        if (!rows.get(i).messageId.isEmpty()) {
+                            fallbackEnd = rows.get(i).messageId;
+                            break;
+                        }
+                    }
+                    if (fallbackEnd.isEmpty()) {
+                        for (int i = Math.max(dateIdx + 1, startIdx); i < rows.size(); i++) {
+                            if (!rows.get(i).messageId.isEmpty()) {
+                                fallbackEnd = rows.get(i).messageId;
+                                break;
+                            }
+                        }
+                    }
+                    if (!fallbackEnd.isEmpty()) {
+                        captureEndMessageId = fallbackEnd;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Unable to normalize recapture boundaries", e); //$NON-NLS-1$
+        }
     }
 
     private RecaptureLocatedRange resolveRecaptureRangeFromDom(RecaptureJob job) throws InterruptedException {
@@ -2844,7 +2893,7 @@ createReportThumbnails(captureDir, exported);
     }
 
     private CaptureRunResult runHtmlMessageCapture(Path outputRoot, Path captureDir) throws Exception {
-        String script = "(function(startId,endId){var all=[].slice.call(document.querySelectorAll('div.linha[id]')).filter(function(n){return /^\\d+$/.test(n.id)}),theme=document.querySelector('style'),top=document.getElementById('topbar'),header=top&&top.cloneNode(true);if(!theme||!header||theme.textContent.length>2097152)return JSON.stringify({error:'theme_unavailable'});header.id='capture-topbar';[header].concat([].slice.call(header.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(a){var k=a.name.toLowerCase(),v=a.value||'';if(k.indexOf('on')===0||k==='style'||k==='href'||k==='srcset'||k==='srcdoc'||k==='action'||k==='formaction'||(k==='id'&&n!==header)||(k==='src'&&!/^data:image\\/(png|jpe?g|gif|webp);base64,/i.test(v)))n.removeAttribute(a.name);});});" //$NON-NLS-1$
+        String script = "(function(startId,endId){var all=[].slice.call(document.querySelectorAll('div.linha[id]')).filter(function(n){return /^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(n.id)}),theme=document.querySelector('style'),top=document.getElementById('topbar'),header=top&&top.cloneNode(true);if(!theme||!header||theme.textContent.length>2097152)return JSON.stringify({error:'theme_unavailable'});header.id='capture-topbar';[header].concat([].slice.call(header.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(a){var k=a.name.toLowerCase(),v=a.value||'';if(k.indexOf('on')===0||k==='style'||k==='href'||k==='srcset'||k==='srcdoc'||k==='action'||k==='formaction'||(k==='id'&&n!==header)||(k==='src'&&!/^data:image\\/(png|jpe?g|gif|webp);base64,/i.test(v)))n.removeAttribute(a.name);});});" //$NON-NLS-1$
                 + "var ids=all.map(function(n){return n.id}),startMatches=ids.filter(function(x){return x===startId}).length;if(startMatches===0)return JSON.stringify({error:'start_marker_missing'});if(startMatches!==1)return JSON.stringify({error:'start_marker_ambiguous'});var endMatches=ids.filter(function(x){return x===endId}).length;if(endMatches===0)return JSON.stringify({error:'end_marker_missing'});if(endMatches!==1)return JSON.stringify({error:'end_marker_ambiguous'});" //$NON-NLS-1$
                 + "var resolvedStart=startId,a=ids.indexOf(startId),b=ids.indexOf(endId);if(a>b)return JSON.stringify({error:'marker_order_invalid'});if(b-a+1>" + MAX_HTML_MESSAGE_COUNT + ")return JSON.stringify({error:'message_count_limit'});var rows=[],payloadBytes=0;" //$NON-NLS-1$ //$NON-NLS-2$
                 + "for(var i=a;i<=b;i++){var src=all[i],clone=src.cloneNode(true),resources=[],resourceByHash={},media=[],resourceError='';" //$NON-NLS-1$
@@ -2854,7 +2903,7 @@ createReportThumbnails(captureDir, exported);
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink){/* unsupported attachment skipped, continue capture */}" //$NON-NLS-1$
                 + "clone.querySelectorAll('script,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
                 + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
-                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^\\d+$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
+                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
                 + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
         Object raw = executeScriptAndWait(script);
         if (!(raw instanceof String)) throw new IOException("Falha ao extrair mensagens do DOM do IPED."); //$NON-NLS-1$
@@ -6569,7 +6618,7 @@ private void setCaptureInteractionEnabled(boolean enabled) {
                         + "cleanMessageText:function(text){var s=this.norm(text||'');s=s.replace(/\\d{4}[-\\/]\\d{2}[-\\/]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\s+[-+]\\d{2}:?\\d{2})?/g,' ');s=s.replace(/\\d{4}[-\\/]\\d{2}[-\\/]\\d{2}/g,' ');s=s.replace(/\\b\\d{10,}\\b/g,' ');s=s.replace(/\\s+/g,' ').trim();return s;}," //$NON-NLS-1$
                         + "sameMessageText:function(blockText,anchorText){var a=this.cleanMessageText(anchorText),b=this.cleanMessageText(blockText);if(!a||!b)return false;if(a===b)return true;if(b.indexOf(a)>=0)return true;if(a.indexOf(b)>=0)return true;return false;}," //$NON-NLS-1$
                         + "sameDateText:function(blockText,anchorText){var a=this.norm(anchorText||''),b=this.norm(blockText||'');if(!a||!b)return false;if(a===b)return true;if(b.indexOf(a)>=0)return true;if(a.indexOf(b)>=0)return true;var ak=this.dateKey(a),bk=this.dateKey(b);return !!(ak&&bk&&ak===bk);}," //$NON-NLS-1$
-                        + "sameRecaptureAnchor:function(blocks,index,anchor){var b=blocks[index];if(!b||!anchor)return false;var wantedType=this.norm(anchor.type),blockType=this.norm(b.type);if(blockType==='date'&&wantedType!=='date')return false;if(wantedType==='date')return this.sameDateText(b.text,anchor.text||anchor.date);var blockTime=this.dateKey(this.blockTimestamp(blocks,index)),anchorTime=this.dateKey(anchor.date||anchor.text);if(!blockTime||!anchorTime||blockTime!==anchorTime)return false;var anchorHash=this.norm(anchor.hash);if(anchorHash)return this.norm(b.hash)===anchorHash;return this.sameMessageText(b.text,anchor.text);}," //$NON-NLS-1$
+                        + "sameRecaptureAnchor:function(blocks,index,anchor){var b=blocks[index];if(!b||!anchor)return false;if(anchor.id&&!/^iped-capture-date-/.test(anchor.id)&&b.id===anchor.id)return true;var wantedType=this.norm(anchor.type),blockType=this.norm(b.type);if(blockType==='date'&&wantedType!=='date')return false;if(wantedType==='date')return this.sameDateText(b.text,anchor.text||anchor.date);var blockTime=this.dateKey(this.blockTimestamp(blocks,index)),anchorTime=this.dateKey(anchor.date||anchor.text);if(!blockTime||!anchorTime||blockTime!==anchorTime)return false;var anchorHash=this.norm(anchor.hash);if(anchorHash)return this.norm(b.hash)===anchorHash;if(!this.cleanMessageText(anchor.text))return !wantedType||wantedType==='message'||wantedType===blockType;return this.sameMessageText(b.text,anchor.text);}," //$NON-NLS-1$
                         + "resolveRecaptureRangeFromDom:function(startAnchor,endAnchor){var blocks=this.getAllCaptureBlocks(),startId='',endId='',startIndex=-1;for(var i=0;i<blocks.length;i++){if(this.sameRecaptureAnchor(blocks,i,startAnchor)){startId=blocks[i].id;startIndex=i;break;}}if(startIndex>=0){for(var j=startIndex;j<blocks.length;j++){if(this.sameRecaptureAnchor(blocks,j,endAnchor)){endId=blocks[j].id;break;}}}return startId+'|'+endId;}," //$NON-NLS-1$
                         + "getMediaBlocksBetween:function(startId,endId){var blocks=this.getAllCaptureBlocks(),out=[],active=false,enc=encodeURIComponent;for(var i=0;i<blocks.length;i++){if(blocks[i].id===startId)active=true;if(active&&blocks[i].hash)out.push(enc(blocks[i].id)+','+enc(blocks[i].hash));if(active&&blocks[i].id===endId)break;}return out.join(';')}," //$NON-NLS-1$
                         + "visibleBlockHasDate:function(blocks,index,date){if(!this.dateKey(date))return false;var b=blocks[index];if(b&&this.dateMatchesText(b.text||'',date))return true;if(b&&b.id){var el=document.getElementById(b.id);if(el&&this.dateNearElement(el,date))return true;}for(var d=-2;d<=2;d++){if(d===0)continue;var n=blocks[index+d];if(!n)continue;if(this.dateMatchesText(n.text||'',date))return true;if(n.id){var nel=document.getElementById(n.id);if(nel&&this.dateNearElement(nel,date))return true;}}return false;}," //$NON-NLS-1$

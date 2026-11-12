@@ -28,7 +28,7 @@ set "JSON_OLD=%IPED_ROOT%\lib\json-20250517.jar"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.5.8-beta
+echo Versao do plugin: 2.5.9-beta
 echo Verificador de integridade: 1.3.4
 echo ------------------------------------------------
 echo.

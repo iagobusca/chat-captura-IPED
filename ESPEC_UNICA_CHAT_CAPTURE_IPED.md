@@ -124,7 +124,7 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 - O plugin procura os binários em pastas conhecidas, verifica os hashes aceitos (allowlist) e copia os arquivos oficiais para a saída da captura.
 - Se não estiverem disponíveis, o usuário pode copiá-los ao lado do índice.
 - Alerta informativo (não bloqueante) uma vez por sessão em Start e Re-Extrair, com tom informativo (`INFORMATION_MESSAGE`).
-- Hashes permitidos sincronizados com o verificador 1.3.4 (JAR `241FD904...`, EXE `E4137082...`).
+- Hashes permitidos sincronizados com o verificador 1.3.4 (JAR `B456074C...`, EXE `20FAF8A5...`).
 
 ## 7. Segurança, memória e estabilidade
 

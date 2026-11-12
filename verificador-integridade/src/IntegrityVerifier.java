@@ -297,9 +297,9 @@ public final class IntegrityVerifier {
         return "Captura local: "+localName+"\nIntegras: "+same+" | divergentes: "+changed+" | ausentes na referência: "+notInReference+" | somente na referência: "+referenceOnly+"\nA ausência descreve a comparação; não identifica causa nem autoria.\n\n"+output.toString();
     }
     private static Map<String,String> publicMessageMap(JSONArray rows)throws IOException{
-        Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row==null)throw new IOException("Entrada inválida no resumo público.");String id=row.optString("domId",""),key=row.optString("key",""),hash=row.optString("messageHash","");if(!id.matches("[0-9]{1,32}")||!key.matches("(?i)[0-9a-f]{64}")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(key,hash)!=null)throw new IOException("ID, chave ou hash inválido/duplicado no resumo público.");}return result;
+        Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row==null)throw new IOException("Entrada inválida no resumo público.");String id=row.optString("domId",""),key=row.optString("key",""),hash=row.optString("messageHash","");if(!id.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")||!key.matches("(?i)[0-9a-f]{64}")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(key,hash)!=null)throw new IOException("ID, chave ou hash inválido/duplicado no resumo público.");}return result;
     }
-    private static Map<String,String> publicMessageDomMap(JSONArray rows)throws IOException{Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);String id=row==null?"":row.optString("domId",""),hash=row==null?"":row.optString("messageHash","");if(!id.matches("[0-9]{1,32}")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(id,hash)!=null)throw new IOException("ID DOM inválido ou duplicado no resumo público.");}return result;}
+    private static Map<String,String> publicMessageDomMap(JSONArray rows)throws IOException{Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);String id=row==null?"":row.optString("domId",""),hash=row==null?"":row.optString("messageHash","");if(!id.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(id,hash)!=null)throw new IOException("ID DOM inválido ou duplicado no resumo público.");}return result;}
     private static String normalizePublicRecord(String s){String n=s.replace("\r\n","\n").replace('\r','\n');while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
     private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(c.name).append('|').append(c.hash).append('\n');return out.toString();}
     private static void copyToClipboard(java.awt.Component owner,String value,String message){
@@ -489,7 +489,7 @@ public final class IntegrityVerifier {
         for(int n=0;n<messages.length();n++){
             JSONObject row=messages.optJSONObject(n);if(row==null||row.optInt("order",-1)!=n)throw new IOException("Ordem/estrutura inválida em messages.json, índice "+n);
             String id=row.optString("domId",""),key=row.optString("key",""),messageHash=row.optString("messageHash","");
-            if(!id.matches("[0-9]{1,32}")||!key.matches("(?i)[0-9a-f]{64}")||!messageHash.matches("(?i)[0-9a-f]{64}")||!ids.add(id)||!keys.add(key))throw new IOException("ID/chave duplicada ou hash inválido na mensagem "+n);
+            if(!id.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")||!key.matches("(?i)[0-9a-f]{64}")||!messageHash.matches("(?i)[0-9a-f]{64}")||!ids.add(id)||!keys.add(key))throw new IOException("ID/chave duplicada ou hash inválido na mensagem "+n);
             String conversation=manifest.optString("conversationKey","");if(!conversation.matches("(?i)[0-9a-f]{64}"))throw new IOException("Chave de conversa inválida.");
             String natural=row.optString("timestamp","")+"\n"+row.optString("sender","")+"\n"+row.optString("direction","")+"\n"+row.optString("type","");
             int expectedOrdinal=naturalOrdinals.containsKey(natural)?naturalOrdinals.get(natural):0;naturalOrdinals.put(natural,expectedOrdinal+1);
@@ -649,7 +649,7 @@ public final class IntegrityVerifier {
         for(int i=0;i<entries.length();i++){
             JSONObject entry=entries.optJSONObject(i);if(entry==null)throw new IOException("Registro de reconciliação inválido.");
             String key=entry.optString("key",""),state=entry.optString("state",""),previous=entry.optString("previousMessageHash",""),current=entry.optString("currentMessageHash",""),id=entry.optString("domId","");
-            if(!key.matches("(?i)[0-9a-f]{64}")||!seen.add(key)||!id.matches("[0-9]{1,32}"))throw new IOException("Chave/ID duplicado ou inválido na reconciliação.");
+            if(!key.matches("(?i)[0-9a-f]{64}")||!seen.add(key)||!id.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?"))throw new IOException("Chave/ID duplicado ou inválido na reconciliação.");
             JSONObject currentMessage=currentMessages.get(key);String actualCurrent=currentMessage==null?"":currentMessage.optString("messageHash","");
             if(!actualCurrent.equalsIgnoreCase(current))throw new IOException("Hash atual da reconciliação não corresponde à captura: "+id);
             if("unchanged".equals(state)){if(!previous.matches("(?i)[0-9a-f]{64}")||!previous.equalsIgnoreCase(current)||currentMessage==null)throw new IOException("Estado unchanged inválido na mensagem "+id);unchanged++;statesById.put(id,"inalterada desde a captura anterior");}

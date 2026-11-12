@@ -4,6 +4,23 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.5.9-beta] - 2026-11-12
+
+### Adicionado
+
+- `CaptureBoundaryResolver`, `HtmlLinkViewer` e Verificador 1.3.4 agora aceitam qualquer ponto inicial/final válido no WhatsApp: mensagens numéricas (`^\d+$`), registros de chamada (`^\d+_call:[0-9a-fA-F]+$`), mensagens removidas/carved (`^-?\d+_\d+$`) e timestamps internos (`iped-capture-date-...`), normalizando automaticamente `data-iped-capture-id` e `domId`.
+- Fat-JAR autocontido com classes `org/opencv/**` embutidas em `iped-viewers-impl-4.3.1.jar`, busca da DLL nativa `opencv_java4120.dll` na raiz do IPED / `plugins/` / `lib/` e `Implementation-Version: 2.5.9-beta` no `META-INF/MANIFEST.MF`.
+- Tratamento tolerante de anexos em `html-message-v1` (pula anexos não suportados sem abortar a captura).
+- Script `verificador-integridade/build-single-exe.ps1` atualizado com `--disable-build-servers -p:UseSharedCompilation=false` para evitar travamento de servidores MSBuild/Roslyn.
+
+### Corrigido
+
+- Falha ao re-extrair ou migrar capturas legadas no Re-Extrair quando o ponto inicial/final aponta para registro de chamada (`_call:<hex>`), timestamp interno da linha ou ID negativo/removido (`-?<id>_<id>`).
+- `VerifierIntegrity.java` e `VerifierIntegrityHashTest.java` sincronizados com os binários do Verificador 1.3.4 recompilados (`B456074C...` e `20FAF8A5...`).
+- Instalador atualizado para exibir `Versao do plugin: 2.5.9-beta`.
+
+---
+
 ## [2.5.8-beta] - 2026-11-09
 
 ### Adicionado

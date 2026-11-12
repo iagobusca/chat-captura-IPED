@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Java8 = 'C:\Program Files\Eclipse Adoptium\jdk-8.0.512.9-hotspot',
     [string]$Java11 = 'C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot',
     [string]$JdkWithJpackage = 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot',
@@ -50,7 +50,7 @@ $Rows = Get-ChildItem -LiteralPath $PayloadDir -File -Recurse | ForEach-Object {
 Set-Content -LiteralPath (Join-Path $Base 'launcher\payload.sha256') -Value $Rows -Encoding UTF8
 Remove-Item -LiteralPath (Join-Path $Base 'launcher\payload.zip') -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $PayloadDir '*') -DestinationPath (Join-Path $Base 'launcher\payload.zip') -CompressionLevel Optimal
-& dotnet publish (Join-Path $Base 'launcher\Launcher.csproj') --configfile (Join-Path $Base 'nuget.config') --ignore-failed-sources -p:NuGetAudit=false -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o (Join-Path $Base 'launcher\publish')
+& dotnet publish (Join-Path $Base 'launcher\Launcher.csproj') --disable-build-servers --configfile (Join-Path $Base 'nuget.config') --ignore-failed-sources -p:NuGetAudit=false -p:UseSharedCompilation=false -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o (Join-Path $Base 'launcher\publish')
 if ($LASTEXITCODE) { throw 'Falha ao compilar o lançador EXE autoextraível.' }
 Copy-Item (Join-Path $Base 'launcher\publish\integridade-verifier.exe') (Join-Path $Output 'integridade-verifier.exe') -Force
 Write-Host "JAR Java 8: $Base\integridade-verifier.jar"

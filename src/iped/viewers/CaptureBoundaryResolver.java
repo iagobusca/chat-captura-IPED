@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Resolves capture boundaries against the ordered IPED 4.3.1 conversation rows. */
 final class CaptureBoundaryResolver {
 
-    private static final Pattern NUMERIC_MESSAGE_ID = Pattern.compile("[0-9]+"); //$NON-NLS-1$
+    private static final Pattern NUMERIC_MESSAGE_ID = Pattern.compile("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?"); //$NON-NLS-1$
 
     enum Role { START, END }
 
@@ -56,10 +56,20 @@ final class CaptureBoundaryResolver {
         }
         if (!dateMatches.isEmpty()) {
             if (dateMatches.size() != 1) return Resolution.error("marker_ambiguous");
+            int matchedRowIndex = dateMatches.get(0);
+            String ownMessageId = rows.get(matchedRowIndex).messageId;
+            if (!ownMessageId.isEmpty()) {
+                if (!NUMERIC_MESSAGE_ID.matcher(ownMessageId).matches()) return Resolution.error("marker_not_message");
+                int count = 0;
+                for (Row row : rows) if (ownMessageId.equals(row.messageId)) count++;
+                if (count != 1) return Resolution.error("marker_ambiguous");
+                return Resolution.success(ownMessageId, matchedRowIndex);
+            }
             if (role == Role.END) return Resolution.error("end_date_not_supported");
-            for (int i = dateMatches.get(0) + 1; i < rows.size(); i++) {
+            for (int i = matchedRowIndex + 1; i < rows.size(); i++) {
                 String candidate = rows.get(i).messageId;
                 if (candidate.isEmpty()) continue;
+                if (!NUMERIC_MESSAGE_ID.matcher(candidate).matches()) return Resolution.error("marker_not_message");
                 int count = 0;
                 for (Row row : rows) if (candidate.equals(row.messageId)) count++;
                 if (count != 1) return Resolution.error("marker_ambiguous");
