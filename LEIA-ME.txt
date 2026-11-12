@@ -1,17 +1,28 @@
-Pacote Chat Captura IPED 2.5.9-beta - Verificador de Integridade 1.3.4
+Pacote Chat Captura IPED 2.6.0-beta - Verificador de Integridade 1.3.5
 
 Instalação:
 1. Feche o IPED 4.3.1.
 2. Execute instalar_captura_chat_zap\instalar_captura_chat_zap.bat.
 3. Reabra o IPED.
 
-O pacote inclui o plugin, org.json 20260719 e o Verificador de Integridade em JAR e EXE.
+O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
+opencv_java4120.dll e o Verificador de Integridade 1.3.5 em JAR e EXE.
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Na versão 2.5.9-beta, a pasta de imagens de referência (blur) funciona também em capturas
-html-message-v1 — captura nova, Re-Extrair e migração de legado — aplicando censura visual
-por CSS puro e atributos HTML, sem script adicional e mantendo compatibilidade integral com
-o Verificador 1.3.4.
+Novidades desta versão (2.6.0-beta / Verificador 1.3.5):
+- No Verificador 1.3.5, o resumo final passa a exibir o "SHA-256 do histórico completo
+  público" e oferece o botão "Copiar histórico completo público", gerando linhas no formato
+  anonimizado "CAPTURA|*-YYYYMMDD-HHMMSS ..." para publicação com maior privacidade.
+- No modo "Integridade Público", o Verificador 1.3.5 aceita e compara tanto o histórico completo
+  original ("CAPTURA|<pasta>") quanto o histórico completo público anonimizado ("CAPTURA|*"),
+  além de reconhecer os hashes SHA-256 de ambos os formatos.
+- Allowlist e manifestos do plugin 2.6.0-beta atualizados para os binários oficiais do
+  Verificador 1.3.5.
+
+Censura visual por imagem de referência (2.5.8-beta+):
+- A pasta de imagens de referência (blur) funciona também em capturas html-message-v1 —
+  captura nova, Re-Extrair e migração de legado — aplicando censura visual por CSS puro e
+  atributos HTML, sem script adicional.
 AVISO: Blur CSS é supressão visual de apresentação, não tarja irreversível; os bytes originais
 permanecem em attachments/ e abrem no modal ao clicar.
 
@@ -30,9 +41,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.3.4:
-JAR B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD
-EXE 20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0
+SHA-256 do Verificador 1.3.5:
+JAR 31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9
+EXE 75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B
 
-SHA-256 do plugin 2.5.9-beta:
-JAR D881B345A9ACC4F54219867870959EA659FF7C91551458A2DA6192AEAAB35507
+SHA-256 do plugin 2.6.0-beta:
+JAR DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936

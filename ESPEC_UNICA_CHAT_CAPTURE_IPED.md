@@ -1,15 +1,15 @@
 # Especificação consolidada — Chat Captura IPED
 
-**Versão deste documento:** 2.0  
-**Estado de referência:** plugin `2.5.8-beta`; Verificador de Integridade `1.3.4`  
-**Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-09.  
+**Versão deste documento:** 2.1  
+**Estado de referência:** plugin `2.6.0-beta`; Verificador de Integridade `1.3.5`  
+**Base da revisão:** código, testes e documentação presentes no repositório em 2026-11-12.  
 **Fontes consolidadas:** `SPEC_ajustes_plugin_verificador.md`, `SPEC_CAPTURA_HTML_POR_MENSAGEM.md`, `SPEC_CENSURA_IMAGENS_HTML_MESSAGE.md`, `SPEC_CORRECAO_MARCADORES_CAPTURA_HTML.md`, `SPEC_CORRECOES_SEGURANCA_PLUGIN_VERIFICADOR.md`, `SPEC_LIMPEZA_REGISTROS_RAIZ_REEXTRACAO.md`, `SPEC_MIGRACAO_REEXTRACAO_LEGADA_HTML.md`, `SPEC_ORGANIZACAO_INTEGRIDADE_PUBLICO.md`, `SPEC_PAGINACAO_SELECAO_INCREMENTAL.md`, `SPEC_RENDERIZACAO_WHATSAPP_HTML.md`, `SPEC_verificador_integridade_plugin.md`.
 
 Este documento substitui as especificações dispersas do projeto. Ele descreve o comportamento confirmado no código, registra o que foi aplicado, o que não foi aplicado e o que foi removido (não se aplica mais). "Implementado" significa que há código correspondente; não significa que todos os cenários foram validados em uma sessão gráfica real do IPED.
 
 ## 1. Legenda de situação
 
-- **Aplicado:** comportamento presente no código distribuído (plugin 2.5.8-beta / verificador 1.3.4).
+- **Aplicado:** comportamento presente no código distribuído (plugin 2.6.0-beta / verificador 1.3.5).
 - **Parcial:** existe parte da estrutura, mas falta o comportamento de ponta a ponta descrito.
 - **Não aplicado:** consta de proposta anterior, mas não foi entregue nesta versão. Não deve ser anunciado como recurso disponível.
 - **Removido / não se aplica mais:** uma decisão posterior mudou a forma de atender ao requisito antigo; o item não será implementado como proposto.
@@ -43,7 +43,7 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 | Cópia automática de JAR/EXE do verificador para cada raiz capturada (proposta antiga) | **Substituído** | Implementado na 2.3.1-beta com validação de SHA-256 e cópia somente de versões aceitas. |
 | Guardar somente JSONL como registro de auditoria | **Substituído** | Evoluiu para `integridade.json` (inventário + cadeia cumulativa); JSONL continua como log operacional do Re-Extrair. |
 | Hash local como prova de imutabilidade/autoria | **Corrigido** | Hash local verifica consistência com a referência local; hash público externo permite comparação com checkpoint compartilhado, sem assinar autoria. |
-| Versão 2.0.0 e hashes de builds de teste no documento antigo | **Substituído** | Substituídos por plugin 2.5.8-beta / verificador 1.3.4 e hashes oficiais em `CHECKSUMS.md`. |
+| Versão 2.0.0 e hashes de builds de teste no documento antigo | **Substituído** | Substituídos por plugin 2.6.0-beta / verificador 1.3.5 e hashes oficiais em `CHECKSUMS.md`. |
 | `censoredItemHashes` / `sensitiveMediaHashes` (inexistente no código) | **Não aplicado** | Nunca existiu; a censura usa cache por SHA-256 dentro de `runHtmlMessageCapture`. |
 
 ## 4. Captura HTML por mensagem (formato `html-message-v1`)
@@ -102,8 +102,9 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 
 ### 6.1 Versão e compatibilidade
 
-- Verificador 1.3.4: JAR Java 8+; EXE Windows x64 autocontido.
-- Valida a cadeia local de integridade também em capturas `html-message-v1` e confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário.
+- Verificador 1.3.5: JAR Java 8+; EXE Windows x64 autocontido.
+- Exportação pública anonimizada ("Copiar histórico completo público") no formato `CAPTURA|*-YYYYMMDD-HHMMSS` com cálculo próprio de **SHA-256 do histórico completo público**, e verificação dual no modo **Integridade Público** aceitando histórico completo original (`CAPTURA|<pasta>`), histórico anonimizado (`CAPTURA|*`) e hashes de ambos.
+- Valida a cadeia local de integridade também em capturas `html-message-v1`, confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário e aceita registros de chamada (`_call:<hex>`) e carved/removidos (`-?<id>_<id>`).
 - Mantém validação do script fixo de preview e o par anterior exato de script e CSP da 1.3.2; aceita a combinação legada `data:image/jpg` com assinatura PNG do IPED 4.3.1.
 - Tipos MIME/assinaturas reconhecidos: imagens, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z, texto/CSV e conteúdo genérico `.bin`.
 
@@ -124,7 +125,7 @@ Este documento substitui as especificações dispersas do projeto. Ele descreve 
 - O plugin procura os binários em pastas conhecidas, verifica os hashes aceitos (allowlist) e copia os arquivos oficiais para a saída da captura.
 - Se não estiverem disponíveis, o usuário pode copiá-los ao lado do índice.
 - Alerta informativo (não bloqueante) uma vez por sessão em Start e Re-Extrair, com tom informativo (`INFORMATION_MESSAGE`).
-- Hashes permitidos sincronizados com o verificador 1.3.4 (JAR `B456074C...`, EXE `20FAF8A5...`).
+- Hashes permitidos sincronizados com o verificador 1.3.5 (JAR `31B0CE72...`, EXE `75FB542B...`).
 
 ## 7. Segurança, memória e estabilidade
 

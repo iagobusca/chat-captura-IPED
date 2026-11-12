@@ -4,6 +4,19 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.3.5] - 2026-11-12
+
+### Adicionado
+
+- Botão **Copiar histórico completo público** e campo **SHA-256 do histórico completo público** no diálogo de resumo final, exportando linhas no formato anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS ...` (ou `CAPTURA|*` quando sem sufixo de timestamp) para ocultar nomes de pastas em publicações externas.
+- Comparação dual no modo **Integridade Público**: aceita tanto o histórico completo original (`CAPTURA|<pasta>`) quanto o histórico completo público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS`), além do hash SHA-256 de qualquer um dos dois formatos.
+- Saída CLI `--export-history` passa a incluir `SHA-256_HISTORICO_PUBLICO=...`.
+- Build EXE (`build-single-exe.ps1`) reforçado com `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1`, `-m:1 -nodeReuse:false` e `dotnet build-server shutdown`.
+
+### Herdado da 1.3.4 (rebuild v2.5.9-beta)
+
+- Regras de validação de `domId`/`id` nos quatro pontos de checagem JSON/DOM aceitam registros de chamada (`^\d+_call:[0-9a-fA-F]+$`), carved/removidos (`^-?\d+_\d+$`) e timestamps internos.
+
 ## [1.3.4] - 2026-11-08
 
 ### Adicionado

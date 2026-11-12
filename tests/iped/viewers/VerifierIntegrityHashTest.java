@@ -11,13 +11,13 @@ public final class VerifierIntegrityHashTest {
         Method isValid = VerifierIntegrity.class.getDeclaredMethod("isValid", String.class, String.class);
         isValid.setAccessible(true);
         check((Boolean) isValid.invoke(null, "integridade-verifier.jar",
-                "B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD"), "1.3.4 JAR hash must be accepted");
+                "31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9"), "1.3.5 JAR hash must be accepted");
         check((Boolean) isValid.invoke(null, "integridade-verifier.exe",
-                "20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0"), "1.3.4 EXE hash must be accepted");
+                "75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B"), "1.3.5 EXE hash must be accepted");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
-                "241FD904C02F65E19EE3D663C24A9AA15B685E8A43DD7F545AD5D07133BC79DB"), "previous 1.3.4 JAR hash must be rejected");
+                "B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD"), "previous 1.3.4 JAR hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",
-                "E4137082FE2A025DD406891A82313B2094A6C15A2F6D2F0804E2BE342ED57C38"), "previous 1.3.4 EXE hash must be rejected");
+                "20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0"), "previous 1.3.4 EXE hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
                 "22FBAA2A8D4EA32940B4555E95207A22982B7FCDD308020950A667853420D921"), "1.3.3 JAR hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",

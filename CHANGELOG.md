@@ -4,6 +4,22 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.0-beta] - 2026-11-12
+
+### Adicionado
+
+- Verificador de Integridade **1.3.5**: novo botão **"Copiar histórico completo público"** e exibição do **SHA-256 do histórico completo público** no resumo, exportando linhas anonimizadas no formato `CAPTURA|*-YYYYMMDD-HHMMSS ...` para publicação externa com maior privacidade.
+- Verificação dual no modo **Integridade Público** do Verificador 1.3.5: aceita e compara tanto o histórico completo original (`CAPTURA|<pasta>-YYYYMMDD-HHMMSS ...`) quanto o histórico completo público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS ...`), bem como o hash SHA-256 de qualquer um dos dois formatos.
+- Opção `--export-history` do Verificador 1.3.5 também emite `SHA-256_HISTORICO_PUBLICO=...`.
+- Prevenção de travamento no `verificador-integridade/build-single-exe.ps1` com `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1`, `-m:1 -nodeReuse:false` e `dotnet build-server shutdown`.
+
+### Alterado
+
+- `VerifierIntegrity.java` e `VerifierIntegrityHashTest.java` sincronizados com os binários oficiais do Verificador **1.3.5** (`31B0CE72...` e `75FB542B...`).
+- Versão do plugin elevada para `2.6.0-beta` em `HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION`, `META-INF/MANIFEST.MF` (`Implementation-Version: 2.6.0-beta`) e `instalar_captura_chat_zap.bat`.
+
+---
+
 ## [2.5.9-beta] - 2026-11-12
 
 ### Adicionado

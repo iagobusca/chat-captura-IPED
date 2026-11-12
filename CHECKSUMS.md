@@ -1,5 +1,15 @@
 # Checksums
 
+## Build 2.6.0-beta / Verificador 1.3.5 (histórico completo público anonimizado e verificação dual)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.0-beta.jar` | 1.482.427 | `DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 1.482.427 | `DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936` |
+| `instalador-chat-captura-IPED-2.6.0-beta-verificador-1.3.5.zip` | 95.427.705 | `2F67E5EA2D7172D3097DF1872A084F6220D14C2AB4BCE7F276E355F7AC9884F4` |
+| `verificador-integridade/integridade-verifier.jar` | 133.282 | `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9` |
+| `verificador-integridade/integridade-verifier.exe` | 77.839.428 | `75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B` |
+
 ## Build 2.5.9-beta / Verificador 1.3.4 (registros de chamada, carved/removidos, timestamp em linha e fat-JAR OpenCV)
 
 | Arquivo | Bytes | SHA-256 |

@@ -29,7 +29,8 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.3.4";
+    private static final String VERIFIER_VERSION = "1.3.5";
+    private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();";
     private static final String LEGACY_CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}window.addEventListener('hashchange',function(){if(location.hash.indexOf('#preview-')!==0)stop();});document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-close'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-close'))stop();});})();";
     private static final String CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-Pq7vIvwsQpte7OdNyOYYE9cKIEPmIFR7E/G7kB1JaJI='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
@@ -93,7 +94,7 @@ public final class IntegrityVerifier {
             if(!ok) throw new IOException("Uma ou mais capturas divergiram do registro local.");
             return;
         }
-        if(exportHistory){verifyAllBounded(captures);enforceReportBudget(captures);String report=historyReport(captures,setHash(captures));Path out=root.resolve("integridade");Files.createDirectories(out);atomic(out.resolve("historico-capturas.txt"),report);System.out.println(out.resolve("historico-capturas.txt"));System.out.println("SHA-256_PUBLICO="+hashText(normalizePublicRecord(report)));return;}
+        if(exportHistory){verifyAllBounded(captures);enforceReportBudget(captures);String collectionHash=setHash(captures);String report=historyReport(captures,collectionHash);String publicReport=publicHistoryReport(captures,collectionHash);Path out=root.resolve("integridade");Files.createDirectories(out);atomic(out.resolve("historico-capturas.txt"),report);System.out.println(out.resolve("historico-capturas.txt"));System.out.println("SHA-256_PUBLICO="+hashText(normalizePublicRecord(report)));System.out.println("SHA-256_HISTORICO_PUBLICO="+hashText(normalizePublicRecord(publicReport)));return;}
         int mode=chooseMode();
         if(mode<0){System.exit(0);return;}
         List<Capture> selected = chooseCaptures(captures);
@@ -103,12 +104,14 @@ public final class IntegrityVerifier {
         String setHash = setHash(selected);
         String generated = OffsetDateTime.now().toString();
         String history = historyReport(selected, setHash);
-        String historyPublicHash = hashText(normalizePublicRecord(history));
+        String publicHistory = publicHistoryReport(selected, setHash);
+        String historyFullHash = hashText(normalizePublicRecord(history));
+        String historyPublicHash = hashText(normalizePublicRecord(publicHistory));
         writeReports(root, selected, setHash, generated, history);
         String hashList=publicHashList(selected,setHash);
         Path historyFile=root.resolve("integridade").resolve("historico-capturas.txt");
-        if(mode==1)comparePublicHistory(history,historyPublicHash);
-        showSummaryDialog(root,selected,setHash,history,historyPublicHash,hashList,historyFile,mode);
+        if(mode==1)comparePublicHistory(history,historyFullHash,publicHistory,historyPublicHash);
+        showSummaryDialog(root,selected,setHash,history,historyFullHash,publicHistory,historyPublicHash,hashList,historyFile,mode);
         System.exit(0);
     }
     private static List<Capture> discoverInteractive(Path root)throws Exception{
@@ -141,23 +144,26 @@ public final class IntegrityVerifier {
         for(Capture c:captures){estimate+=1024L+Math.min(32768,c.name==null?0:c.name.length())*8L;for(Item i:c.items){estimate+=512L+Math.min(MAX_RELATIVE_PATH_CHARS,i.path==null?0:i.path.length())*8L;}for(int i=0;i<c.historyEvents.length();i++){JSONObject event=c.historyEvents.optJSONObject(i);if(event==null)continue;estimate+=1024L+event.optString("timestampUtc","").length()*8L+event.optString("action","").length()*8L;JSONArray changes=event.optJSONArray("changes");if(changes!=null)for(int j=0;j<changes.length();j++){JSONObject change=changes.optJSONObject(j);if(change!=null)estimate+=512L+change.optString("action","").length()*8L+change.optString("path","").length()*8L;}}}
         if(estimate>MAX_REPORT_ESTIMATED_CHARS)throw new IOException("O relatório estimado excede o limite seguro de "+MAX_REPORT_ESTIMATED_CHARS+" caracteres. Reduza o conjunto selecionado.");
     }
-    private static void showSummaryDialog(Path root,List<Capture> selected,String setHash,String history,String historyPublicHash,String hashList,Path historyFile,int mode) throws Exception {
+    private static void showSummaryDialog(Path root,List<Capture> selected,String setHash,String history,String historyFullHash,String publicHistory,String historyPublicHash,String hashList,Path historyFile,int mode) throws Exception {
         JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
         panel.add(new JLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada."));
         panel.add(new JLabel("Capturas verificadas: "+selected.size()));panel.add(Box.createVerticalStrut(10));
         panel.add(hashValueRow("Hash geral do conjunto",setHash,"Hash geral do conjunto copiado."));
         panel.add(Box.createVerticalStrut(8));
-        panel.add(hashValueRow("SHA-256 do histórico completo",historyPublicHash,"Hash SHA-256 do histórico completo copiado."));
+        panel.add(hashValueRow("SHA-256 do histórico completo",historyFullHash,"Hash SHA-256 do histórico completo copiado."));
+        panel.add(Box.createVerticalStrut(8));
+        panel.add(hashValueRow("SHA-256 do histórico completo público",historyPublicHash,"Hash SHA-256 do histórico completo público copiado."));
         panel.add(Box.createVerticalStrut(8));
         JPanel actions=new JPanel(new java.awt.GridLayout(0,2,6,6));
         JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Resultado",true);
         JButton copyList=new JButton("Copiar lista de hashes");copyList.addActionListener(e->copyToClipboard(frame,hashList,"Lista de hashes copiada."));
         JButton copyHistory=new JButton("Copiar histórico completo");copyHistory.addActionListener(e->copyToClipboard(frame,history,"Histórico completo copiado."));
+        JButton copyPublicHistory=new JButton("Copiar histórico completo público");copyPublicHistory.addActionListener(e->copyToClipboard(frame,publicHistory,"Histórico completo público copiado."));
         JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(historyFile));
         JButton openHtml=new JButton("Abrir relatório HTML");openHtml.addActionListener(e->openInBrowser(root.resolve("integridade.html")));
         final CountDownLatch latch=new CountDownLatch(1);
         JButton close=new JButton("Fechar");close.addActionListener(e->latch.countDown());
-        actions.add(copyList);actions.add(copyHistory);actions.add(openHistory);actions.add(openHtml);actions.add(close);panel.add(actions);
+        actions.add(copyList);actions.add(copyHistory);actions.add(copyPublicHistory);actions.add(openHistory);actions.add(openHtml);actions.add(close);panel.add(actions);
         frame.setContentPane(panel);
         frame.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){latch.countDown();}});
         frame.pack();frame.setLocationRelativeTo(null);frame.setVisible(true);
@@ -203,27 +209,49 @@ public final class IntegrityVerifier {
         }
     }
     private static void openFile(Path file) { try { if(!Desktop.isDesktopSupported())throw new IOException("A abertura de arquivos não está disponível.");Desktop.getDesktop().open(file.toFile()); } catch(Exception e){JOptionPane.showMessageDialog(null,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);} }
-    private static void comparePublicHistory(String localHistory,String localHash) throws Exception {
+    static String classifyPublicHashMatch(String supplied, String localFullHash, String localPublicHash) {
+        String trimmed = supplied == null ? "" : supplied.trim();
+        if (trimmed.isEmpty()) return "EMPTY";
+        if (!trimmed.matches("(?i)[0-9a-f]{64}")) return "INVALID";
+        if (trimmed.equalsIgnoreCase(localFullHash)) return "MATCH_FULL";
+        if (trimmed.equalsIgnoreCase(localPublicHash)) return "MATCH_PUBLIC";
+        return "DIVERGE";
+    }
+    static String classifyPublicHistoryMatch(String supplied, String localFullHistory, String localPublicHistory) {
+        if (supplied == null || supplied.trim().isEmpty()) return "EMPTY";
+        String normalized = normalizePublicRecord(supplied);
+        if (normalized.equals(normalizePublicRecord(localFullHistory))) return "MATCH_FULL";
+        if (normalized.equals(normalizePublicRecord(localPublicHistory))) return "MATCH_PUBLIC";
+        return "DIVERGE";
+    }
+    private static void comparePublicHistory(String localFullHistory,String localFullHash,String localPublicHistory,String localPublicHash) throws Exception {
         JTextField publicHash=new JTextField(44);
         JTextArea publicRecord=new JTextArea(12,52);
         publicRecord.setLineWrap(false);
-        JLabel result=new JLabel("Informe o SHA-256 público ou cole o conteúdo de historico-capturas.txt para conferir.");
+        JLabel result=new JLabel("Informe o SHA-256 público ou cole o histórico completo (com pastas ou anonimizado CAPTURA|*-data-hora) para conferir.");
         result.setForeground(java.awt.Color.DARK_GRAY);
 
         JButton compareHash=new JButton("Comparar hash público");
         compareHash.addActionListener(e->{
-            String supplied=publicHash.getText().trim();
-            boolean match=supplied.matches("(?i)[0-9a-f]{64}")&&supplied.equalsIgnoreCase(localHash);
-            result.setText(supplied.isEmpty()?"Informe o hash público.":!supplied.matches("(?i)[0-9a-f]{64}")?"Formato inválido: informe 64 caracteres hexadecimais.":match?"CONFERE: o hash público corresponde ao historico-capturas.txt calculado.":"DIVERGE: o hash público não corresponde ao historico-capturas.txt calculado.");
-            result.setForeground(supplied.isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
+            String status=classifyPublicHashMatch(publicHash.getText(),localFullHash,localPublicHash);
+            boolean ok="MATCH_FULL".equals(status)||"MATCH_PUBLIC".equals(status);
+            if("EMPTY".equals(status))result.setText("Informe o hash público.");
+            else if("INVALID".equals(status))result.setText("Formato inválido: informe 64 caracteres hexadecimais.");
+            else if("MATCH_FULL".equals(status))result.setText("CONFERE: o hash público corresponde ao historico-capturas.txt completo calculado.");
+            else if("MATCH_PUBLIC".equals(status))result.setText("CONFERE: o hash público corresponde ao histórico completo público calculado.");
+            else result.setText("DIVERGE: o hash público não corresponde ao historico-capturas.txt calculado.");
+            result.setForeground("EMPTY".equals(status)?java.awt.Color.DARK_GRAY:ok?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
         });
 
         JButton compareRecord=new JButton("Comparar histórico completo");
         compareRecord.addActionListener(e->{
-            String supplied=publicRecord.getText();
-            boolean match=!supplied.trim().isEmpty()&&normalizePublicRecord(supplied).equals(normalizePublicRecord(localHistory));
-            result.setText(supplied.trim().isEmpty()?"Cole o conteúdo de historico-capturas.txt.":match?"CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt calculado.":"DIVERGE: o texto informado não corresponde ao historico-capturas.txt calculado.");
-            result.setForeground(supplied.trim().isEmpty()?java.awt.Color.DARK_GRAY:match?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
+            String status=classifyPublicHistoryMatch(publicRecord.getText(),localFullHistory,localPublicHistory);
+            boolean ok="MATCH_FULL".equals(status)||"MATCH_PUBLIC".equals(status);
+            if("EMPTY".equals(status))result.setText("Cole o conteúdo de historico-capturas.txt.");
+            else if("MATCH_FULL".equals(status))result.setText("CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado.");
+            else if("MATCH_PUBLIC".equals(status))result.setText("CONFERE: o histórico completo público (anonimizado) corresponde integralmente às capturas calculadas.");
+            else result.setText("DIVERGE: o texto informado não corresponde ao historico-capturas.txt (completo ou público) calculado.");
+            result.setForeground("EMPTY".equals(status)?java.awt.Color.DARK_GRAY:ok?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
         });
 
         final CountDownLatch latch=new CountDownLatch(1);
@@ -244,7 +272,13 @@ public final class IntegrityVerifier {
         recordButtonRow.add(compareRecord);
 
         JPanel sectionRecord=new JPanel(new java.awt.BorderLayout(0,6));
-        sectionRecord.add(new JLabel("2. Histórico de capturas completo (historico-capturas.txt):"),java.awt.BorderLayout.NORTH);
+        JPanel recordHeader=new JPanel();
+        recordHeader.setLayout(new BoxLayout(recordHeader,BoxLayout.Y_AXIS));
+        recordHeader.add(new JLabel("2. Histórico de capturas completo (historico-capturas.txt):"));
+        JLabel formatHint=new JLabel("Aceita formato completo (CAPTURA|pasta) ou público anonimizado (CAPTURA|*-YYYYMMDD-HHMMSS).");
+        formatHint.setForeground(java.awt.Color.DARK_GRAY);
+        recordHeader.add(formatHint);
+        sectionRecord.add(recordHeader,java.awt.BorderLayout.NORTH);
         sectionRecord.add(new JScrollPane(publicRecord),java.awt.BorderLayout.CENTER);
         sectionRecord.add(recordButtonRow,java.awt.BorderLayout.SOUTH);
 
@@ -698,12 +732,16 @@ public final class IntegrityVerifier {
     private static String hashText(String s)throws Exception{return hex(MessageDigest.getInstance(ALG).digest(s.getBytes(StandardCharsets.UTF_8)));}
     private static String hex(byte[]b){StringBuilder s=new StringBuilder();for(byte v:b)s.append(String.format("%02x",v&255));return s.toString();}
     private static String setHash(List<Capture> cs)throws Exception{List<Capture>x=new ArrayList<>(cs);x.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));StringBuilder b=new StringBuilder();for(Capture c:x)b.append(c.name).append('|').append(c.hash).append('|').append(c.bytes).append('|').append(c.fileCount).append('\n');return hashText(b.toString());}
-    private static String historyReport(List<Capture> captures,String collectionHash)throws IOException{
+    static String anonymizeCaptureName(String captureName){if(captureName==null||captureName.trim().isEmpty())return "*";Matcher m=CAPTURE_TIMESTAMP_SUFFIX.matcher(captureName);return m.matches()?"*-"+m.group(1):"*";}
+    private static String historyReport(List<Capture> captures,String collectionHash)throws IOException{return historyReport(captures,collectionHash,false);}
+    static String publicHistoryReport(List<Capture> captures,String collectionHash)throws IOException{return historyReport(captures,collectionHash,true);}
+    private static String historyReport(List<Capture> captures,String collectionHash,boolean anonymizeNames)throws IOException{
         enforceReportBudget(captures);
         StringBuilder out=new StringBuilder("HISTORICO_PUBLICO_V1\nSHA256|").append(collectionHash).append("\n");
         List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));
         for(Capture c:ordered){
-            out.append("\nCAPTURA|").append(recordField(c.name)).append("\nSTATUS|").append(c.historyStatus).append("\nHASH_CONTEUDO|").append(c.contentRootHash.isEmpty()?c.hash:c.contentRootHash).append("\nHASH_INTEGRIDADE_JSON|").append(c.integrityFileHash.isEmpty()?"indisponivel":c.integrityFileHash).append("\nHASH_FINAL_HISTORICO|").append(c.historyHash.isEmpty()?"indisponivel":c.historyHash).append("\nEVENTOS|").append(c.historyEvents.length()).append('\n');
+            String displayName=anonymizeNames?anonymizeCaptureName(c.name):c.name;
+            out.append("\nCAPTURA|").append(recordField(displayName)).append("\nSTATUS|").append(c.historyStatus).append("\nHASH_CONTEUDO|").append(c.contentRootHash.isEmpty()?c.hash:c.contentRootHash).append("\nHASH_INTEGRIDADE_JSON|").append(c.integrityFileHash.isEmpty()?"indisponivel":c.integrityFileHash).append("\nHASH_FINAL_HISTORICO|").append(c.historyHash.isEmpty()?"indisponivel":c.historyHash).append("\nEVENTOS|").append(c.historyEvents.length()).append('\n');
             for(int i=0;i<c.historyEvents.length();i++){JSONObject e=c.historyEvents.optJSONObject(i);if(e==null)continue;out.append("EVENTO|").append(e.optInt("sequence",i+1)).append('|').append(recordField(e.optString("timestampUtc","sem timestamp"))).append('|').append(recordField(e.optString("action","ação desconhecida"))).append("\nANTERIOR|").append(e.optString("previousRecordHash","")).append("\nRAIZ_EVENTO|").append(e.optString("contentRootHash","")).append("\nHASH_EVENTO|").append(e.optString("recordHash","")).append('\n');JSONArray changes=e.optJSONArray("changes");if(changes!=null)for(int j=0;j<changes.length();j++){JSONObject change=changes.optJSONObject(j);if(change!=null)out.append("ALTERACAO|").append(recordField(change.optString("action","mudança"))).append('|').append(recordField(change.optString("path",""))).append('|').append(change.optString("previousSha256","—")).append('|').append(change.optString("sha256","—")).append('\n');}}
             out.append("INVENTARIO_ARQUIVOS|").append(c.items.size()).append('\n');for(Item item:c.items)out.append("ARQUIVO|").append(recordField(item.path)).append('|').append(item.size).append('|').append(item.expected==null?"—":item.expected).append('|').append(item.bytes).append('|').append(item.actual==null?"—":item.actual).append('|').append(recordField(item.state==null?"desconhecido":item.state)).append('\n');
         }

@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.3.4
+# Verificador de Integridade 1.3.5
 
-**Versão:** 1.3.4 | Data: 08/11/2026.
+**Versão:** 1.3.5 | Data: 12/11/2026.
 
 ## Índice
 
@@ -18,7 +18,7 @@
 
 Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). A descoberta ocorre em worker cancelável e exibe a contagem atualizada sem manter a Event Dispatch Thread ocupada. Depois, lê metadados quando necessários, recalcula hashes e grava relatórios. O JAR foi compilado para Java 8 (1.8) ou superior. O EXE Windows de arquivo único contém o runtime Java 11 e .NET 10.0.14; o usuário não precisa instalar Java ou .NET.
 
-A versão 1.3.4 valida a cadeia local de integridade também em capturas `html-message-v1`. Antes, a verificação por mensagem retornava sem ler `integridade.json`; agora a cadeia é verificada e, quando há migração, `migration.json` e `legacy-annotations.json` precisam estar vinculados ao inventário. Uma alteração no registro de migração é detectada mesmo que o manifesto seja atualizado junto. A versão mantém a validação do script fixo do `whatsapp.html` e sua CSP, que restauram a posição de rolagem ao fechar um preview; para preservar capturas existentes, também aceita o par exato de script e CSP da versão 1.3.2. A compatibilidade com `data:image/jpg` contendo assinatura PNG continua restrita a bytes cuja assinatura confirma o formato raster. O plugin 2.5.5-beta e versões posteriores gravam as capturas migradas com esse registro de proveniência.
+A versão 1.3.5 acrescenta no resumo final o **SHA-256 do histórico completo público** e o botão **Copiar histórico completo público**, gerando linhas anonimizadas no formato `CAPTURA|*-YYYYMMDD-HHMMSS ...` (ou `CAPTURA|*`) para compartilhamento público sem expor nomes das pastas de conversa; no modo **Integridade Público**, aceita de forma dual tanto o formato completo original (`CAPTURA|<pasta>`) quanto o anonimizado (`CAPTURA|*`) e ambos os hashes SHA-256. Mantém toda a validação da cadeia local da 1.3.4 em capturas `html-message-v1` (incluindo vínculo de `migration.json` e `legacy-annotations.json` ao inventário), validação de IDs de chamada (`_call:<hex>`) e carved/removidos (`-?<id>_<id>`), script fixo de preview (`whatsapp.html`) e compatibilidade legada `data:image/jpg` com assinatura PNG. O plugin 2.5.5-beta e versões posteriores gravam as capturas migradas com esse registro de proveniência.
 
 A versão 1.3.1 reconhece `captureFormat: "html-message-v1"`. Para esse formato, valida o manifesto por mensagem, a ordem e unicidade dos IDs, `messageHash`, `captureRootHash`, caminhos confinados e os bytes SHA-256 dos anexos locais. O resultado “não encontrada na fonte atual” não atribui remoção ou autoria a ninguém.
 
@@ -94,4 +94,4 @@ A limpeza atua somente em diretórios reconhecidos dentro de `%TEMP%\Avilla\Inte
 
 ## Referência pública do histórico
 
-O arquivo integridade/historico-capturas.txt usa o formato HISTORICO_PUBLICO_V1, ordena capturas por nome e não inclui o horário da execução. Assim, o hash SHA-256 permanece estável para o mesmo estado. Cada captura inclui o SHA-256 do integridade.json, que vincula o inventário e a cadeia de eventos completos, além das linhas de inventário com caminho, tamanho e hashes esperado/encontrado de cada arquivo. No modo **Integridade Público**, cole esse hash ou o conteúdo integral do arquivo recebido por canal confiável. A comparação informa igualdade com aquela referência; a checagem dos arquivos contra o inventário ainda aparece separadamente como estado local.
+O arquivo `integridade/historico-capturas.txt` usa o formato `HISTORICO_PUBLICO_V1`, ordena capturas por nome e não inclui o horário da execução. Assim, o hash SHA-256 permanece estável para o mesmo estado. A opção **Copiar histórico completo público** produz uma variante determinística em que o nome da pasta com sufixo de timestamp é anonimizado para `*-YYYYMMDD-HHMMSS` (ou `*`), com **SHA-256 do histórico completo público** calculado separadamente. Cada captura inclui o SHA-256 do `integridade.json`, que vincula o inventário e a cadeia de eventos completos, além das linhas de inventário com caminho, tamanho e hashes esperado/encontrado de cada arquivo. No modo **Integridade Público**, cole qualquer um dos dois hashes ou o conteúdo integral do arquivo recebido por canal confiável (completo ou anonimizado). A comparação informa igualdade com aquela referência; a checagem dos arquivos contra o inventário ainda aparece separadamente como estado local.

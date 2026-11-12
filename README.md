@@ -4,14 +4,14 @@ Plugin/customizacao para o IPED 4.3.1 que captura intervalos de mensagens do vie
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.5.9-beta**
-Verificador de Integridade: **1.3.4**
+Versao atual do plugin: **2.6.0-beta**
+Verificador de Integridade: **1.3.5**
 
 ## About
 
 Plugin Java para IPED 4.3.1 que captura intervalos de conversas WhatsApp e gera HTML offline, manifesto por mensagem e anexo, anotações, inventários e hashes para revisão forense. Capturas anteriores baseadas em screenshots continuam compatíveis.
 
-A versão 2.5.9-beta corrige a resolução de fronteiras na captura, no **Re-Extrair** e na migração de capturas legadas para aceitar registros de chamada (`<digits>_call:<hex>`), mensagens removidas/carved (`-?<digits>_<id>`) e timestamps internos (`iped-capture-date-...`), normaliza `data-iped-capture-id`/`domId` no plugin (`CaptureBoundaryResolver` + `HtmlLinkViewer`) e no Verificador 1.3.4 recompilado, embute `org/opencv/**` em um fat-JAR autocontido e torna tolerante o tratamento de anexos não suportados em `html-message-v1`. A versão 2.5.8-beta aplica a censura visual por imagens de referência (blur CSS) também em capturas `html-message-v1` (captura nova, Re-Extrair e migração de legado), sem JavaScript adicional e mantendo total compatibilidade com o Verificador 1.3.4, remove `integridade/` e `integridade.html` da raiz ao re-extrair com "Limpar registros" (sem criar backups) e deixa de marcar capturas `html-message-v1` como anotações legadas. A versão 2.5.7-beta permite limpar os registros também de uma captura já existente em `html-message-v1`, recriando-a como captura nova, e ajusta a janela **Re-Extrair capturas** à área útil do monitor. A versão 2.5.6-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.5-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.4-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
+A versão 2.6.0-beta atualiza a allowlist oficial e o pacote de distribuição para o **Verificador de Integridade 1.3.5**, que adiciona no resumo a opção **Copiar histórico completo público** com anonimização do nome das pastas (`CAPTURA|*-YYYYMMDD-HHMMSS` ou `CAPTURA|*`) e exibição do **SHA-256 do histórico completo público**, além de verificação dual no modo **Integridade Público** para aceitar tanto o formato completo original quanto o formato anonimizado (e o SHA-256 de ambos). A versão 2.5.9-beta corrige a resolução de fronteiras na captura, no **Re-Extrair** e na migração de capturas legadas para aceitar registros de chamada (`<digits>_call:<hex>`), mensagens removidas/carved (`-?<digits>_<id>`) e timestamps internos (`iped-capture-date-...`), normaliza `data-iped-capture-id`/`domId` no plugin (`CaptureBoundaryResolver` + `HtmlLinkViewer`) e no Verificador, embute `org/opencv/**` em um fat-JAR autocontido e torna tolerante o tratamento de anexos não suportados em `html-message-v1`. A versão 2.5.8-beta aplica a censura visual por imagens de referência (blur CSS) também em capturas `html-message-v1` (captura nova, Re-Extrair e migração de legado), sem JavaScript adicional e mantendo total compatibilidade com o Verificador, remove `integridade/` e `integridade.html` da raiz ao re-extrair com "Limpar registros" (sem criar backups) e deixa de marcar capturas `html-message-v1` como anotações legadas. A versão 2.5.7-beta permite limpar os registros também de uma captura já existente em `html-message-v1`, recriando-a como captura nova, e ajusta a janela **Re-Extrair capturas** à área útil do monitor. A versão 2.5.6-beta permite migrar capturas legadas em frames para `html-message-v1` pelo Re-Extrair, com validação completa da nova pasta antes da substituição e opção de preservar a cadeia de integridade ou iniciar uma nova captura. A versão 2.5.5-beta mantém o chat na mesma posição após fechar o preview de imagem, áudio, vídeo, PDF, documento ou arquivo. A versão 2.5.4-beta normaliza o MIME das imagens embutidas no cabeçalho pela assinatura real dos bytes, corrigindo PNGs do IPED declarados como `image/jpg`.
 
 ## Getting Started
 
@@ -286,14 +286,14 @@ chat-captura IPED/
     dist/integridade-verifier.exe (artefato da release)
 ```
 
-## Artefatos da release 2.5.9-beta
+## Artefatos da release 2.6.0-beta
 
-Os artefatos publicados para a versão 2.5.9-beta são:
+Os artefatos publicados para a versão 2.6.0-beta são:
 
 | Arquivo | Para que serve |
 |---|---|
-| `instalador-chat-captura-IPED-2.5.9-beta-verificador-1.3.4.zip` | Pacote instalador com fat-JAR `2.5.9-beta`, OpenCV (`opencv-4120.jar` + `opencv_java4120.dll`) e Verificador 1.3.4 |
-| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.5.9-beta.jar` | Fat-JAR compilado do plugin para instalação manual |
+| `instalador-chat-captura-IPED-2.6.0-beta-verificador-1.3.5.zip` | Pacote instalador com fat-JAR `2.6.0-beta`, OpenCV (`opencv-4120.jar` + `opencv_java4120.dll`) e Verificador 1.3.5 |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.0-beta.jar` | Fat-JAR compilado do plugin para instalação manual |
 | `verificador-integridade/integridade-verifier.jar` | Verificador independente com Java 8 (1.8) ou superior |
 | `verificador-integridade/integridade-verifier.exe` | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
 | `SPEC_CAPTURA_HTML_POR_MENSAGEM.md e SPEC_RENDERIZACAO_WHATSAPP_HTML.md` | Contrato, formato de captura, limites, testes e validação automatizada no IPED |
@@ -302,79 +302,78 @@ Os artefatos publicados para a versão 2.5.9-beta são:
 Os SHA-256 estão documentados em [CHECKSUMS.md](CHECKSUMS.md).
 
 
-### Hashes do Verificador de Integridade 1.3.4
+### Hashes do Verificador de Integridade 1.3.5
 
-JAR — SHA-256: `B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD`<br>
-EXE — SHA-256: `20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0`
+JAR — SHA-256: `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9`<br>
+EXE — SHA-256: `75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B`
 
-JAR do plugin 2.5.9-beta — SHA-256: `D881B345A9ACC4F54219867870959EA659FF7C91551458A2DA6192AEAAB35507`<br>
-ZIP do instalador 2.5.9-beta — SHA-256: `26014CE5951BE89E37CA2057B25DB359A64CECB65A9547A5CD192849FC4E7A10`
+JAR do plugin 2.6.0-beta — SHA-256: `DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936`<br>
+ZIP do instalador 2.6.0-beta — SHA-256: `2F67E5EA2D7172D3097DF1872A084F6220D14C2AB4BCE7F276E355F7AC9884F4`
 
 O histórico de hashes das versões do verificador está em [versao_hash.md](versao_hash.md). Consulte também [CHECKSUMS.md](CHECKSUMS.md) para os hashes do instalador e do JAR do plugin.
 
 ---
 
-## Release v2.5.9-beta
+## Release v2.6.0-beta
 
-[v2.5.9-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.5.9-beta) Pre-Release
+[v2.6.0-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.0-beta) Pre-Release
 
-[iago](http://127.0.0.1:3000/iago) | [compare/v2.5.9-beta...main](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/compare/v2.5.9-beta...main)
+[iago](http://127.0.0.1:3000/iago) | [compare/v2.6.0-beta...main](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/compare/v2.6.0-beta...main)
 
 ### Downloads
 
-- [instalador-chat-captura-IPED-2.5.9-beta-verificador-1.3.4.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.5.9-beta) (`94.584.283` bytes | SHA-256: `26014CE5951BE89E37CA2057B25DB359A64CECB65A9547A5CD192849FC4E7A10`)
-- [integridade-verifier-1.3.4.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.5.9-beta) (`77.838.404` bytes | SHA-256: `20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0`)
-- [integridade-verifier-1.3.4.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.5.9-beta) (`132.375` bytes | SHA-256: `B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD`)
-- [iped-viewers-impl-4.3.1-2.5.9-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.5.9-beta) (`1.472.202` bytes | SHA-256: `D881B345A9ACC4F54219867870959EA659FF7C91551458A2DA6192AEAAB35507`)
+- [instalador-chat-captura-IPED-2.6.0-beta-verificador-1.3.5.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.0-beta) (`95.427.705` bytes | SHA-256: `2F67E5EA2D7172D3097DF1872A084F6220D14C2AB4BCE7F276E355F7AC9884F4`)
+- [integridade-verifier-1.3.5.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.0-beta) (`77.839.428` bytes | SHA-256: `75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B`)
+- [integridade-verifier-1.3.5.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.0-beta) (`133.282` bytes | SHA-256: `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9`)
+- [iped-viewers-impl-4.3.1-2.6.0-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.0-beta) (`1.482.427` bytes | SHA-256: `DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936`)
 
 ---
 
 ### Otimizado
 
-- Resolucao unificada de fronteiras (`CaptureBoundaryResolver`, `HtmlLinkViewer` e Verificador 1.3.4) para qualquer marcador valido do chat no IPED: mensagens numericas (`^\d+$`), registros de chamada de voz/video/grupo (`^\d+_call:[0-9a-fA-F]+$`), mensagens apagadas/carved (`^-?\d+_\d+$`) e timestamps internos (`iped-capture-date-...`).
-- Fat-JAR autocontido do plugin `2.5.9-beta` com classes `org/opencv/**` embutidas, `Implementation-Version: 2.5.9-beta` no `META-INF/MANIFEST.MF` e busca automatica de `opencv_java4120.dll` na raiz do IPED, `plugins/` e `lib/`.
-- Tratamento tolerante de anexos em `html-message-v1` (pula anexos nao suportados sem interromper a captura).
-- Script `verificador-integridade/build-single-exe.ps1` atualizado com `--disable-build-servers -p:UseSharedCompilation=false` para evitar travamento de servidores MSBuild/Roslyn durante o build do executavel.
+- Verificador de Integridade **1.3.5**: novo campo **SHA-256 do histórico completo público** e botão **Copiar histórico completo público** no resumo final, exportando linhas determinísticas no formato anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS ...` (ou `CAPTURA|*`) para compartilhamento público sem expor nomes das pastas de captura.
+- Comparação dual no modo **Integridade Público** do Verificador 1.3.5: aceita e valida de forma segura tanto o histórico completo original (`CAPTURA|<pasta>-YYYYMMDD-HHMMSS ...`) quanto o histórico completo público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS ...`), bem como o SHA-256 de qualquer um dos dois formatos.
+- Opção CLI `--export-history` do Verificador 1.3.5 passa a emitir também `SHA-256_HISTORICO_PUBLICO=...`.
+- Script `verificador-integridade/build-single-exe.ps1` reforçado com `MSBUILDDISABLENODEREUSE=1`, `DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1`, `-m:1 -nodeReuse:false` e `dotnet build-server shutdown` para eliminar travamentos do MSBuild/Roslyn ao empacotar o `.exe`.
 
 ---
 
 ### Corrigido
 
-- Falha ao migrar capturas legadas ou executar Re-Extrair quando o ponto inicial/final selecionava um registro de chamada (`_call:<hex>`), um timestamp interno da linha ou uma mensagem com ID composto/removido (`-?<id>_<id>`), normalizando automaticamente `data-iped-capture-id` e `domId`.
-- Regras de validacao de `domId`/`id` no `IntegrityVerifier.java` (Verificador 1.3.4) ampliadas nos quatro pontos de checagem JSON/DOM para reconhecer os mesmos formatos de ID aceitos pelo plugin.
-- Allowlist em `VerifierIntegrity.java` e testes unitarios (`VerifierIntegrityHashTest.java` e `CaptureBoundaryResolverTest.java`) sincronizados com os binarios 1.3.4 recompilados.
+- Allowlist de binários confiáveis em `VerifierIntegrity.java` e testes (`VerifierIntegrityHashTest.java`) sincronizados com os binários oficiais do Verificador **1.3.5** (`31B0CE72...` e `75FB542B...`).
+- Plugin `2.6.0-beta` compilado em fat-JAR autocontido com `Implementation-Version: 2.6.0-beta`, mantendo todas as correções da `2.5.9-beta` (registros de chamada `_call:<hex>`, IDs carved/removidos `-?<id>_<id>`, timestamps internos `iped-capture-date-...` e tolerância de anexos).
 
 ---
 
 ### Incluido
 
-- Plugin Chat Captura IPED 2.5.9-beta (`iped-viewers-impl-4.3.1-2.5.9-beta.jar`).
-- Verificador de Integridade 1.3.4 recompilado em JAR e EXE.
-- ZIP instalador completo com dependencias (`json-20260719.jar`, `opencv-4120.jar`, `opencv_java4120.dll`).
+- Plugin Chat Captura IPED `2.6.0-beta` (`iped-viewers-impl-4.3.1-2.6.0-beta.jar`).
+- Verificador de Integridade `1.3.5` em JAR e EXE Windows x64 autocontido.
+- ZIP instalador completo com dependências (`json-20260719.jar`, `opencv-4120.jar`, `opencv_java4120.dll`).
 
 ---
 
-### SHA-256 do Verificador 1.3.4
+### SHA-256 do Verificador 1.3.5
 
-- JAR: `B456074C393949FE63DC33B404F539B569830CE92FC657FF43B622D9E03500DD`
-- EXE: `20FAF8A5AD2690A909F09B6A60DFBFE12A271493DA3331595F8BB2A95EF2BCA0`
+- JAR: `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9`
+- EXE: `75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B`
 
-Veja [versao_hash.md](versao_hash.md) para os hashes das versoes anteriores.
+Veja [versao_hash.md](versao_hash.md) para os hashes das versoes anteriores e [RELEASE_NOTES_v2.5.9-beta.md](RELEASE_NOTES_v2.5.9-beta.md) para as notas da versão anterior.
 
 ---
 
-*Tag da versão: [v2.5.9-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/src/tag/v2.5.9-beta)*
+*Tag da versão: [v2.6.0-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/src/tag/v2.6.0-beta)*
 
 ---
 
 ## Como instalar
 
 1. Feche o IPED.
-2. Baixe e extraia `instalador-chat-captura-IPED-2.5.9-beta-verificador-1.3.4.zip`.
-3. Execute instalar_captura_chat_zap/instalar_captura_chat_zap.bat da pasta extraída.
+2. Baixe e extraia `instalador-chat-captura-IPED-2.6.0-beta-verificador-1.3.5.zip`.
+3. Execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat` da pasta extraída.
 4. Reabra o IPED depois que o instalador confirmar a cópia e a instalação dos idiomas.
 
-O ZIP inclui o fat-JAR 2.5.9-beta, o instalador, o validador, `org.json` 20260719, `opencv-4120.jar`, `opencv_java4120.dll`, os dois bundles de idioma e o Verificador 1.3.4 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
+O ZIP inclui o fat-JAR 2.6.0-beta, o instalador, o validador, `org.json` 20260719, `opencv-4120.jar`, `opencv_java4120.dll`, os dois bundles de idioma e o Verificador 1.3.5 em JAR/EXE. Ao instalar, o BAT preserva as cópias anteriores e instala os bytes da versão 20260719 com os nomes `json-20260719.jar` e `json-20250517.jar` para compatibilidade com classpaths do IPED.
 
 ## O que o BAT faz
 
@@ -396,7 +395,7 @@ iped-viewers-impl-4.3.1.jar.bak-YYYYMMDD-HHMMSS
 
 ## Verificador independente
 
-O Verificador 1.3.4 mantém os limites de recursos da versão 1.2.8 e valida `html-message-v1`, o tema CSS/CSP, os scripts fixos de mídia 1.3.2 e 1.3.3 e o preview PDF confinado, além de hashes por mensagem/anexo, MIME/assinatura e comparação por manifesto público. Também valida a cadeia local de integridade das capturas HTML e exige que `migration.json` e `legacy-annotations.json` estejam vinculados ao inventário; uma alteração no registro de migração é detectada mesmo que o manifesto seja atualizado junto. Aceita ainda a assinatura PNG em imagens embutidas legadas declaradas `image/jpg`. JSON acima de 16 MiB, profundidade acima de 64, caminhos acima de 4.096 caracteres, capturas acima de 25.010 arquivos e seleções além dos limites globais são rejeitados. O JAR funciona com Java 8 ou superior; o EXE inclui os runtimes necessários. Consulte [versao_hash.md](versao_hash.md) para o histórico completo de hashes.
+O Verificador 1.3.5 mantém os limites de recursos da versão 1.2.8 e adiciona no resumo a opção **Copiar histórico completo público** (`CAPTURA|*-YYYYMMDD-HHMMSS ...`) com **SHA-256 do histórico completo público**, além de comparação dual no modo **Integridade Público** para aceitar tanto o histórico completo original quanto o histórico público anonimizado (e ambos os hashes SHA-256). Continua validando `html-message-v1`, o tema CSS/CSP, os scripts fixos de mídia 1.3.2 e 1.3.3, o preview PDF confinado, registros de chamada (`_call:<hex>`), IDs carved/removidos (`-?<id>_<id>`), hashes por mensagem/anexo, MIME/assinatura e a cadeia local de integridade incluindo vínculo de `migration.json` e `legacy-annotations.json`. JSON acima de 16 MiB, profundidade acima de 64, caminhos acima de 4.096 caracteres, capturas acima de 25.010 arquivos e seleções além dos limites globais são rejeitados. O JAR funciona com Java 8 ou superior; o EXE inclui os runtimes necessários. Consulte [versao_hash.md](versao_hash.md) para o histórico completo de hashes.
 
 O verificador não é necessário para instalar o plugin. Durante a captura, o plugin tenta localizar verificadores em pastas conhecidas e copiar os arquivos com hashes reconhecidos para a pasta de saída. Se não encontrar os binários, baixe o JAR ou EXE da release e copie-os manualmente para a pasta raiz das capturas, ao lado de index.html e relatorio.htm.
 

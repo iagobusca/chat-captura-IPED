@@ -14,7 +14,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 if not exist "%JSON_OUT%" mkdir "%JSON_OUT%"
 >"%MANIFEST%" echo Manifest-Version: 1.0
 >>"%MANIFEST%" echo Main-Class: IntegrityVerifier
->>"%MANIFEST%" echo Implementation-Version: 1.3.4
+>>"%MANIFEST%" echo Implementation-Version: 1.3.5
 >>"%MANIFEST%" echo.
 "%JAVA_HOME%\bin\javac.exe" -encoding UTF-8 -source 1.8 -target 1.8 -cp "%JSON%" -d "%OUT%" "%SRC%"
 if errorlevel 1 exit /b 1

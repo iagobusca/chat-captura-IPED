@@ -459,7 +459,86 @@ class JavaVerifierIntegration(unittest.TestCase):
         self.assertNotIn("ou copie o hash calculado", source)
         self.assertIn("1. Hash SHA-256 público (de historico-capturas.txt):", source)
         self.assertIn("2. Histórico de capturas completo (historico-capturas.txt):", source)
+        self.assertIn("Copiar histórico completo público", source)
+        self.assertIn("SHA-256 do histórico completo público", source)
         self.assertIn("Continuar para o resumo", source)
+
+    def test_public_anonymized_history_export_and_dual_verification(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            cap_name = "Clebia_mae_mateus_sabe_que_ele_vai_me_ligar-20261026-190158"
+            cap = self.create_capture(root)
+            cap.rename(root / cap_name)
+
+            export = subprocess.run(
+                [str(JAVA), "-jar", str(VERIFIER_JAR), "--export-history", str(root)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            self.assertEqual(export.returncode, 0, export.stdout + export.stderr)
+            self.assertIn("SHA-256_PUBLICO=", export.stdout)
+            self.assertIn("SHA-256_HISTORICO_PUBLICO=", export.stdout)
+
+            full_history = (root / "integridade" / "historico-capturas.txt").read_text(encoding="utf-8")
+            self.assertIn(f"CAPTURA|{cap_name}", full_history)
+            anon_history = full_history.replace(f"CAPTURA|{cap_name}", "CAPTURA|*-20261026-190158")
+            full_sha = sha(full_history.replace("\r\n", "\n").rstrip("\n") + "\n")
+            anon_sha = sha(anon_history.replace("\r\n", "\n").rstrip("\n") + "\n")
+            self.assertIn(f"SHA-256_PUBLICO={full_sha}", export.stdout)
+            self.assertIn(f"SHA-256_HISTORICO_PUBLICO={anon_sha}", export.stdout)
+
+            harness_dir = Path(td) / "harness"
+            harness_dir.mkdir()
+            harness_java = harness_dir / "PublicAnonHarness.java"
+            harness_java.write_text(
+                """
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public final class PublicAnonHarness {
+    public static void main(String[] args) throws Exception {
+        Method anon = IntegrityVerifier.class.getDeclaredMethod("anonymizeCaptureName", String.class);
+        Method matchHist = IntegrityVerifier.class.getDeclaredMethod("classifyPublicHistoryMatch", String.class, String.class, String.class);
+        Method matchHash = IntegrityVerifier.class.getDeclaredMethod("classifyPublicHashMatch", String.class, String.class, String.class);
+        String full = new String(Files.readAllBytes(Paths.get(args[0])), StandardCharsets.UTF_8);
+        String pub = new String(Files.readAllBytes(Paths.get(args[1])), StandardCharsets.UTF_8);
+        System.out.println("ANON1=" + anon.invoke(null, "Clebia_mae_mateus_sabe_que_ele_vai_me_ligar-20261026-190158"));
+        System.out.println("ANON2=" + anon.invoke(null, "investimaneto_nexum_RS-10900-20260527-170217"));
+        System.out.println("ANON3=" + anon.invoke(null, "sem_data_captura"));
+        System.out.println("H_FULL=" + matchHist.invoke(null, full, full, pub));
+        System.out.println("H_PUB=" + matchHist.invoke(null, pub, full, pub));
+        System.out.println("H_BAD_PREFIX=" + matchHist.invoke(null, pub.replace("CAPTURA|*", "CAPTURA|Fake"), full, pub));
+        System.out.println("H_BAD_TS=" + matchHist.invoke(null, pub.replace("*-20261026-190158", "*-20261026-190159"), full, pub));
+        System.out.println("K_FULL=" + matchHash.invoke(null, args[2], args[2], args[3]));
+        System.out.println("K_PUB=" + matchHash.invoke(null, args[3], args[2], args[3]));
+        System.out.println("K_BAD=" + matchHash.invoke(null, "0000000000000000000000000000000000000000000000000000000000000000", args[2], args[3]));
+    }
+}
+                """,
+                encoding="utf-8",
+            )
+            javac = JAVA.with_name("javac.exe")
+            cp = f"{VERIFIER_JAR};{harness_dir}"
+            comp = subprocess.run([str(javac), "-encoding", "UTF-8", "-cp", str(VERIFIER_JAR), "-d", str(harness_dir), str(harness_java)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(comp.returncode, 0, comp.stdout + comp.stderr)
+            pub_file = root / "pub.txt"
+            pub_file.write_text(anon_history, encoding="utf-8")
+            run = subprocess.run(
+                [str(JAVA), "-cp", cp, "PublicAnonHarness", str(root / "integridade" / "historico-capturas.txt"), str(pub_file), full_sha, anon_sha],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertIn("ANON1=*-20261026-190158", run.stdout)
+            self.assertIn("ANON2=*-20260527-170217", run.stdout)
+            self.assertIn("ANON3=*", run.stdout)
+            self.assertIn("H_FULL=MATCH_FULL", run.stdout)
+            self.assertIn("H_PUB=MATCH_PUBLIC", run.stdout)
+            self.assertIn("H_BAD_PREFIX=DIVERGE", run.stdout)
+            self.assertIn("H_BAD_TS=DIVERGE", run.stdout)
+            self.assertIn("K_FULL=MATCH_FULL", run.stdout)
+            self.assertIn("K_PUB=MATCH_PUBLIC", run.stdout)
+            self.assertIn("K_BAD=DIVERGE", run.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

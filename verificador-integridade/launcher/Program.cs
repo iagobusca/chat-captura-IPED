@@ -1,4 +1,4 @@
-// Versão 1.3.4 — valida o histórico de integridade de capturas HTML por mensagem e a proveniência de migrações legadas.
+// Versão 1.3.5 — histórico público anonimizado (CAPTURA|*-YYYYMMDD-HHMMSS), comparação dupla no modo Público e validação de histórico/migrações.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
