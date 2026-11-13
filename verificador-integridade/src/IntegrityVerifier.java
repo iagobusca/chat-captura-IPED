@@ -335,7 +335,7 @@ public final class IntegrityVerifier {
     }
     private static Map<String,String> publicMessageDomMap(JSONArray rows)throws IOException{Map<String,String> result=new TreeMap<>();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);String id=row==null?"":row.optString("domId",""),hash=row==null?"":row.optString("messageHash","");if(!id.matches("(?i)-?[0-9]{1,32}(?:_[0-9a-z:._-]{1,96})?")||!hash.matches("(?i)[0-9a-f]{64}")||result.put(id,hash)!=null)throw new IOException("ID DOM inválido ou duplicado no resumo público.");}return result;}
     private static String normalizePublicRecord(String s){String n=s.replace("\r\n","\n").replace('\r','\n');while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
-    private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(c.name).append('|').append(c.hash).append('\n');return out.toString();}
+    private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(recordField(c.name)).append('|').append(c.hash).append('\n');return out.toString();}
     private static void copyToClipboard(java.awt.Component owner,String value,String message){
         Thread worker=new Thread(()->{
             String error=null;
@@ -743,27 +743,57 @@ public final class IntegrityVerifier {
     }
     private static String htmlCaptureRootHash(JSONArray messages,String htmlSha,String annotationsSha,String reconciliationSha,JSONObject manifest)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-root\n");appendHtmlField(canonical,htmlSha);appendHtmlField(canonical,annotationsSha);appendHtmlField(canonical,reconciliationSha);appendHtmlField(canonical,manifest.optString("conversationKey",""));appendHtmlField(canonical,manifest.optString("sourceFingerprint",""));JSONObject source=manifest.optJSONObject("sourceMetadata");appendHtmlField(canonical,source==null?"":source.optString("name",""));appendHtmlField(canonical,source==null?"":Long.toString(source.optLong("size",-1)));appendHtmlField(canonical,source==null?"":source.optString("type",""));appendHtmlField(canonical,source==null?"":source.optString("itemHash",""));appendHtmlField(canonical,source==null?"":Boolean.toString(source.optBoolean("deleted",false)));appendHtmlField(canonical,manifest.optString("ipedVersion",""));appendHtmlField(canonical,manifest.optString("pluginVersion",""));JSONObject anchors=manifest.optJSONObject("anchors");appendHtmlField(canonical,anchors==null?"":anchors.optString("start",""));appendHtmlField(canonical,anchors==null?"":anchors.optString("end",""));for(int i=0;i<messages.length();i++){JSONObject message=messages.getJSONObject(i);appendHtmlField(canonical,message.optString("key",""));appendHtmlField(canonical,message.optString("messageHash",""));}return hashText(canonical.toString());}
     private static void appendHtmlField(StringBuilder canonical,String value){String field=value==null?"":value;canonical.append(field.length()).append(':').append(field).append('\n');}
+    private static boolean hasControlChars(String s){
+        for(int i=0;i<s.length();i++){char ch=s.charAt(i);if(ch<0x20||ch==0x7f)return true;}
+        return false;
+    }
+    private static boolean isOptionalSha256OrDash(String s){
+        return s.isEmpty()||"—".equals(s)||s.matches("(?i)[0-9a-f]{64}");
+    }
     private static void verifyHistory(Capture c,JSONObject record) throws Exception {
         JSONArray artifacts=record.optJSONArray("artifacts"), events=record.optJSONArray("events");
         if(artifacts==null||events==null||events.length()==0){c.historyStatus="registro incompleto";return;}
         StringBuilder content=new StringBuilder();
         List<JSONObject> sorted=new ArrayList<>();
-        for(int i=0;i<artifacts.length();i++){JSONObject item=artifacts.optJSONObject(i);if(item==null){c.historyStatus="inventário inválido";return;}sorted.add(item);}
+        for(int i=0;i<artifacts.length();i++){
+            JSONObject item=artifacts.optJSONObject(i);
+            if(item==null){c.historyStatus="inventário inválido";return;}
+            String itemPath=item.optString("path","");
+            String itemSha=item.optString("sha256","");
+            if(itemPath.isEmpty()||itemPath.length()>MAX_RELATIVE_PATH_CHARS||hasControlChars(itemPath)||!itemSha.matches("(?i)[0-9a-f]{64}")||item.optLong("size",-1)<0){
+                c.historyStatus="inventário inválido";return;
+            }
+            sorted.add(item);
+        }
         sorted.sort(Comparator.comparing(x->x.optString("path","")));
         for(JSONObject item:sorted)content.append(item.optString("path","")).append('|').append(item.optLong("size",0)).append('|').append(item.optString("sha256","")).append('\n');
         String inventoryRoot=hashText(content.toString());
-        c.contentRootHash=record.optString("contentRootHash","");
+        String declaredRoot=record.optString("contentRootHash","");
+        c.contentRootHash=declaredRoot;
         c.historyEvents=events;
-        if(!inventoryRoot.equalsIgnoreCase(record.optString("contentRootHash",""))){c.historyStatus="raiz do registro divergente";return;}
+        if(!declaredRoot.matches("(?i)[0-9a-f]{64}")||!inventoryRoot.equalsIgnoreCase(declaredRoot)){c.historyStatus="raiz do registro divergente";return;}
         String previous="";
         for(int i=0;i<events.length();i++){
-            JSONObject event=events.optJSONObject(i);if(event==null||event.optInt("sequence",-1)!=i+1||!previous.equals(event.optString("previousRecordHash",""))){c.historyStatus="cadeia do histórico quebrada";return;}
-            String expected=event.optString("recordHash","");JSONObject payload=new JSONObject(event.toString());payload.remove("recordHash");String actual=hashText(payload.toString());
+            JSONObject event=events.optJSONObject(i);
+            String prevHash=event==null?"":event.optString("previousRecordHash","");
+            String eventRoot=event==null?"":event.optString("contentRootHash","");
+            String expected=event==null?"":event.optString("recordHash","");
+            if(event==null||event.optInt("sequence",-1)!=i+1||!previous.equals(prevHash)||!eventRoot.matches("(?i)[0-9a-f]{64}")||!expected.matches("(?i)[0-9a-f]{64}")){c.historyStatus="cadeia do histórico quebrada";return;}
+            JSONArray changes=event.optJSONArray("changes");
+            if(changes!=null){
+                for(int j=0;j<changes.length();j++){
+                    JSONObject ch=changes.optJSONObject(j);
+                    if(ch==null||!isOptionalSha256OrDash(ch.optString("previousSha256",""))||!isOptionalSha256OrDash(ch.optString("sha256",""))){
+                        c.historyStatus="registro inválido";return;
+                    }
+                }
+            }
+            JSONObject payload=new JSONObject(event.toString());payload.remove("recordHash");String actual=hashText(payload.toString());
             if(!expected.equalsIgnoreCase(actual)){c.historyStatus="hash de evento inválido";return;}previous=expected;
         }
         c.historyHash=previous;
         StringBuilder current=new StringBuilder();for(JSONObject item:sorted){String path=item.optString("path","");Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)){c.historyStatus="arquivo ausente: "+path;return;}String actual=hash(file);if(!actual.equalsIgnoreCase(item.optString("sha256",""))||Files.size(file)!=item.optLong("size",-1)){c.historyStatus="arquivo divergente: "+path;return;}current.append(path).append('|').append(Files.size(file)).append('|').append(actual).append('\n');}
-        c.historyStatus=hashText(current.toString()).equalsIgnoreCase(record.optString("contentRootHash",""))?"consistente com registro local":"conteúdo diverge do registro local";
+        c.historyStatus=hashText(current.toString()).equalsIgnoreCase(declaredRoot)?"consistente com registro local":"conteúdo diverge do registro local";
     }
     private static Path resolve(Path root,String rel){try{if(rel==null||rel.isEmpty()||rel.length()>MAX_RELATIVE_PATH_CHARS||rel.indexOf('\0')>=0||rel.indexOf(':')>=0)return null;Path normalizedRoot=root.toAbsolutePath().normalize();Path r=normalizedRoot.getFileSystem().getPath(rel.replace('\\','/'));if(r.isAbsolute()||r.getNameCount()==0)return null;for(Path p:r)if(p.toString().equals("..")||p.toString().equals("."))return null;Path f=normalizedRoot.resolve(r).normalize();if(!f.startsWith(normalizedRoot)||f.equals(normalizedRoot))return null;Path q=normalizedRoot;for(Path p:normalizedRoot.relativize(f)){q=q.resolve(p);if(Files.isSymbolicLink(q))return null;}return f;}catch(Exception e){return null;}}
     private static String field(String s,String name){Matcher m=Pattern.compile("\\\""+Pattern.quote(name)+"\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"").matcher(s);return m.find()?m.group(1).replace("\\/","/").replace("\\\"","\"").replace("\\\\","\\"):null;}
@@ -782,13 +812,13 @@ public final class IntegrityVerifier {
     static String publicHistoryReport(List<Capture> captures,String collectionHash)throws IOException{return historyReport(captures,collectionHash,true);}
     private static String historyReport(List<Capture> captures,String collectionHash,boolean anonymizeNames)throws IOException{
         enforceReportBudget(captures);
-        StringBuilder out=new StringBuilder("HISTORICO_PUBLICO_V1\nSHA256|").append(collectionHash).append("\n");
+        StringBuilder out=new StringBuilder("HISTORICO_PUBLICO_V1\nSHA256|").append(recordField(collectionHash)).append("\n");
         List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));
         for(Capture c:ordered){
             String displayName=anonymizeNames?anonymizeCaptureName(c.name):c.name;
-            out.append("\nCAPTURA|").append(recordField(displayName)).append("\nSTATUS|").append(c.historyStatus).append("\nHASH_CONTEUDO|").append(c.contentRootHash.isEmpty()?c.hash:c.contentRootHash).append("\nHASH_INTEGRIDADE_JSON|").append(c.integrityFileHash.isEmpty()?"indisponivel":c.integrityFileHash).append("\nHASH_FINAL_HISTORICO|").append(c.historyHash.isEmpty()?"indisponivel":c.historyHash).append("\nEVENTOS|").append(c.historyEvents.length()).append('\n');
-            for(int i=0;i<c.historyEvents.length();i++){JSONObject e=c.historyEvents.optJSONObject(i);if(e==null)continue;out.append("EVENTO|").append(e.optInt("sequence",i+1)).append('|').append(recordField(e.optString("timestampUtc","sem timestamp"))).append('|').append(recordField(e.optString("action","ação desconhecida"))).append("\nANTERIOR|").append(e.optString("previousRecordHash","")).append("\nRAIZ_EVENTO|").append(e.optString("contentRootHash","")).append("\nHASH_EVENTO|").append(e.optString("recordHash","")).append('\n');JSONArray changes=e.optJSONArray("changes");if(changes!=null)for(int j=0;j<changes.length();j++){JSONObject change=changes.optJSONObject(j);if(change!=null)out.append("ALTERACAO|").append(recordField(change.optString("action","mudança"))).append('|').append(recordField(change.optString("path",""))).append('|').append(change.optString("previousSha256","—")).append('|').append(change.optString("sha256","—")).append('\n');}}
-            out.append("INVENTARIO_ARQUIVOS|").append(c.items.size()).append('\n');for(Item item:c.items)out.append("ARQUIVO|").append(recordField(item.path)).append('|').append(item.size).append('|').append(item.expected==null?"—":item.expected).append('|').append(item.bytes).append('|').append(item.actual==null?"—":item.actual).append('|').append(recordField(item.state==null?"desconhecido":item.state)).append('\n');
+            out.append("\nCAPTURA|").append(recordField(displayName)).append("\nSTATUS|").append(recordField(c.historyStatus)).append("\nHASH_CONTEUDO|").append(recordField(c.contentRootHash.isEmpty()?c.hash:c.contentRootHash)).append("\nHASH_INTEGRIDADE_JSON|").append(recordField(c.integrityFileHash.isEmpty()?"indisponivel":c.integrityFileHash)).append("\nHASH_FINAL_HISTORICO|").append(recordField(c.historyHash.isEmpty()?"indisponivel":c.historyHash)).append("\nEVENTOS|").append(c.historyEvents.length()).append('\n');
+            for(int i=0;i<c.historyEvents.length();i++){JSONObject e=c.historyEvents.optJSONObject(i);if(e==null)continue;out.append("EVENTO|").append(e.optInt("sequence",i+1)).append('|').append(recordField(e.optString("timestampUtc","sem timestamp"))).append('|').append(recordField(e.optString("action","ação desconhecida"))).append("\nANTERIOR|").append(recordField(e.optString("previousRecordHash",""))).append("\nRAIZ_EVENTO|").append(recordField(e.optString("contentRootHash",""))).append("\nHASH_EVENTO|").append(recordField(e.optString("recordHash",""))).append('\n');JSONArray changes=e.optJSONArray("changes");if(changes!=null)for(int j=0;j<changes.length();j++){JSONObject change=changes.optJSONObject(j);if(change!=null)out.append("ALTERACAO|").append(recordField(change.optString("action","mudança"))).append('|').append(recordField(change.optString("path",""))).append('|').append(recordField(change.optString("previousSha256","—"))).append('|').append(recordField(change.optString("sha256","—"))).append('\n');}}
+            out.append("INVENTARIO_ARQUIVOS|").append(c.items.size()).append('\n');for(Item item:c.items)out.append("ARQUIVO|").append(recordField(item.path)).append('|').append(item.size).append('|').append(recordField(item.expected==null?"—":item.expected)).append('|').append(item.bytes).append('|').append(recordField(item.actual==null?"—":item.actual)).append('|').append(recordField(item.state==null?"desconhecido":item.state)).append('\n');
         }
         out.append("\nNota|O hash público compara exatamente este registro estável. A integridade dos arquivos também precisa estar consistente localmente. Use uma referência obtida fora da pasta verificada.\n");return out.toString();
     }

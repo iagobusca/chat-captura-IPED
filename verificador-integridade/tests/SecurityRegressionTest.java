@@ -26,6 +26,7 @@ public final class SecurityRegressionTest {
             reportBudgetRejectsLargeOutputBeforeBuildingIt();
             batchFailurePreservesPreviousReports();
             extraFileInHtmlMessageCaptureIsFlagged(root);
+            craftedHistoryReportInjectionIsRejectedAndEscaped(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -184,6 +185,99 @@ public final class SecurityRegressionTest {
         }
         if (extraItems != 2) {
             throw new AssertionError("Expected 2 extra items in inventory, got " + extraItems);
+        }
+    }
+
+    private static void craftedHistoryReportInjectionIsRejectedAndEscaped(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Method reportMethod = IntegrityVerifier.class.getDeclaredMethod("historyReport", List.class, String.class);
+        reportMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+
+        // Case A (Craft): injected artifact path with newlines and forged STATUS/HASH_FINAL_HISTORICO lines
+        Path dirA = Files.createDirectories(root.resolve("captura-craft-a-20261112-120001"));
+        Files.write(dirA.resolve("a.txt"), "hello".getBytes(StandardCharsets.UTF_8));
+        String fileSha = sha256Utf8("hello");
+        JSONArray artA = new JSONArray()
+                .put(new JSONObject().put("path", "a.txt").put("size", 5).put("sha256", fileSha))
+                .put(new JSONObject().put("path", "ghost.txt\nHASH_FINAL_HISTORICO|0000\nSTATUS|FORGED_OK")
+                        .put("size", 1).put("sha256", repeat('a', 64)));
+        List<JSONObject> sortedA = new ArrayList<>();
+        for (int i = 0; i < artA.length(); i++) sortedA.add(artA.getJSONObject(i));
+        sortedA.sort((x, y) -> x.getString("path").compareTo(y.getString("path")));
+        StringBuilder sbA = new StringBuilder();
+        for (JSONObject o : sortedA) sbA.append(o.getString("path")).append('|').append(o.getLong("size")).append('|').append(o.getString("sha256")).append('\n');
+        String rootA = sha256Utf8(sbA.toString());
+        JSONObject evA = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-12T12:00:01Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootA)
+                .put("changes", new JSONArray().put(new JSONObject().put("action", "added").put("path", "a.txt").put("sha256", fileSha)));
+        JSONObject payloadA = new JSONObject(evA.toString());
+        evA.put("recordHash", sha256Utf8(payloadA.toString()));
+        JSONObject recA = new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", rootA)
+                .put("artifacts", artA)
+                .put("events", new JSONArray().put(evA));
+        Files.write(dirA.resolve("integridade.json"), recA.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(dirA.resolve("manifest.json"), new JSONObject().put("artifacts", artA).toString().getBytes(StandardCharsets.UTF_8));
+
+        Object capA = newCapture(dirA);
+        verifyMethod.invoke(null, capA);
+        String statusA = (String) statusField.get(capA);
+        if (!"inventário inválido".equals(statusA)) {
+            throw new AssertionError("Crafted control chars in artifact path should fail verifyHistory, got: " + statusA);
+        }
+        String reportA = (String) reportMethod.invoke(null, Collections.singletonList(capA), repeat('1', 64));
+        assertNoUnescapedLines(reportA, "FORGED_OK");
+
+        // Case B (CraftClean): injected changes[].sha256 with newlines while event recordHash stays valid
+        Path dirB = Files.createDirectories(root.resolve("captura-craft-b-20261112-120002"));
+        Files.write(dirB.resolve("a.txt"), "hello".getBytes(StandardCharsets.UTF_8));
+        JSONArray artB = new JSONArray().put(new JSONObject().put("path", "a.txt").put("size", 5).put("sha256", fileSha));
+        String rootB = sha256Utf8("a.txt|5|" + fileSha + "\n");
+        JSONObject evB = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-12T12:00:02Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootB)
+                .put("changes", new JSONArray().put(new JSONObject()
+                        .put("action", "added")
+                        .put("path", "a.txt")
+                        .put("sha256", "deadbeef\nSTATUS|FORGED_OK\nHASH_FINAL_HISTORICO|0000")));
+        JSONObject payloadB = new JSONObject(evB.toString());
+        evB.put("recordHash", sha256Utf8(payloadB.toString()));
+        JSONObject recB = new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", rootB)
+                .put("artifacts", artB)
+                .put("events", new JSONArray().put(evB));
+        Files.write(dirB.resolve("integridade.json"), recB.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(dirB.resolve("manifest.json"), new JSONObject().put("artifacts", artB).toString().getBytes(StandardCharsets.UTF_8));
+
+        Object capB = newCapture(dirB);
+        verifyMethod.invoke(null, capB);
+        String statusB = (String) statusField.get(capB);
+        if (!"registro inválido".equals(statusB)) {
+            throw new AssertionError("Crafted change sha256 should be rejected by verifyHistory, got: " + statusB);
+        }
+        String reportB = (String) reportMethod.invoke(null, Collections.singletonList(capB), repeat('2', 64));
+        assertNoUnescapedLines(reportB, "FORGED_OK");
+        assertNoUnescapedLines(reportB, "HASH_FINAL_HISTORICO|0000");
+    }
+
+    private static void assertNoUnescapedLines(String report, String forbidden) {
+        String[] lines = report.split("\\r?\\n");
+        for (String line : lines) {
+            if (line.equals(forbidden) || line.startsWith("STATUS|" + forbidden) || line.equals("HASH_FINAL_HISTORICO|0000")) {
+                throw new AssertionError("Injected line leaked unescaped into report: " + line);
+            }
         }
     }
 
