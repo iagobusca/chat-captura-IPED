@@ -379,14 +379,16 @@ final class CaptureIntegrity {
 
     static void appendAudit(Path captureRoot, JSONObject event) throws IOException {
         Path root = captureRoot.toAbsolutePath().normalize();
-        Files.createDirectories(root);
-        ensureNoSymbolicLinkComponents(root, root);
+        createDirectoriesSafe(root, root);
         JSONObject record = new JSONObject(event == null ? new JSONObject().toMap() : event.toMap());
         record.put("recordedAtUtc", Instant.now().toString());
         record.put("auditSchemaVersion", 1);
-        Path log = root.resolve(AUDIT_FILE);
+        Path log = resolveContained(root, AUDIT_FILE);
         if (isLinkOrReparse(log)) {
             throw new IOException("Symbolic links or junctions are not allowed for audit log paths");
+        }
+        if (Files.exists(log, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(log, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Audit log path is not a regular file");
         }
         byte[] encoded = (record.toString() + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
         long currentSize = Files.exists(log, LinkOption.NOFOLLOW_LINKS) ? Files.size(log) : 0L;
@@ -400,7 +402,56 @@ final class CaptureIntegrity {
         }
     }
 
+    static void createDirectoriesSafe(Path root, Path directory) throws IOException {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalizedDir = directory.toAbsolutePath().normalize();
+        if (!normalizedDir.startsWith(normalizedRoot)) {
+            throw new IOException("Output directory escapes capture root");
+        }
+        ensureNoSymbolicLinkComponents(normalizedRoot, normalizedDir);
+        if (!Files.exists(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectories(normalizedRoot);
+        }
+        if (isLinkOrReparse(normalizedRoot) || !Files.isDirectory(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Symbolic links or junctions are not allowed as capture root");
+        }
+        if (!normalizedDir.equals(normalizedRoot)) {
+            Path current = normalizedRoot;
+            for (Path part : normalizedRoot.relativize(normalizedDir)) {
+                current = current.resolve(part);
+                if (isLinkOrReparse(current)) {
+                    throw new IOException("Symbolic links or junctions are not allowed in capture output paths");
+                }
+                if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                    try {
+                        Files.createDirectory(current);
+                    } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                        // Concurrently created; verify below without following links.
+                    }
+                }
+                if (isLinkOrReparse(current) || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("Symbolic links or junctions are not allowed in capture output paths");
+                }
+            }
+        }
+        Path realRoot = normalizedRoot.toRealPath();
+        if (!normalizedDir.toRealPath().startsWith(realRoot)) {
+            throw new IOException("Output path resolves outside capture root");
+        }
+    }
+
     static void writeAtomically(Path captureRoot, Path destination, String content) throws IOException {
+        writeAtomically(captureRoot, destination, content, MAX_JSON_BYTES);
+    }
+
+    static void writeAtomically(Path captureRoot, Path destination, String content, long maxBytes) throws IOException {
+        writeBytesAtomically(captureRoot, destination, content.getBytes(StandardCharsets.UTF_8), maxBytes);
+    }
+
+    static void writeBytesAtomically(Path captureRoot, Path destination, byte[] contentBytes, long maxBytes) throws IOException {
+        if (maxBytes <= 0 || maxBytes > MAX_HTML_CAPTURE_BYTES) {
+            throw new IllegalArgumentException("Invalid atomic write limit: " + maxBytes);
+        }
         Path root = captureRoot.toAbsolutePath().normalize();
         Path target = destination.toAbsolutePath().normalize();
         if (!target.startsWith(root) || target.equals(root)) {
@@ -410,15 +461,15 @@ final class CaptureIntegrity {
         if (parent == null) {
             throw new IOException("Output path has no parent directory");
         }
-        ensureNoSymbolicLinkComponents(root, parent);
-        Files.createDirectories(parent);
-        ensureNoSymbolicLinkComponents(root, parent);
+        createDirectoriesSafe(root, parent);
         if (isLinkOrReparse(target)) {
             throw new IOException("Symbolic links or junctions are not allowed as output targets");
         }
-        byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
-        if (contentBytes.length > MAX_JSON_BYTES) {
-            throw new IOException("JSON metadata exceeds the " + MAX_JSON_BYTES + " byte limit; previous file was preserved");
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Output target is not a regular file");
+        }
+        if (contentBytes.length > maxBytes) {
+            throw new IOException("JSON metadata exceeds the " + maxBytes + " byte limit; previous file was preserved");
         }
         Path temporary = Files.createTempFile(parent, "." + target.getFileName() + ".", ".tmp");
         try {
@@ -454,6 +505,9 @@ final class CaptureIntegrity {
                     throw new IOException("Symbolic links are not allowed in capture output paths");
                 }
             }
+        }
+        if (isLinkOrReparse(normalizedRoot)) {
+            throw new IOException("Symbolic links or junctions are not allowed as capture root");
         }
         if (!normalizedTarget.equals(normalizedRoot)) {
             Path current = normalizedRoot;

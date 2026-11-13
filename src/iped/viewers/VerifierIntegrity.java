@@ -25,16 +25,22 @@ public final class VerifierIntegrity {
     /** Copia os arquivos do verificador (jar/exe) para a pasta de captura, se encontrados. */
     public static void installVerifierFiles(Path outputFolder) {
         if (outputFolder == null) return;
+        Path normalizedRoot = outputFolder.toAbsolutePath().normalize();
         try {
-            Files.createDirectories(outputFolder);
+            CaptureIntegrity.createDirectoriesSafe(normalizedRoot, normalizedRoot);
         } catch (IOException e) {
             return;
         }
         for (String name : new String[] { JAR_NAME, EXE_NAME }) {
             Path src = findTrustedVerifierFile(name);
             if (src == null) continue;
-            Path dst = outputFolder.resolve(name);
-            boolean needCopy = !Files.isRegularFile(dst);
+            Path dst = normalizedRoot.resolve(name);
+            try {
+                if (CaptureIntegrity.isLinkOrReparse(dst)) continue;
+            } catch (IOException e) {
+                continue;
+            }
+            boolean needCopy = !Files.isRegularFile(dst, java.nio.file.LinkOption.NOFOLLOW_LINKS);
             if (!needCopy) {
                 try {
                     String h = sha256(dst);
@@ -44,10 +50,22 @@ public final class VerifierIntegrity {
                 }
             }
             if (!needCopy) continue;
-            Path temp = outputFolder.resolve(name + ".tmp-" + UUID.randomUUID().toString()); //$NON-NLS-1$
+            Path temp = null;
             try {
-                Files.copy(src, temp);
+                temp = Files.createTempFile(normalizedRoot, "." + name + ".", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
+                try (java.io.InputStream in = Files.newInputStream(src, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                     java.io.OutputStream out = Files.newOutputStream(temp,
+                             java.nio.file.StandardOpenOption.WRITE,
+                             java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                             java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) >= 0) {
+                        if (n > 0) out.write(buf, 0, n);
+                    }
+                }
                 if (!isValid(name, sha256(temp))) continue;
+                if (CaptureIntegrity.isLinkOrReparse(normalizedRoot) || CaptureIntegrity.isLinkOrReparse(dst)) continue;
                 try {
                     Files.move(temp, dst, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -57,9 +75,11 @@ public final class VerifierIntegrity {
             } catch (IOException ignored) {
                 // A falha ao copiar o verificador nao deve impedir a captura.
             } finally {
-                try {
-                    Files.deleteIfExists(temp);
-                } catch (IOException ignored) {
+                if (temp != null) {
+                    try {
+                        Files.deleteIfExists(temp);
+                    } catch (IOException ignored) {
+                    }
                 }
             }
         }
@@ -78,9 +98,11 @@ public final class VerifierIntegrity {
             if (dir == null) {
                 continue;
             }
-            Path candidate = dir.resolve(name);
-            if (!Files.isRegularFile(candidate)) continue;
             try {
+                if (CaptureIntegrity.isLinkOrReparse(dir)) continue;
+                Path candidate = dir.resolve(name);
+                if (CaptureIntegrity.isLinkOrReparse(candidate)
+                        || !Files.isRegularFile(candidate, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
                 if (isValid(name, sha256(candidate))) return candidate;
             } catch (IOException ignored) {
             }
@@ -110,7 +132,7 @@ public final class VerifierIntegrity {
             candidates.add(java.nio.file.Paths.get(explicitDir));
         }
         if (codeLocation != null) {
-            if (Files.isDirectory(codeLocation)) {
+            if (isNonLinkDirectory(codeLocation)) {
                 candidates.add(codeLocation.resolve("verificador-integridade")); //$NON-NLS-1$
                 candidates.add(codeLocation.resolveSibling("verificador-integridade")); //$NON-NLS-1$
             }
@@ -152,25 +174,49 @@ public final class VerifierIntegrity {
         for (int level = 0; level <= 3 && dir != null; level++) {
             Path jar = dir.resolve(JAR_NAME);
             Path exe = dir.resolve(EXE_NAME);
-            if (Files.isRegularFile(jar)) found.add(jar);
-            if (Files.isRegularFile(exe)) found.add(exe);
-            // um nivel de subpasta "integridade"
-            Path sub = dir.resolve("integridade");
-            if (Files.isDirectory(sub)) {
-                Path j2 = sub.resolve(JAR_NAME);
-                Path e2 = sub.resolve(EXE_NAME);
-                if (Files.isRegularFile(j2)) found.add(j2);
-                if (Files.isRegularFile(e2)) found.add(e2);
+            if (isNonLinkDirectory(dir)) {
+                if (isRegularNonLink(jar)) found.add(jar);
+                if (isRegularNonLink(exe)) found.add(exe);
+                // um nivel de subpasta "integridade"
+                Path sub = dir.resolve("integridade");
+                if (isNonLinkDirectory(sub)) {
+                    Path j2 = sub.resolve(JAR_NAME);
+                    Path e2 = sub.resolve(EXE_NAME);
+                    if (isRegularNonLink(j2)) found.add(j2);
+                    if (isRegularNonLink(e2)) found.add(e2);
+                }
             }
             dir = dir.getParent();
         }
         return found;
     }
 
+    private static boolean isRegularNonLink(Path path) {
+        try {
+            return path != null && !CaptureIntegrity.isLinkOrReparse(path)
+                    && Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean isNonLinkDirectory(Path path) {
+        try {
+            return path != null && !CaptureIntegrity.isLinkOrReparse(path)
+                    && Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     private static String sha256(Path file) throws IOException {
+        if (CaptureIntegrity.isLinkOrReparse(file)
+                || !Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Arquivo de verificador invalido ou link simbolico: " + file);
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (java.io.InputStream in = Files.newInputStream(file)) {
+            try (java.io.InputStream in = Files.newInputStream(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 byte[] buf = new byte[16384];
                 int n;
                 while ((n = in.read(buf)) >= 0) {

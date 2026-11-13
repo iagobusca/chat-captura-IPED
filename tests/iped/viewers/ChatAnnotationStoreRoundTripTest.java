@@ -14,6 +14,7 @@ public final class ChatAnnotationStoreRoundTripTest {
     public static void main(String[] args) throws Exception {
         testNotesAndLinksRoundTrip();
         testFieldMetadataExtraction();
+        testJunctionOutputIsRejected();
         System.out.println("ChatAnnotationStoreRoundTripTest: PASS");
     }
 
@@ -97,6 +98,40 @@ public final class ChatAnnotationStoreRoundTripTest {
             equal("src\\" + value, ChatAnnotationStore.field(json, "sourceName"), "field(sourceName) mismatch");
             equal("D:\\Cases\\" + i + "\\" + value, ChatAnnotationStore.field(json, "sourcePath"), "field(sourcePath) mismatch");
             equal("C:\\Out\\cap\\" + i, ChatAnnotationStore.field(json, "captureFolder"), "field(captureFolder) mismatch");
+        }
+    }
+
+    private static void testJunctionOutputIsRejected() throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path work = Files.createTempDirectory("chat-annotation-junction-");
+        try {
+            Path outside = Files.createDirectories(work.resolve("outside"));
+            Files.writeString(outside.resolve(ChatAnnotationStore.FILE_NAME),
+                    "{\"version\":2,\"chats\":{\"k\":{\"items\":[{\"id\":\"m1\",\"note\":{\"text\":\"evil\",\"author\":\"a\",\"updatedAt\":\"t\"}}]}}}");
+            Path rootJunction = work.resolve("out-junction");
+            Process p = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                    rootJunction.toAbsolutePath().toString(), outside.toAbsolutePath().toString())
+                    .redirectErrorStream(true).start();
+            if (p.waitFor() != 0) {
+                throw new AssertionError("mklink /J failed");
+            }
+            try {
+                ChatAnnotationStore reader = new ChatAnnotationStore();
+                reader.bindOutputRoot(rootJunction);
+                check(reader.get("k", "m1") == null, "load() must ignore store inside NTFS junction outputRoot");
+
+                reader.setNote("k", "m2", "note", "perito");
+                reader.persist();
+                check(reader.isDirty(), "persist() must fail cleanly and stay dirty on NTFS junction outputRoot");
+                String content = Files.readString(outside.resolve(ChatAnnotationStore.FILE_NAME));
+                check(!content.contains("m2"), "persist() must not overwrite store inside junction target");
+            } finally {
+                Files.deleteIfExists(rootJunction);
+            }
+        } finally {
+            deleteTree(work);
         }
     }
 

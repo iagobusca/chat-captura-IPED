@@ -37,6 +37,7 @@ class ChatAnnotationStore {
     static final String ORIGIN_MANUAL = "manual"; //$NON-NLS-1$
 
     private final Map<String, List<ChatAnnotation>> byChatKey = new LinkedHashMap<>();
+    private Path outputRoot;
     private Path storeFile;
     private long loadedStamp = -1;
 
@@ -59,10 +60,12 @@ class ChatAnnotationStore {
      * quando o usuario executa a captura ({@link #persist()}).
      */
     void bindOutputRoot(Path outputRoot) {
-        Path newFile = outputRoot == null ? null : outputRoot.resolve(FILE_NAME);
+        Path normalizedRoot = outputRoot == null ? null : outputRoot.toAbsolutePath().normalize();
+        Path newFile = normalizedRoot == null ? null : normalizedRoot.resolve(FILE_NAME);
         if (newFile == null) {
             return;
         }
+        this.outputRoot = normalizedRoot;
         if (!newFile.equals(storeFile)) {
             byChatKey.clear();
             dirty = false;
@@ -85,7 +88,11 @@ class ChatAnnotationStore {
 
     private static long lastModifiedOf(Path path) {
         try {
-            return Files.isRegularFile(path) ? Files.getLastModifiedTime(path).toMillis() : -1L;
+            if (path == null || CaptureIntegrity.isLinkOrReparse(path)
+                    || !Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                return -1L;
+            }
+            return Files.getLastModifiedTime(path, java.nio.file.LinkOption.NOFOLLOW_LINKS).toMillis();
         } catch (Exception e) {
             return -1L;
         }
@@ -102,12 +109,13 @@ class ChatAnnotationStore {
     // ---------------------------------------------------------------- leitura
 
     private void load() {
-        if (storeFile == null || !Files.isRegularFile(storeFile)) {
+        if (storeFile == null) {
             return;
         }
         try {
-            if (Files.size(storeFile) > MAX_STORE_BYTES) {
-                LOGGER.warn("Ignoring oversized annotation store {} (limit: {} bytes)", storeFile, MAX_STORE_BYTES);
+            if ((outputRoot != null && CaptureIntegrity.isLinkOrReparse(outputRoot))
+                    || CaptureIntegrity.isLinkOrReparse(storeFile)
+                    || !Files.isRegularFile(storeFile, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 return;
             }
         } catch (IOException e) {
@@ -116,14 +124,7 @@ class ChatAnnotationStore {
         }
         String content;
         try {
-            try (java.io.InputStream input = Files.newInputStream(storeFile, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                byte[] bytes = input.readNBytes((int) MAX_STORE_BYTES + 1);
-                if (bytes.length > MAX_STORE_BYTES) {
-                    LOGGER.warn("Ignoring oversized annotation store {} (limit: {} bytes)", storeFile, MAX_STORE_BYTES);
-                    return;
-                }
-                content = new String(bytes, StandardCharsets.UTF_8);
-            }
+            content = CaptureIntegrity.readUtf8Limited(storeFile, MAX_STORE_BYTES);
         } catch (IOException e) {
             LOGGER.warn("Unable to read {}, keeping annotations in memory only", storeFile, e); //$NON-NLS-1$
             return;
@@ -339,17 +340,13 @@ class ChatAnnotationStore {
         if (storeFile == null) {
             return;
         }
-        Path tmp = null;
         try {
-            Path parent = storeFile.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
+            Path root = outputRoot != null ? outputRoot : storeFile.getParent();
+            if (root == null) {
+                return;
             }
-            CaptureIntegrity.ensureNoSymbolicLinkComponents(parent, parent);
-            tmp = Files.createTempFile(parent, "." + FILE_NAME + ".", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
-            try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(tmp, StandardCharsets.UTF_8,
-                    java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-                    java.nio.file.LinkOption.NOFOLLOW_LINKS))) {
+            java.io.StringWriter buffer = new java.io.StringWriter(4096);
+            try (PrintWriter out = new PrintWriter(buffer)) {
                 out.println("{"); //$NON-NLS-1$
                 out.println("  \"version\": " + SCHEMA_VERSION + ","); //$NON-NLS-1$
                 out.println("  \"updatedAt\": \"" + Instant.now() + "\","); //$NON-NLS-1$
@@ -368,23 +365,11 @@ class ChatAnnotationStore {
                 out.println("  }"); //$NON-NLS-1$
                 out.println("}"); //$NON-NLS-1$
             }
-            try {
-                Files.move(tmp, storeFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-                Files.move(tmp, storeFile, StandardCopyOption.REPLACE_EXISTING);
-            }
+            CaptureIntegrity.writeAtomically(root, storeFile, buffer.toString(), MAX_STORE_BYTES);
             dirty = false;
             loadedStamp = lastModifiedOf(storeFile);
         } catch (Exception e) {
             LOGGER.warn("Unable to write {}", storeFile, e); //$NON-NLS-1$
-        } finally {
-            if (tmp != null) {
-                try {
-                    Files.deleteIfExists(tmp);
-                } catch (IOException e) {
-                    LOGGER.debug("Unable to remove temporary annotation file {}", tmp, e); //$NON-NLS-1$
-                }
-            }
         }
     }
 

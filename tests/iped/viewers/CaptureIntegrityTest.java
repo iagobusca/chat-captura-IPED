@@ -229,6 +229,34 @@ public final class CaptureIntegrityTest {
                 rejectedOut = true;
             }
             check(rejectedOut, "ensureNoSymbolicLinkComponents must reject junctions below root");
+
+            boolean rejectedMkdir = false;
+            try {
+                CaptureIntegrity.createDirectoriesSafe(cap, junction.resolve("nested"));
+            } catch (java.io.IOException expected) {
+                rejectedMkdir = true;
+            }
+            check(rejectedMkdir, "createDirectoriesSafe must reject junctions below root");
+            check(!Files.exists(outside.resolve("nested")), "createDirectoriesSafe must not create inside junction target");
+
+            boolean rejectedWrite = false;
+            try {
+                CaptureIntegrity.writeAtomically(cap, junction.resolve("p4.json"), "{}", CaptureIntegrity.MAX_JSON_BYTES);
+            } catch (java.io.IOException expected) {
+                rejectedWrite = true;
+            }
+            check(rejectedWrite, "writeAtomically must reject junctions below root");
+            check(!Files.exists(outside.resolve("p4.json")), "writeAtomically must not write inside junction target");
+
+            boolean rejectedAudit = false;
+            try {
+                CaptureIntegrity.appendAudit(junction, new JSONObject().put("action", "evil"));
+            } catch (java.io.IOException expected) {
+                rejectedAudit = true;
+            }
+            check(rejectedAudit, "appendAudit must reject junction root");
+            check(!Files.exists(outside.resolve(CaptureIntegrity.AUDIT_FILE)),
+                    "appendAudit must not write inside junction target");
         } finally {
             Files.deleteIfExists(junction);
             deleteTree(work);

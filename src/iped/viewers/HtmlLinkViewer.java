@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.io.StringWriter;
 import java.awt.BorderLayout;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
@@ -1819,11 +1820,17 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                     job.migrateLegacyToHtml ? "Substituindo a captura legada validada..." : "Substituindo a extracao antiga pela nova...", false); //$NON-NLS-1$ //$NON-NLS-2$
             Path oldFolder = uniqueSibling(outputRoot.resolve(job.folder + ".__old_" + batchStamp)); //$NON-NLS-1$
             LOGGER.info("Recapture replacing old folder {} with {}", job.folderPath, result.captureDir);
+            if (CaptureIntegrity.isLinkOrReparse(outputRoot) || CaptureIntegrity.isLinkOrReparse(job.folderPath)
+                    || CaptureIntegrity.isLinkOrReparse(result.captureDir) || CaptureIntegrity.isLinkOrReparse(oldFolder)) {
+                throw new IOException("Symbolic links or junctions are not allowed during recapture swap"); //$NON-NLS-1$
+            }
             Files.move(job.folderPath, oldFolder);
             try {
                 Files.move(result.captureDir, job.folderPath);
             } catch (IOException e) {
-                if (Files.exists(oldFolder) && !Files.exists(job.folderPath)) {
+                if (Files.exists(oldFolder, LinkOption.NOFOLLOW_LINKS)
+                        && !Files.exists(job.folderPath, LinkOption.NOFOLLOW_LINKS)
+                        && !CaptureIntegrity.isLinkOrReparse(oldFolder)) {
                     Files.move(oldFolder, job.folderPath);
                 }
                 throw e;
@@ -1953,7 +1960,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 .put("entries", entries).put("counts", new JSONObject().put("unchanged", unchanged).put("changed", changed) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
                         .put("missingInCurrentSource", missing).put("newInInterval", added)).toString(2) + System.lineSeparator(); //$NON-NLS-1$ //$NON-NLS-2$
         Path reconciliation = currentCapture.resolve("message-reconciliation.json"); //$NON-NLS-1$
-        Files.writeString(reconciliation, json, StandardCharsets.UTF_8);
+        CaptureIntegrity.writeAtomically(currentCapture, reconciliation, json);
         JSONObject manifest = newManifest;
         String reconciliationSha = CaptureIntegrity.sha256(reconciliation);
         manifest.put("reconciliationFile", "message-reconciliation.json").put("reconciliationSha256", reconciliationSha); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -2236,12 +2243,17 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         String oldManifest = CaptureIntegrity.readJsonUtf8Limited(manifestPath);
         boolean backedUpHtml = false;
         try {
-            writeWhatsAppHtml(temporary, content);
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(job.folderPath, job.folderPath);
+            if (CaptureIntegrity.isLinkOrReparse(html) || CaptureIntegrity.isLinkOrReparse(temporary)
+                    || CaptureIntegrity.isLinkOrReparse(backup)) {
+                throw new IOException("Symbolic links or junctions are not allowed during HTML migration"); //$NON-NLS-1$
+            }
+            writeWhatsAppHtml(job.folderPath, temporary, content);
             String generated = CaptureIntegrity.readUtf8Limited(temporary);
             if (!generated.contains("id=\"coords\"") || !generated.contains("</html>")) { //$NON-NLS-1$ //$NON-NLS-2$
                 return false;
             }
-            if (Files.exists(html)) {
+            if (Files.exists(html, LinkOption.NOFOLLOW_LINKS)) {
                 Files.move(html, backup);
                 backedUpHtml = true;
             }
@@ -2263,7 +2275,8 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             return true;
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(html);
-            if (backedUpHtml && Files.exists(backup)) {
+            if (backedUpHtml && Files.exists(backup, LinkOption.NOFOLLOW_LINKS)
+                    && !CaptureIntegrity.isLinkOrReparse(backup) && !CaptureIntegrity.isLinkOrReparse(html)) {
                 Files.move(backup, html);
             }
             CaptureIntegrity.writeAtomically(job.folderPath, manifestPath, oldManifest);
@@ -2295,6 +2308,9 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 .put("result", result));
     }
     private void moveReplacing(Path source, Path destination) throws IOException {
+        if (CaptureIntegrity.isLinkOrReparse(source) || CaptureIntegrity.isLinkOrReparse(destination)) {
+            throw new IOException("Symbolic links or junctions are not allowed"); //$NON-NLS-1$
+        }
         try {
             Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (java.nio.file.AtomicMoveNotSupportedException e) {
@@ -2742,10 +2758,15 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         currentCaptureOutputRoot = outputRoot;
         try {
             String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
+            if (CaptureIntegrity.isLinkOrReparse(outputRoot)) {
+                throw new IOException("Symbolic links or junctions are not allowed as capture output root"); //$NON-NLS-1$
+            }
             finalCaptureDir = exactCaptureDir != null ? exactCaptureDir : outputRoot.resolve(buildCaptureFolderName(customFolderName, timestamp));
             captureDir = exactCaptureDir != null ? exactCaptureDir
                     : outputRoot.resolve(".__capture_staging_" + java.util.UUID.randomUUID().toString().replace("-", "")); //$NON-NLS-1$ //$NON-NLS-2$
-            if (Files.exists(finalCaptureDir) || Files.exists(captureDir)) {
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(outputRoot, finalCaptureDir);
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(outputRoot, captureDir);
+            if (Files.exists(finalCaptureDir, LinkOption.NOFOLLOW_LINKS) || Files.exists(captureDir, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("Capture folder already exists: " + finalCaptureDir); //$NON-NLS-1$
             }
             // Revalidar no worker antes de alterar a interface ou criar qualquer arquivo.
@@ -2767,11 +2788,12 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
                 promoted = true;
                 return new CaptureRunResult(htmlResult.status, finalCaptureDir);
             }
+            CaptureIntegrity.createDirectoriesSafe(outputRoot, captureDir);
+            workDirCreated = true;
             Path screenshotsDir = captureDir.resolve("screenshots"); //$NON-NLS-1$
             Path attachmentsDir = captureDir.resolve("anexos"); //$NON-NLS-1$
-            Files.createDirectories(screenshotsDir);
-            workDirCreated = true;
-            Files.createDirectories(attachmentsDir);
+            CaptureIntegrity.createDirectoriesSafe(captureDir, screenshotsDir);
+            CaptureIntegrity.createDirectoriesSafe(captureDir, attachmentsDir);
             if (!scrollToCaptureStartMessage()) {
                 throw new IOException("Nao foi possivel posicionar na mensagem inicial: " + captureStartMessageId); //$NON-NLS-1$
             }
@@ -2846,14 +2868,14 @@ createReportThumbnails(captureDir, exported);
                 annotationStore.persist();
             }
             CaptureSourceMetadata sourceMetadata = readCaptureSourceMetadata();
-            writeHashes(captureDir.resolve("hashes.txt"), exported); //$NON-NLS-1$
-            writeFileListCsv(captureDir.resolve("Lista de Arquivos.csv"), exported); //$NON-NLS-1$
-            writeText(captureDir.resolve("texto.txt"), buildCaptureText(sourceMetadata, frames)); //$NON-NLS-1$
-            writeInteractiveCaptureReport(captureDir.resolve("relatorio.htm"), status, frames, exported); //$NON-NLS-1$
-            writeManifest(captureDir.resolve("manifest.json"), status, frames, exported, sourceMetadata); //$NON-NLS-1$
+            writeHashes(captureDir, captureDir.resolve("hashes.txt"), exported); //$NON-NLS-1$
+            writeFileListCsv(captureDir, captureDir.resolve("Lista de Arquivos.csv"), exported); //$NON-NLS-1$
+            writeText(captureDir, captureDir.resolve("texto.txt"), buildCaptureText(sourceMetadata, frames)); //$NON-NLS-1$
+            writeInteractiveCaptureReport(captureDir, captureDir.resolve("relatorio.htm"), status, frames, exported); //$NON-NLS-1$
+            writeManifest(captureDir, captureDir.resolve("manifest.json"), status, frames, exported, sourceMetadata); //$NON-NLS-1$
             String whatsappJson = buildWhatsAppCoordinatesJson(status, frames, exported, sourceMetadata);
-            writeText(captureDir.resolve("whatsapp-coordinates.json"), whatsappJson); //$NON-NLS-1$
-            writeWhatsAppHtml(captureDir.resolve("whatsapp.html"), whatsappJson); //$NON-NLS-1$
+            writeText(captureDir, captureDir.resolve("whatsapp-coordinates.json"), whatsappJson); //$NON-NLS-1$
+            writeWhatsAppHtml(captureDir, captureDir.resolve("whatsapp.html"), whatsappJson); //$NON-NLS-1$
             writeArtifactInventory(captureDir);
             if (exactCaptureDir == null) {
                 promoteCaptureDirectory(captureDir, finalCaptureDir);
@@ -2862,7 +2884,7 @@ createReportThumbnails(captureDir, exported);
             }
             return new CaptureRunResult(status, captureDir);
         } catch (Exception e) {
-            if (captureDir != null && Files.exists(captureDir)) {
+            if (captureDir != null && Files.exists(captureDir, LinkOption.NOFOLLOW_LINKS)) {
                 LOGGER.warn("Capture staging failed (work area created={})", workDirCreated, e); //$NON-NLS-1$
             }
             try {
@@ -2883,8 +2905,24 @@ createReportThumbnails(captureDir, exported);
         }
     }
 
+    @FunctionalInterface
+    private interface PrintWriterBody {
+        void write(PrintWriter out) throws IOException;
+    }
+
+    private static void writeAtomicallyWithPrinter(Path root, Path destination, long maxBytes, PrintWriterBody body) throws IOException {
+        StringWriter buffer = new StringWriter(4096);
+        try (PrintWriter out = new PrintWriter(buffer)) {
+            body.write(out);
+        }
+        CaptureIntegrity.writeAtomically(root, destination, buffer.toString(), maxBytes);
+    }
+
     private void promoteCaptureDirectory(Path staging, Path destination) throws IOException {
-        if (Files.exists(destination)) throw new IOException("A pasta de destino da captura já existe: " + destination); //$NON-NLS-1$
+        if (CaptureIntegrity.isLinkOrReparse(staging) || CaptureIntegrity.isLinkOrReparse(destination)) {
+            throw new IOException("Symbolic links or junctions are not allowed during capture promotion"); //$NON-NLS-1$
+        }
+        if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) throw new IOException("A pasta de destino da captura já existe: " + destination); //$NON-NLS-1$
         try {
             Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException unsupported) {
@@ -2918,8 +2956,11 @@ createReportThumbnails(captureDir, exported);
         }
         String themeCss = sanitizeCaptureThemeCss(extracted.optString("themeCss", "")); //$NON-NLS-1$
         String headerHtml = validateCaptureHeaderHtml(extracted.optString("header", "")); //$NON-NLS-1$
+        if (CaptureIntegrity.isLinkOrReparse(outputRoot)) {
+            throw new IOException("Symbolic links or junctions are not allowed as capture output root"); //$NON-NLS-1$
+        }
         Path staging = outputRoot.resolve(".__html_capture_" + java.util.UUID.randomUUID().toString().replace("-", "")); //$NON-NLS-1$ //$NON-NLS-2$
-        Files.createDirectories(staging);
+        CaptureIntegrity.createDirectoriesSafe(outputRoot, staging);
         boolean promoted = false;
         RecaptureJob migrationJob = activeRecaptureJob;
         if (migrationJob != null && migrationJob.legacyCapture && migrationJob.resetLegacyRecords) {
@@ -3063,9 +3104,9 @@ createReportThumbnails(captureDir, exported);
         if (migrationJob != null && migrationJob.migrateLegacyToHtml && !migrationJob.resetLegacyRecords) {
             legacyAnnotationsJson = readLegacyAnnotationsForMigration(migrationJob);
             migrationMetadata = buildLegacyMigrationMetadata(migrationJob, legacyAnnotationsJson);
-            Files.writeString(staging.resolve("migration.json"), migrationMetadata.toString(2), StandardCharsets.UTF_8); //$NON-NLS-1$
+            CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("migration.json"), migrationMetadata.toString(2)); //$NON-NLS-1$
             if (!legacyAnnotationsJson.isBlank()) {
-                Files.writeString(staging.resolve("legacy-annotations.json"), legacyAnnotationsJson, StandardCharsets.UTF_8); //$NON-NLS-1$
+                CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("legacy-annotations.json"), legacyAnnotationsJson); //$NON-NLS-1$
             }
         }
         JSONObject manifest = new JSONObject().put("schemaVersion", 1).put("captureFormat", "html-message-v1").put("presentationVersion", 2) //$NON-NLS-1$ //$NON-NLS-2$
@@ -3097,16 +3138,17 @@ createReportThumbnails(captureDir, exported);
             }
             if (storedBytes > MAX_HTML_MESSAGE_CAPTURE_BYTES) throw new IOException("Captura HTML ultrapassa o limite total de 64 MiB."); //$NON-NLS-1$
             for (Map.Entry<String, byte[]> attachment : attachments.entrySet()) {
-                Path target = staging.resolve(attachment.getKey());
-                Files.createDirectories(target.getParent());
-                Files.write(target, attachment.getValue());
+                Path target = CaptureIntegrity.resolveContained(staging, attachment.getKey());
+                CaptureIntegrity.writeBytesAtomically(outputRoot, target, attachment.getValue(), MAX_HTML_MESSAGE_ATTACHMENT_BYTES);
             }
-            Files.writeString(staging.resolve("messages.json"), messagesJson, StandardCharsets.UTF_8); //$NON-NLS-1$
-            if (!annotations.isBlank()) Files.writeString(staging.resolve("annotations.json"), annotations, StandardCharsets.UTF_8); //$NON-NLS-1$
-            Files.writeString(staging.resolve("whatsapp.html"), capturedHtml, StandardCharsets.UTF_8); //$NON-NLS-1$
-            Files.writeString(staging.resolve("manifest.json"), manifest.toString(2), StandardCharsets.UTF_8); //$NON-NLS-1$
-            if (Files.exists(captureDir)) throw new IOException("A pasta de destino da captura já existe: " + captureDir); //$NON-NLS-1$
-            Files.move(staging, captureDir, StandardCopyOption.ATOMIC_MOVE);
+            CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("messages.json"), messagesJson, MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$
+            if (!annotations.isBlank()) {
+                CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("annotations.json"), annotations); //$NON-NLS-1$
+            }
+            CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("whatsapp.html"), capturedHtml, MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$
+            CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("manifest.json"), manifest.toString(2)); //$NON-NLS-1$
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(outputRoot, captureDir);
+            promoteCaptureDirectory(staging, captureDir);
             promoted = true;
             writeArtifactInventory(captureDir);
             return new CaptureRunResult("completed", captureDir); //$NON-NLS-1$
@@ -3447,7 +3489,8 @@ createReportThumbnails(captureDir, exported);
                 String relative = "attachments/" + expectedSha256.toLowerCase(Locale.ROOT) + "." + extension; //$NON-NLS-1$
                 target = job.reusableAttachmentStaging.resolve(relative).normalize();
                 if (!target.startsWith(job.reusableAttachmentStaging.normalize())) continue;
-                Files.createDirectories(target.getParent());
+                if (CaptureIntegrity.isLinkOrReparse(candidate.path) || CaptureIntegrity.isLinkOrReparse(target)) continue;
+                CaptureIntegrity.createDirectoriesSafe(job.reusableAttachmentStaging, target.getParent());
                 if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
                         && Files.size(target) == declaredLength
                         && CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
@@ -3471,13 +3514,19 @@ createReportThumbnails(captureDir, exported);
                 }
                 if (Files.size(temporary) != declaredLength
                         || !CaptureIntegrity.sha256(temporary).equalsIgnoreCase(expectedSha256)) continue;
+                if (CaptureIntegrity.isLinkOrReparse(target)) {
+                    throw new IOException("Symbolic links or junctions are not allowed as attachment target"); //$NON-NLS-1$
+                }
                 try {
                     Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                 } catch (AtomicMoveNotSupportedException unsupported) {
                     Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
                 }
                 temporary = null;
-                if (Files.size(target) != declaredLength || !CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
+                if (CaptureIntegrity.isLinkOrReparse(target)
+                        || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                        || Files.size(target) != declaredLength
+                        || !CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
                     Files.deleteIfExists(target);
                     continue;
                 }
@@ -3997,7 +4046,10 @@ private boolean isCaptureFolder(Path captureDir) {
         }
         Path trashRoot = outputRoot.resolve(RECAPTURE_TRASH_FOLDER);
         try {
-            Files.createDirectories(trashRoot);
+            if (CaptureIntegrity.isLinkOrReparse(outputRoot) || CaptureIntegrity.isLinkOrReparse(oldFolder)) {
+                throw new IOException("Symbolic links or junctions are not allowed during recapture cleanup"); //$NON-NLS-1$
+            }
+            CaptureIntegrity.createDirectoriesSafe(outputRoot, trashRoot);
             try {
                 Files.setAttribute(trashRoot, "dos:hidden", Boolean.TRUE); //$NON-NLS-1$
             } catch (Exception e) {
@@ -4006,6 +4058,9 @@ private boolean isCaptureFolder(Path captureDir) {
             String suffix = batchStamp == null || batchStamp.isBlank()
                     ? DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()) : batchStamp; //$NON-NLS-1$
             Path trashTarget = uniqueSibling(trashRoot.resolve(oldFolder.getFileName().toString() + "." + suffix)); //$NON-NLS-1$
+            if (CaptureIntegrity.isLinkOrReparse(trashTarget)) {
+                throw new IOException("Symbolic links or junctions are not allowed as trash target"); //$NON-NLS-1$
+            }
             try {
                 Files.move(oldFolder, trashTarget, StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException e) {
@@ -4465,7 +4520,7 @@ private boolean isCaptureFolder(Path captureDir) {
     }
 
     private void writeCaptureRootIndexJson(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+        writeAtomicallyWithPrinter(outputRoot, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("{"); //$NON-NLS-1$
             out.println("  \"version\": 1,"); //$NON-NLS-1$
             out.println("  \"generatedAt\": " + json(Instant.now().toString()) + ","); //$NON-NLS-1$ //$NON-NLS-2$
@@ -4506,11 +4561,11 @@ private boolean isCaptureFolder(Path captureDir) {
             }
             out.println("  ]"); //$NON-NLS-1$
             out.println("}"); //$NON-NLS-1$
-        }
+        });
     }
 
     private void writeCaptureRootIndexHtml(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+        writeAtomicallyWithPrinter(outputRoot, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>&Iacute;ndice de Capturas</title>"); //$NON-NLS-1$
             out.println("<style>body{margin:0;background:#f2efe9;color:#1f2a30;font-family:Arial,sans-serif}.hero{background:#102b35;color:#fff;padding:26px 34px}.hero h1{margin:0 0 8px;font-size:28px}.hero p{margin:4px 0;color:#d7e6ea}.hero .hash{display:inline-block;background:#06171d;color:#f7fbfd;border:1px solid #6fa9b8;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}.wrap{padding:24px 34px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.card{background:white;border:1px solid #d8d1c8;border-radius:10px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06)}.card h2{font-size:18px;margin:0 0 8px;overflow-wrap:normal;word-break:normal;hyphens:none}.meta{font-size:13px;color:#52646c;line-height:1.45}.hash{font-family:Consolas,monospace;font-size:11px;word-break:break-all;background:#f5f5f5;padding:8px;border-radius:6px}.btn{display:inline-block;margin:8px 6px 0 0;padding:8px 10px;background:#0b6b5d;color:white;text-decoration:none;border-radius:5px;font-size:13px}.btn.alt{background:#46545a}.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.hero-main{flex:1 1 320px}.hero-side{flex:0 1 320px;display:flex;flex-direction:column;gap:10px}.hero-side input[type=search]{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:6px;border:1px solid #6fa9b8;background:#06171d;color:#f7fbfd;font-size:13px}.hero-side input[type=search]::placeholder{color:#8fb0bb}.tgl{display:flex;align-items:center;gap:8px;font-size:13px;color:#d7e6ea;background:#06171d;border:1px solid #6fa9b8;border-radius:6px;padding:9px 11px;cursor:pointer}.tgl input{cursor:pointer}.noresult{display:none;margin:10px 0;font-size:13px;color:#52646c}.card.hidden{display:none}.empty{background:white;border:1px solid #ddd;padding:18px;border-radius:8px}</style>"); //$NON-NLS-1$
 out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&Iacute;ndice de Capturas de Chat</h1>"); //$NON-NLS-1$
@@ -4544,7 +4599,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 out.println(writeCaptureRootIndexScript());
             }
             out.println("</main></body></html>"); //$NON-NLS-1$
-        }
+        });
     }
 
     /**
@@ -4589,7 +4644,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
     }
 
     private void writeCaptureRootReport(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+        writeAtomicallyWithPrinter(outputRoot, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>Relat&oacute;rio Geral de Capturas</title>"); //$NON-NLS-1$
             out.println("<style>body{font-family:Arial,sans-serif;color:#222;margin:24px}.columnHead{background:#c0c0c0;border:1px solid #777;text-align:left;padding:4px}.clrBkgrnd{background:#e8e8e8}.mono{font-family:Consolas,monospace;font-size:12px;word-break:break-all}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #ccc;padding:6px;vertical-align:top;font-size:13px}th{background:#ddd}.summary{border:1px solid #ccc;padding:12px;background:#fafafa}</style></head><body>"); //$NON-NLS-1$
             out.println("<table><tbody><tr><th class=\"columnHead\" colspan=\"1\" style=\"font-size:16px\">Relat&oacute;rio Geral de Capturas</th></tr><tr><td class=\"clrBkgrnd\"><span style=\"font-weight:bold\">Coment&aacute;rios: </span>&Iacute;ndice pai das capturas existentes na pasta raiz.</td></tr></tbody></table>"); //$NON-NLS-1$
@@ -4603,7 +4658,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 }
             }
             out.println("</tbody></table></body></html>"); //$NON-NLS-1$
-        }
+        });
     }
 
     private void exportVisibleAttachments(Set<String> hashes, Path attachmentsDir, Path captureDir, Map<String, ExportedFile> exported, Set<String> exportedAttachmentHashes) throws IOException {
@@ -4618,7 +4673,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                     continue;
                 }
                 Path groupDir = CaptureIntegrity.resolveContained(attachmentsDir, groupFolder(item));
-                Files.createDirectories(groupDir);
+                CaptureIntegrity.createDirectoriesSafe(attachmentsDir, groupDir);
                 String name = safeName(item.getName());
                 if (name.isBlank()) {
                     name = hash;
@@ -4743,26 +4798,26 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
         return sb.toString();
     }
 
-    private void writeHashes(Path path, Map<String, ExportedFile> exported) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+    private void writeHashes(Path captureDir, Path path, Map<String, ExportedFile> exported) throws IOException {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             for (ExportedFile file : exported.values()) {
                 out.println("Algorithm : SHA256"); //$NON-NLS-1$
                 out.println("Hash      : " + safe(file.sha256)); //$NON-NLS-1$
                 out.println("Path      : " + safe(file.absolutePath)); //$NON-NLS-1$
                 out.println();
             }
-        }
+        });
     }
 
-    private void writeFileListCsv(Path path, Map<String, ExportedFile> exported) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+    private void writeFileListCsv(Path captureDir, Path path, Map<String, ExportedFile> exported) throws IOException {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println(csv("Nome") + ";" + csv("Caminho Relativo") + ";" + csv("Caminho Absoluto") + ";" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
                     + csv("Tipo") + ";" + csv("Tamanho") + ";" + csv("MD5") + ";" + csv("SHA256") + ";" + csv("Hash do Chat")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
             for (ExportedFile file : exported.values()) {
                 out.println(csv(displayName(file)) + ";" + csv(file.relativePath) + ";" + csv(file.absolutePath) + ";" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                         + csv(fileType(file)) + ";" + file.size + ";" + csv(file.md5) + ";" + csv(file.sha256) + ";" + csv(file.chatHash)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             }
-        }
+        });
     }
 
     private void createReportThumbnails(Path captureDir, Map<String, ExportedFile> exported) {
@@ -4771,8 +4826,14 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 continue;
             }
             try {
-                Path source = captureDir.resolve(file.relativePath);
-                BufferedImage image = ImageIO.read(source.toFile());
+                Path source = CaptureIntegrity.resolveContained(captureDir, file.relativePath);
+                if (CaptureIntegrity.isLinkOrReparse(source) || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                BufferedImage image;
+                try (InputStream imgIn = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
+                    image = ImageIO.read(imgIn);
+                }
                 if (image == null) {
                     continue;
                 }
@@ -4798,9 +4859,12 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 if (thumbBase.isBlank()) {
                     thumbBase = "thumb"; //$NON-NLS-1$
                 }
-                Path thumbPath = captureDir.resolve("thumbs").resolve(first).resolve(second).resolve(thumbBase + ".jpg"); //$NON-NLS-1$ //$NON-NLS-2$
-                Files.createDirectories(thumbPath.getParent());
-                ImageIO.write(thumb, "jpg", thumbPath.toFile()); //$NON-NLS-1$
+                Path thumbPath = CaptureIntegrity.resolveContained(captureDir,
+                        "thumbs/" + first + "/" + second + "/" + thumbBase + ".jpg"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                ByteArrayOutputStream thumbBytes = new ByteArrayOutputStream();
+                ImageIO.write(thumb, "jpg", thumbBytes); //$NON-NLS-1$
+                CaptureIntegrity.writeBytesAtomically(captureDir, thumbPath, thumbBytes.toByteArray(),
+                        MAX_HTML_MESSAGE_ATTACHMENT_BYTES);
                 file.thumbRelativePath = captureDir.relativize(thumbPath).toString().replace('\\', '/');
             } catch (Exception e) {
                 LOGGER.debug("Unable to create report thumbnail for {}", file.relativePath, e); //$NON-NLS-1$
@@ -4808,8 +4872,8 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
         }
     }
 
-    private void writeInteractiveCaptureReport(Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+    private void writeInteractiveCaptureReport(Path captureDir, Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported) throws IOException {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html>"); //$NON-NLS-1$
             out.println("<html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>Relat&oacute;rio de Captura de Chat</title>"); //$NON-NLS-1$
             out.println("<link rel=\"stylesheet\" type=\"text/css\" href=\"res/common.css\"><link rel=\"stylesheet\" type=\"text/css\" href=\"res/bookmarks.css\">"); //$NON-NLS-1$
@@ -4830,7 +4894,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
             writeReportFileSection(out, "whatsapp", "WhatsApp", exported, "whatsapp"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             writeReportHelpSection(out);
             out.println("</div></body></html>"); //$NON-NLS-1$
-        }
+        });
     }
 
     private void writeReportFileSection(PrintWriter out, String id, String title, Map<String, ExportedFile> exported, String filter) {
@@ -4941,8 +5005,8 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 || path.endsWith(".gif") || path.endsWith(".bmp"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
-    private void writeCaptureReport(Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+    private void writeCaptureReport(Path captureDir, Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported) throws IOException {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html>"); //$NON-NLS-1$
             out.println("<html lang=\"pt-BR\"><head><meta charset=\"UTF-8\">"); //$NON-NLS-1$
             out.println("<title>Relatório de Captura de Chat</title>"); //$NON-NLS-1$
@@ -4968,13 +5032,13 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
             out.println("</tbody></table></div>"); //$NON-NLS-1$
             out.println("<div class=\"card\" id=\"ajuda\"><h2>Relatório e Anexo</h2><p>Este pacote contém imagens da captura do chat, anexos exportados, lista CSV e hashes SHA256 para verificação de integridade.</p></div>"); //$NON-NLS-1$
             out.println("</div></body></html>"); //$NON-NLS-1$
-        }
+        });
     }
 
-    private void writeManifest(Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported, CaptureSourceMetadata sourceMetadata) throws IOException {
+    private void writeManifest(Path captureDir, Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported, CaptureSourceMetadata sourceMetadata) throws IOException {
         CaptureAnchor startAnchor = anchorForMessage(frames, captureStartMessageId, false);
         CaptureAnchor endAnchor = anchorForMessage(frames, captureEndMessageId, true);
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_JSON_BYTES, out -> {
 out.println("{"); //$NON-NLS-1$
             out.println("  \"version\": " + MANIFEST_VERSION + ","); //$NON-NLS-1$ //$NON-NLS-2$
             out.println("  \"pluginVersion\": " + json(CHAT_CAPTURE_PLUGIN_VERSION) + ","); //$NON-NLS-1$ //$NON-NLS-2$
@@ -5000,7 +5064,7 @@ out.println("{"); //$NON-NLS-1$
             }
             out.println("  ]"); //$NON-NLS-1$
             out.println("}"); //$NON-NLS-1$
-        }
+        });
     }
 
     private String artifactGeneratorsJson() {
@@ -5075,10 +5139,8 @@ out.println("{"); //$NON-NLS-1$
         Path target = newCapture.resolve("integridade.json"); //$NON-NLS-1$
         CaptureIntegrity.writeAtomically(newCapture, target, next.toString(2) + System.lineSeparator());
     }
-    private void writeText(Path path, String content) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
-            out.print(content);
-        }
+    private void writeText(Path captureDir, Path path, String content) throws IOException {
+        CaptureIntegrity.writeAtomically(captureDir, path, content, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES);
     }
 
     private CaptureSourceMetadata readCaptureSourceMetadata() {
@@ -5703,16 +5765,16 @@ out.append("{\n"); //$NON-NLS-1$
         return encoded;
     }
 
-    private void writeWhatsAppHtml(Path path, String coordinatesJson) throws IOException {
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(path))) {
+    private void writeWhatsAppHtml(Path captureDir, Path path, String coordinatesJson) throws IOException {
+        writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>WhatsApp</title>"); //$NON-NLS-1$
             out.println("<style>body{margin:0;background:#efe7dc;font-family:Arial,sans-serif;color:#222}.top{position:sticky;top:0;z-index:5;background:#075e54;color:white;padding:12px 18px;box-shadow:0 1px 4px rgba(0,0,0,.25)}.top h1{font-size:18px;margin:0}.wrap{max-width:960px;margin:0 auto;padding:18px 12px 80px}.frame{position:relative;margin:0 auto 6px;line-height:0;background:#ddd;box-shadow:0 1px 3px rgba(0,0,0,.15)}.frame img{width:100%;height:auto;display:block}.hotspot{position:absolute;border:2px solid transparent;background:rgba(37,211,102,.001);cursor:pointer;box-sizing:border-box}.hotspot:hover{border-color:#25d366;background:rgba(37,211,102,.16)}.hotspot[data-type='audio'],.hotspot[data-type='video'],.hotspot[data-type='image'],.hotspot[data-type='file']{background:rgba(3,169,244,.001)}.hotspot[data-type='audio']:hover,.hotspot[data-type='video']:hover,.hotspot[data-type='image']:hover,.hotspot[data-type='file']:hover{border-color:#03a9f4;background:rgba(3,169,244,.16)}#side{position:fixed;right:-360px;top:0;bottom:0;width:320px;background:#fff;z-index:20;box-shadow:-2px 0 10px rgba(0,0,0,.25);transition:right .2s ease;padding:18px;overflow:auto}#side.open{right:0}#side h2{font-size:18px;margin:0 0 12px}#side textarea{width:100%;height:180px;box-sizing:border-box}.btn{display:inline-block;margin:8px 6px 0 0;padding:8px 12px;border:0;background:#075e54;color:white;text-decoration:none;cursor:pointer}.btn.secondary{background:#555}#modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:30;padding:24px;box-sizing:border-box}#modal.open{display:flex}.modal-card{max-width:min(920px,96vw);max-height:92vh;background:#111;color:white;padding:14px;box-sizing:border-box}.modal-card img,.modal-card video{max-width:100%;max-height:75vh}.modal-card audio{width:min(720px,88vw)}.muted{color:#666;font-size:13px}#side .an-note{background:#fff8e1;border-left:4px solid #f9a825;padding:8px 10px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}#side .an-link{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid #eee;cursor:pointer}#side .an-link:hover{background:#f2f7f6}#side .an-link img{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto}#side .an-excerpt{margin-top:10px;border-top:1px solid #ddd;padding-top:10px}#side .an-excerpt img{width:100%;border:1px solid #ddd;margin-bottom:8px;cursor:zoom-in}#side .an-empty{color:#777;font-size:13px;margin:8px 0;overflow-wrap:anywhere}#side .an-pre{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee}.an-icon{position:absolute;left:3px;min-width:26px;height:26px;padding:0 5px;margin:0;font-size:14px;line-height:24px;background:#fffbe9;border:2px solid #f9a825;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:3}.an-icon:hover{background:#fff3c4}.an-menu{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:420px}.an-opt{display:block;width:100%;text-align:left;padding:11px 13px;margin:0;font-size:14px;background:#0b6b5d;color:#fff;border:0;border-radius:6px;cursor:pointer;overflow-wrap:anywhere}.an-opt:hover{background:#0d8a77}.hotspot.has-note{box-shadow:inset 0 0 0 2px #f9a825}.hotspot.has-link{box-shadow:inset 0 0 0 2px #25d366}.hotspot.has-note.has-link{box-shadow:inset 0 0 0 2px #b26a00}.layout{display:flex;gap:18px;max-width:1220px;margin:0 auto;padding:18px 12px 80px;align-items:flex-start}.centerCol{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:10px}.rail{width:250px;flex:0 0 250px;position:sticky;top:70px;display:flex;flex-direction:column;gap:10px}.rail-card{background:#fff;border:1px solid #d8d1c8;border-radius:8px;padding:8px 10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;position:relative}.rail-card:hover{background:#f7f4ee}.rail-card .arrow{position:absolute;right:-12px;top:14px;border:6px solid transparent;border-left-color:#d8d1c8}.rail-card.note{border-left:4px solid #f9a825}.rail-card.link{border-left:4px solid #25d366}.rail-card h3{margin:0 0 4px;font-size:13px}.rail-card p{margin:0;font-size:12px;color:#555;overflow-wrap:anywhere}.transcript-btn{position:absolute;right:3px;top:3px;min-width:24px;height:24px;padding:0 4px;margin:0;font-size:12px;line-height:22px;background:#e3f2fd;border:2px solid #1976d2;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:4}.transcript-btn:hover{background:#bbdefb}.iped-capture-running .transcript-btn{display:none !important}@media print{.transcript-btn{display:none !important}}</style>"); //$NON-NLS-1$
             out.println("</head><body><div class=\"top\"><h1>WhatsApp - visualiza&ccedil;&atilde;o por imagens</h1></div><div class=\"layout\"><aside id=\"rail\"></aside><div class=\"centerCol\"><div class=\"wrap\" id=\"chat\"></div></div></div><aside id=\"side\"></aside><div id=\"modal\" onclick=\"closeModal(event)\"><div class=\"modal-card\" id=\"modalCard\"></div></div>"); //$NON-NLS-1$
             out.println("<script id=\"coords\" type=\"application/json\">" + coordinatesJson.replace("</", "<\\/") + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             out.println("<script>var DATA=JSON.parse(document.getElementById('coords').textContent);var ANN=(DATA.annotations&&DATA.annotations.enabled)?DATA.annotations:null;var ANN_BY_MSG={};(ANN&&ANN.items||[]).forEach(function(a){ANN_BY_MSG[a.messageId]=a;});var AVATAR='data:image/png;base64," + avatarBase64() + "';var chat=document.getElementById('chat'),side=document.getElementById('side'),modal=document.getElementById('modal'),modalCard=document.getElementById('modalCard');function esc(s){return String(s||'').replace(/[&<>\\\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;'}[c];});}function pct(v,total){return total?((v*100/total)+'%'):'0%';}function isImageFile(p){return /\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(p||'').split('?')[0]);}function itemTitle(b){if(b.type==='date')return 'Data';if(b.type==='audio')return 'Audio';if(b.type==='video')return 'Video';if(b.type==='image'||isImageFile(b.file))return 'Imagem';if(b.type==='file')return 'Arquivo';return 'Mensagem';}function openSide(html){side.innerHTML=html;side.classList.add('open');loadExtras(side);}function closeSide(){side.classList.remove('open');}function copyText(){var t=document.getElementById('copyText');if(!t)return;t.select();document.execCommand('copy');}function showText(b){openSide('<h2>'+itemTitle(b)+'</h2><textarea id=\"copyText\">'+esc(b.text||'')+'</textarea><br><button class=\"btn\" onclick=\"copyText()\">Copiar</button><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function showFile(b){if(!b.file){showText(b);return;}openSide('<h2>'+itemTitle(b)+'</h2><p class=\"muted\">'+esc(b.text||b.file)+'</p><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir</a><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function closeModalNow(){modal.querySelectorAll('audio,video').forEach(function(m){try{m.pause();m.removeAttribute('src');m.load();}catch(e){}});modalCard.innerHTML='';modal.classList.remove('open');}function openModal(html){closeModalNow();modalCard.innerHTML=html+'<br><button class=\"btn secondary\" onclick=\"closeModalNow()\">Fechar</button>';modal.classList.add('open');}function closeModal(e){if(e.target===modal)closeModalNow();}function showAnnotation(a){openSide(renderAnnotation(a));}var ANN_CURRENT=null;function showAnnotationMenu(a){ANN_CURRENT=a;var links=a.links||[];var opts='';if(a.note)opts+='<button class=\"an-opt\" data-kind=\"note\">📝 Ver nota do analista</button>';links.forEach(function(l,i){opts+='<button class=\"an-opt\" data-kind=\"chat\" data-idx=\"'+i+'\">🔗 Chat vinculado: '+esc(l.title)+'</button>';});if(!opts)opts='<p class=\"an-empty\">Sem nota e sem chat vinculado.</p>';openModal('<h2>Anotação do analista</h2>'+(a.date?'<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>':'')+'<div class=\"an-menu\">'+opts+'</div>');}function showAnnotationOption(kind,idx){var a=ANN_CURRENT;if(!a)return;if(kind==='note'){if(!a.note)return;openModal('<h2>Nota do analista</h2><div class=\"an-note\"><b>'+esc(a.note.author||'analista')+'</b><br>'+esc(a.note.text)+'</div>');return;}var l=(a.links||[])[parseInt(idx,10)];if(l)openModal('<h2>Chat vinculado</h2>'+linkRowHtml(l,false)+excerptHtml(l));}function linkRowHtml(l,clickable){var h='<div class=\"an-link\"'+(clickable?' data-link=\"'+esc(l.chatRefId)+'\"':'')+'><img src=\"'+AVATAR+'\" alt=\"\"><span>'+esc(l.title)+(l.sourceName?('<br><span class=\"muted\">'+esc(l.sourceName)+'</span>'):'')+((l.hasCapture||l.chatRefId)?'':'<br><span class=\"muted\">sem captura vinculada</span>')+'</span></div>';return h;}function excerptHtml(l){if(!(l.hasCapture||l.chatRefId))return '<div class=\"an-empty\">Sem captura vinculada para este chat.</div>';var base=l.captureFolder?('../'+l.captureFolder+'/'):('../vinculado/'+esc(l.chatRefId)+'/');var s='<div class=\"an-excerpt\"><b>Trecho capturado em '+esc(l.title||'')+'</b>';var fr=l.frames||[];if(!fr.length){s+='<pre class=\"an-pre\" data-excerpt=\"'+esc(base+(l.excerptFile||'texto.txt'))+'\"></pre>';}else{fr.forEach(function(f){s+='<img src=\"'+esc(base+f)+'\" alt=\"\" data-zoom=\"'+esc(base+f)+'\">';});}return s+'</div>';}function loadExtras(root){root.querySelectorAll('pre[data-excerpt]').forEach(function(p){fetch(p.getAttribute('data-excerpt')).then(function(r){return r.ok?r.text():'';}).then(function(t){p.textContent=t;}).catch(function(){p.textContent='Trecho nao encontrado.';});});}function renderAnnotation(a){var h='<h2>Anotação do analista</h2>';if(a.date)h+='<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>';if(a.note){h+='<div class=\"an-note\"><b>Nota</b> ('+esc(a.note.author||'analista')+'):<br>'+esc(a.note.text)+'</div>';}var links=a.links||[];if(!links.length){if(!a.note)return h+'<div class=\"an-empty\">Sem nota e sem link.</div>';return h;}h+='<div style=\"margin-top:12px\"><b>'+(links.length===1?'Chat vinculado':'Chats vinculados')+'</b></div>';if(links.length===1){return h+linkRowHtml(links[0],false)+excerptHtml(links[0]);}links.forEach(function(l){h+=linkRowHtml(l,true);});return h+'<div id=\"anExcerpt\"></div>';}function openLink(chatRefId){var a=null;(ANN&&ANN.items||[]).forEach(function(x){(x.links||[]).forEach(function(l){if(l.chatRefId===chatRefId)a=l;});});if(!a)return;document.getElementById('anExcerpt').innerHTML=excerptHtml(a);loadExtras(document.getElementById('anExcerpt'));}document.getElementById('side').addEventListener('click',function(e){var row=e.target.closest('[data-link]');if(row){openLink(row.getAttribute('data-link'));return;}var z=e.target.closest('[data-zoom]');if(z){openModal('<img src=\"'+esc(z.getAttribute('data-zoom'))+'\">');}});modalCard.addEventListener('click',function(e){var o=e.target.closest('.an-opt');if(!o)return;showAnnotationOption(o.getAttribute('data-kind'),o.getAttribute('data-idx'));});function activate(b){if(ANN&&ANN_BY_MSG[b.id]){showAnnotation(ANN_BY_MSG[b.id]);return;}if(b.type==='audio'&&b.file){openModal('<h2>Audio</h2><audio controls autoplay src=\"'+esc(b.file)+'\"></audio>');return;}if(b.type==='video'&&b.file){openModal('<h2>Video</h2><video controls autoplay src=\"'+esc(b.file)+'\"></video>');return;}if(b.file&&(b.type==='image'||isImageFile(b.file))){openModal('<h2>Imagem</h2><img src=\"'+esc(b.file)+'\"><br><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar imagem</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir em nova aba</a>');return;}if(b.type==='file'){showFile(b);return;}showText(b);}DATA.frames.forEach(function(f){var box=document.createElement('div');box.className='frame';box.style.maxWidth=f.width+'px';var img=document.createElement('img');img.src=f.image;img.alt='Frame '+f.sequence;box.appendChild(img);(f.blocks||[]).forEach(function(b){var h=document.createElement('button');h.className='hotspot';h.type='button';h.dataset.type=b.type;h.title=itemTitle(b);h.style.left=pct(b.x,f.width);h.style.top=pct(b.y,f.height);h.style.width=pct(b.width,f.width);h.style.height=pct(b.height,f.height);var ann=ANN_BY_MSG[b.id];if(ann){if(ann.note)h.className+=' has-note';if((ann.links||[]).length)h.className+=' has-link';}h.onclick=function(ev){ev.preventDefault();activate(b);};box.appendChild(h);if((b.type==='audio'||b.type==='video'||b.type==='image'||(b.file&&/\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(b.file||''))))&&String(b.text||'').trim()){var tb=document.createElement('button');tb.className='transcript-btn';tb.type='button';tb.style.top=pct(b.y,f.height);tb.style.right='3px';tb.title='Transcricao';tb.textContent='T';tb.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showText(b);};box.appendChild(tb);}if(ann&&(ann.note||(ann.links||[]).length)){var ic=document.createElement('button');ic.className='an-icon';ic.type='button';ic.style.top=pct(b.y,f.height);ic.title='Anotação do analista';ic.textContent=(ann.note?'📝':'')+((ann.links||[]).length?'🔗':'');ic.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showAnnotationMenu(ANN_BY_MSG[b.id]);};box.appendChild(ic);}});chat.appendChild(box);});buildRail();function buildRail(){if(!ANN||!ANN.items||!ANN.items.length)return;var rail=document.getElementById('rail');if(!rail)return;ANN.items.forEach(function(a){if(!a.note&&!(a.links&&a.links.length))return;var card=document.createElement('div');card.className='rail-card '+(a.note?'note':'link');var h=document.createElement('h3');h.textContent=a.note?'Nota':'Chat vinculado';card.appendChild(h);var p=document.createElement('p');p.textContent=(a.date? (a.date+' - '):'')+ (a.note?a.note.text:((a.links||[]).map(function(l){return l.title;}).join(', ')));card.appendChild(p);var arrow=document.createElement('span');arrow.className='arrow';card.appendChild(arrow);card.onclick=function(){showAnnotation(a);};rail.appendChild(card);});}</script>"); //$NON-NLS-1$
-writeWhatsAppSearchHtml(out);
+            writeWhatsAppSearchHtml(out);
             out.println("</body></html>"); //$NON-NLS-1$
-        }
+        });
     }
 
     /**
@@ -6943,8 +7005,19 @@ private String js(String value) {
 
     /** Copia arquivo falhando atomicamente se o destino já existir. */
     static void copyFileCreateNew(Path source, Path target) throws IOException {
-        try (java.io.OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) {
-            Files.copy(source, out);
+        if (Files.isSymbolicLink(source) || CaptureIntegrity.isLinkOrReparse(source)
+                || CaptureIntegrity.isLinkOrReparse(target)
+                || (target.getParent() != null && CaptureIntegrity.isLinkOrReparse(target.getParent()))) {
+            throw new IOException("Symbolic links or junctions are not allowed during file copy"); //$NON-NLS-1$
+        }
+        try (InputStream in = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS);
+                java.io.OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                if (n > 0) out.write(buf, 0, n);
+            }
         }
     }
 

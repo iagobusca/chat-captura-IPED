@@ -126,6 +126,55 @@ public final class VerifierIntegrityHashTest {
             Files.deleteIfExists(fakeLibJar.getParent());
             Files.deleteIfExists(fakeIped);
         }
+        junctionOutputAndSourceAreRejected(temp);
+    }
+
+    private static void junctionOutputAndSourceAreRejected(Path temp) throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path outside = Files.createDirectories(temp.resolve("outside-verifier-target"));
+        Path outputJunction = temp.resolve("output-junction");
+        createWindowsJunction(outputJunction, outside);
+        try {
+            VerifierIntegrity.installVerifierFiles(outputJunction);
+            check(!Files.exists(outside.resolve("integridade-verifier.jar")),
+                    "installVerifierFiles must not write JAR through output NTFS junction");
+            check(!Files.exists(outside.resolve("integridade-verifier.exe")),
+                    "installVerifierFiles must not write EXE through output NTFS junction");
+        } finally {
+            Files.deleteIfExists(outputJunction);
+            Files.deleteIfExists(outside);
+        }
+
+        Path realSource = Files.createDirectories(temp.resolve("real-verifier-source"));
+        Path repoVerifierDir = java.nio.file.Paths.get("verificador-integridade").toAbsolutePath().normalize();
+        Path realJar = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.jar",
+                java.util.Collections.singletonList(repoVerifierDir));
+        check(realJar != null, "repo verifier JAR must exist for junction source test");
+        Files.copy(realJar, realSource.resolve("integridade-verifier.jar"));
+        Path sourceJunction = temp.resolve("source-junction");
+        createWindowsJunction(sourceJunction, realSource);
+        try {
+            Path resolved = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.jar",
+                    java.util.Collections.singletonList(sourceJunction));
+            check(resolved == null, "findTrustedVerifierFile must reject NTFS junction source directory");
+        } finally {
+            Files.deleteIfExists(sourceJunction);
+            Files.deleteIfExists(realSource.resolve("integridade-verifier.jar"));
+            Files.deleteIfExists(realSource);
+        }
+    }
+
+    private static void createWindowsJunction(Path link, Path target) throws Exception {
+        Process p = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                link.toAbsolutePath().toString(), target.toAbsolutePath().toString())
+                .redirectErrorStream(true).start();
+        byte[] out = p.getInputStream().readAllBytes();
+        if (p.waitFor() != 0) {
+            throw new java.io.IOException("Failed to create NTFS junction: "
+                    + new String(out, java.nio.charset.StandardCharsets.UTF_8));
+        }
     }
 
     private static void check(boolean ok, String message) {

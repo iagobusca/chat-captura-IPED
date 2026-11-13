@@ -419,6 +419,20 @@ public final class SecurityRegressionTest {
             if (exported || Files.exists(outside.resolve("historico-capturas.txt"))) {
                 throw new AssertionError("--export-history must reject an NTFS junction at output/integridade");
             }
+            Method atomicMethod = IntegrityVerifier.class.getDeclaredMethod("atomic", Path.class, Path.class, String.class);
+            atomicMethod.setAccessible(true);
+            boolean atomicWrote = false;
+            try {
+                atomicMethod.invoke(null, exportRoot, outJunction.resolve("relatorio-p4.txt"), "payload");
+                atomicWrote = true;
+            } catch (InvocationTargetException expected) {
+                if (!(expected.getCause() instanceof IOException)) {
+                    throw expected;
+                }
+            }
+            if (atomicWrote || Files.exists(outside.resolve("relatorio-p4.txt"))) {
+                throw new AssertionError("atomic() must reject writing inside an NTFS junction");
+            }
         } finally {
             Files.deleteIfExists(outJunction);
         }
