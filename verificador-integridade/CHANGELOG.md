@@ -4,6 +4,15 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.3.6] - 2026-11-13
+
+### Segurança
+
+- Arquivos extras em capturas `html-message-v1` agora reprovam a verificação.
+- Links simbólicos e junções NTFS/reparse points abaixo da raiz são rejeitados (`toRealPath` confinado).
+- Validação do HTML por allowlist de tags e atributos, com regex ciente de aspas; `srcset`, `ping` e `background` deixam de passar.
+- `historico-capturas.txt` e a lista pública de hashes escapam campos vindos do disco e validam SHA-256.
+
 ## [1.3.5] - 2026-11-12
 
 ### Adicionado

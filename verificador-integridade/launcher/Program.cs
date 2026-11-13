@@ -1,4 +1,4 @@
-// Versão 1.3.5 — histórico público anonimizado (CAPTURA|*-YYYYMMDD-HHMMSS), comparação dupla no modo Público e validação de histórico/migrações.
+// Versão 1.3.6 — endurecimento de segurança (allowlist HTML quote-safe, proteção contra junções NTFS, arquivos extras em html-message-v1 e sanitização de histórico).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

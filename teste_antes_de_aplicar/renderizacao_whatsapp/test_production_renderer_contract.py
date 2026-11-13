@@ -64,7 +64,7 @@ class ProductionRendererContract(unittest.TestCase):
     def test_compiled_plugin_jar_contains_the_updated_renderer(self) -> None:
         with zipfile.ZipFile(PLUGIN_JAR) as jar:
             manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
-            self.assertIn("Implementation-Version: 2.6.0-beta", manifest)
+            self.assertIn("Implementation-Version: 2.6.1-beta", manifest)
             self.assertIn("iped/viewers/HtmlLinkViewer.class", jar.namelist())
             self.assertIn("iped/viewers/CaptureCensorship.class", jar.namelist())
             self.assertIn("iped/viewers/VerifierIntegrity.class", jar.namelist())

@@ -4,6 +4,19 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.1-beta] - 2026-11-13
+
+### Segurança
+
+- Anotações (`ChatAnnotationStore`): corrigida dupla decodificação que alterava o texto das notas ao recarregar.
+- Verificador 1.3.6: detecta arquivos extras em capturas `html-message-v1`; rejeita links/junções NTFS; valida HTML por allowlist de tags/atributos (regex ciente de aspas); valida e escapa campos do histórico (`historico-capturas.txt`).
+- OpenCV só é carregado de caminhos do IPED com SHA-256 conferido (`HtmlLinkViewer`).
+- Nomes exportados passam por `sanitizeFileName` único (reservados do Windows, controles, `.`/`..`) e anexos são gravados com `CREATE_NEW`.
+- Instalador: `IPED_ROOT` resolvido antes do uso, abort/rollback em falhas, caminhos passados por variável de ambiente ao PowerShell, SHA-256 esperado do plugin e do verificador, e cópia do verificador para `<IPED>\verificador-integridade\`.
+- `VerifierIntegrity`: removidos caminhos absolutos de desenvolvimento; allowlist aceita somente o Verificador 1.3.6.
+
+---
+
 ## [2.6.0-beta] - 2026-11-12
 
 ### Adicionado
