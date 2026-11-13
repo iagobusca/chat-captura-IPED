@@ -11,6 +11,12 @@ set "EXPECTED_PLUGIN_SHA256=DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_SOURCE=%SCRIPT_DIR%dependencies\opencv-4120.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
+set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%integridade-verifier.jar"
+if not exist "%VERIFIER_JAR_SOURCE%" set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.jar"
+set "EXPECTED_VERIFIER_JAR_SHA256=31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9"
+set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%integridade-verifier.exe"
+if not exist "%VERIFIER_EXE_SOURCE%" set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.exe"
+set "EXPECTED_VERIFIER_EXE_SHA256=75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B"
 
 REM Sobe ate a pasta raiz do IPED, procurando o iped.exe.
 set "IPED_ROOT="
@@ -39,6 +45,9 @@ set "JSON_OLD=%IPED_ROOT%\lib\json-20250517.jar"
 set "OPENCV_TARGET=%IPED_ROOT%\lib\opencv-4120.jar"
 set "OPENCV_DLL_TARGET=%IPED_ROOT%\opencv_java4120.dll"
 set "OPENCV_PLUGINS_DLL_TARGET=%IPED_ROOT%\plugins\opencv_java4120.dll"
+set "VERIFIER_TARGET_DIR=%IPED_ROOT%\verificador-integridade"
+set "VERIFIER_JAR_TARGET=%VERIFIER_TARGET_DIR%\integridade-verifier.jar"
+set "VERIFIER_EXE_TARGET=%VERIFIER_TARGET_DIR%\integridade-verifier.exe"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
@@ -77,6 +86,61 @@ if "%EXPECTED_PLUGIN_SHA256%"=="" (
     exit /b 1
 )
 
+if not exist "%VERIFIER_JAR_SOURCE%" (
+    echo ERRO: verificador JAR nao encontrado:
+    echo "%VERIFIER_JAR_SOURCE%"
+    pause
+    exit /b 1
+)
+if not exist "%VERIFIER_EXE_SOURCE%" (
+    echo ERRO: verificador EXE nao encontrado:
+    echo "%VERIFIER_EXE_SOURCE%"
+    pause
+    exit /b 1
+)
+if "%EXPECTED_VERIFIER_JAR_SHA256%"=="" (
+    echo ERRO: hash esperado do verificador JAR nao configurado no instalador.
+    pause
+    exit /b 1
+)
+if "%EXPECTED_VERIFIER_EXE_SHA256%"=="" (
+    echo ERRO: hash esperado do verificador EXE nao configurado no instalador.
+    pause
+    exit /b 1
+)
+
+set "SRC_VJAR_HASH="
+set "PS_HASH_PATH=%VERIFIER_JAR_SOURCE%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "SRC_VJAR_HASH=%%i"
+set "SRC_VEXE_HASH="
+set "PS_HASH_PATH=%VERIFIER_EXE_SOURCE%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "SRC_VEXE_HASH=%%i"
+set "PS_HASH_PATH="
+if "%SRC_VJAR_HASH%"=="" (
+    echo ERRO: nao foi possivel calcular o SHA-256 do verificador JAR do pacote.
+    pause
+    exit /b 1
+)
+if /I not "%SRC_VJAR_HASH%"=="%EXPECTED_VERIFIER_JAR_SHA256%" (
+    echo ERRO: hash do verificador JAR do pacote diverge do esperado. Nenhum arquivo foi alterado.
+    echo   esperado: %EXPECTED_VERIFIER_JAR_SHA256%
+    echo   pacote:   %SRC_VJAR_HASH%
+    pause
+    exit /b 1
+)
+if "%SRC_VEXE_HASH%"=="" (
+    echo ERRO: nao foi possivel calcular o SHA-256 do verificador EXE do pacote.
+    pause
+    exit /b 1
+)
+if /I not "%SRC_VEXE_HASH%"=="%EXPECTED_VERIFIER_EXE_SHA256%" (
+    echo ERRO: hash do verificador EXE do pacote diverge do esperado. Nenhum arquivo foi alterado.
+    echo   esperado: %EXPECTED_VERIFIER_EXE_SHA256%
+    echo   pacote:   %SRC_VEXE_HASH%
+    pause
+    exit /b 1
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%validate-plugin-jar.ps1" -Jar "%PLUGIN_JAR%" -ExpectedSha256 "%EXPECTED_PLUGIN_SHA256%"
 if errorlevel 1 (
     echo ERRO: pacote incompleto ou invalido. Nenhum arquivo foi alterado.
@@ -92,9 +156,14 @@ set "BACKUP_JSON_TARGET=%JSON_TARGET%.bak-%STAMP%"
 set "BACKUP_OPENCV_JAR=%OPENCV_TARGET%.bak-%STAMP%"
 set "BACKUP_OPENCV_DLL=%OPENCV_DLL_TARGET%.bak-%STAMP%"
 set "BACKUP_OPENCV_PLUGINS_DLL=%OPENCV_PLUGINS_DLL_TARGET%.bak-%STAMP%"
+set "BACKUP_VERIFIER_JAR=%VERIFIER_JAR_TARGET%.bak-%STAMP%"
+set "BACKUP_VERIFIER_EXE=%VERIFIER_EXE_TARGET%.bak-%STAMP%"
 set "OPENCV_JAR_WRITTEN=0"
 set "OPENCV_DLL_WRITTEN=0"
 set "OPENCV_PLUGINS_DLL_WRITTEN=0"
+set "VERIFIER_DIR_CREATED=0"
+set "VERIFIER_JAR_WRITTEN=0"
+set "VERIFIER_EXE_WRITTEN=0"
 
 echo Criando backup:
 echo "%BACKUP_JAR%"
@@ -264,6 +333,87 @@ if exist "%OPENCV_DLL_SOURCE%" (
     set "OPENCV_PLUGINS_DLL_WRITTEN=1"
 )
 
+REM Instala o verificador de integridade em verificador-integridade/ dentro do IPED.
+if not exist "%VERIFIER_TARGET_DIR%" (
+    mkdir "%VERIFIER_TARGET_DIR%"
+    if errorlevel 1 (
+        echo ERRO: nao foi possivel criar a pasta verificador-integridade do IPED. Restaurando backup.
+        call :ROLLBACK
+        pause
+        exit /b 1
+    )
+    set "VERIFIER_DIR_CREATED=1"
+)
+if exist "%VERIFIER_JAR_TARGET%" (
+    copy /Y "%VERIFIER_JAR_TARGET%" "%BACKUP_VERIFIER_JAR%" >nul
+    if errorlevel 1 (
+        echo ERRO: nao foi possivel criar backup de integridade-verifier.jar. Restaurando backup.
+        call :ROLLBACK
+        pause
+        exit /b 1
+    )
+)
+copy /Y "%VERIFIER_JAR_SOURCE%" "%VERIFIER_JAR_TARGET%" >nul
+if errorlevel 1 (
+    echo ERRO: nao foi possivel instalar integridade-verifier.jar. Restaurando backup.
+    set "VERIFIER_JAR_WRITTEN=1"
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+set "VERIFIER_JAR_WRITTEN=1"
+
+if exist "%VERIFIER_EXE_TARGET%" (
+    copy /Y "%VERIFIER_EXE_TARGET%" "%BACKUP_VERIFIER_EXE%" >nul
+    if errorlevel 1 (
+        echo ERRO: nao foi possivel criar backup de integridade-verifier.exe. Restaurando backup.
+        call :ROLLBACK
+        pause
+        exit /b 1
+    )
+)
+copy /Y "%VERIFIER_EXE_SOURCE%" "%VERIFIER_EXE_TARGET%" >nul
+if errorlevel 1 (
+    echo ERRO: nao foi possivel instalar integridade-verifier.exe. Restaurando backup.
+    set "VERIFIER_EXE_WRITTEN=1"
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+set "VERIFIER_EXE_WRITTEN=1"
+
+set "DST_VJAR_HASH="
+set "PS_HASH_PATH=%VERIFIER_JAR_TARGET%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "DST_VJAR_HASH=%%i"
+set "DST_VEXE_HASH="
+set "PS_HASH_PATH=%VERIFIER_EXE_TARGET%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "DST_VEXE_HASH=%%i"
+set "PS_HASH_PATH="
+if "%DST_VJAR_HASH%"=="" (
+    echo ERRO: nao foi possivel conferir SHA-256 de integridade-verifier.jar instalado. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if /I not "%DST_VJAR_HASH%"=="%EXPECTED_VERIFIER_JAR_SHA256%" (
+    echo ERRO: SHA-256 de integridade-verifier.jar instalado diverge do esperado. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if "%DST_VEXE_HASH%"=="" (
+    echo ERRO: nao foi possivel conferir SHA-256 de integridade-verifier.exe instalado. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if /I not "%DST_VEXE_HASH%"=="%EXPECTED_VERIFIER_EXE_SHA256%" (
+    echo ERRO: SHA-256 de integridade-verifier.exe instalado diverge do esperado. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+
 REM Injeta os bundles de idioma do plugin no JAR instalado.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-localization.ps1" -Jar "%TARGET_JAR%" -ResourceDir "%SCRIPT_ROOT%" -LocaleDir "%IPED_ROOT%\localization"
 if errorlevel 1 (
@@ -315,8 +465,12 @@ echo.
 echo Instalacao concluida com sucesso.
 echo Backup criado em:
 echo "%BACKUP_JAR%"
+echo Verificador instalado em:
+echo "%VERIFIER_TARGET_DIR%"
 echo.
 echo SHA-256 conferido: %DST_HASH%
+echo Verificador JAR:   %DST_VJAR_HASH%
+echo Verificador EXE:   %DST_VEXE_HASH%
 echo.
 echo Feche e abra novamente o IPED para carregar o plugin.
 echo.
@@ -325,6 +479,23 @@ endlocal
 exit /b 0
 
 :ROLLBACK
+if "%VERIFIER_EXE_WRITTEN%"=="1" (
+    if exist "%BACKUP_VERIFIER_EXE%" (
+        move /Y "%BACKUP_VERIFIER_EXE%" "%VERIFIER_EXE_TARGET%" >nul
+    ) else if exist "%VERIFIER_EXE_TARGET%" (
+        del /Q "%VERIFIER_EXE_TARGET%" >nul 2>&1
+    )
+)
+if "%VERIFIER_JAR_WRITTEN%"=="1" (
+    if exist "%BACKUP_VERIFIER_JAR%" (
+        move /Y "%BACKUP_VERIFIER_JAR%" "%VERIFIER_JAR_TARGET%" >nul
+    ) else if exist "%VERIFIER_JAR_TARGET%" (
+        del /Q "%VERIFIER_JAR_TARGET%" >nul 2>&1
+    )
+)
+if "%VERIFIER_DIR_CREATED%"=="1" (
+    rmdir "%VERIFIER_TARGET_DIR%" >nul 2>&1
+)
 if "%OPENCV_PLUGINS_DLL_WRITTEN%"=="1" (
     if exist "%BACKUP_OPENCV_PLUGINS_DLL%" (
         move /Y "%BACKUP_OPENCV_PLUGINS_DLL%" "%OPENCV_PLUGINS_DLL_TARGET%" >nul

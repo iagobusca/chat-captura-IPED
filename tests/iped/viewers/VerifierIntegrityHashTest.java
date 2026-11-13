@@ -68,6 +68,7 @@ public final class VerifierIntegrityHashTest {
                 check((Boolean) isValid.invoke(null, name, sha256.invoke(null, file)),
                         "invalid verifier must be replaced by trusted source: " + name);
             }
+            testInstalledIpedLayoutAndMissingDir(temp);
         } finally {
             Files.deleteIfExists(output.resolve("integridade-verifier.jar"));
             Files.deleteIfExists(output.resolve("integridade-verifier.exe"));
@@ -75,6 +76,52 @@ public final class VerifierIntegrityHashTest {
             Files.deleteIfExists(temp);
         }
         System.out.println("VerifierIntegrityHashTest: PASS");
+    }
+
+    private static void testInstalledIpedLayoutAndMissingDir(Path temp) throws Exception {
+        Path fakeIped = temp.resolve("fake-iped");
+        Path fakeLibJar = fakeIped.resolve("lib").resolve("iped-viewers-impl-4.3.1.jar");
+        Path fakeVerifierDir = fakeIped.resolve("verificador-integridade");
+        Files.createDirectories(fakeLibJar.getParent());
+        Files.createDirectories(fakeVerifierDir);
+        Files.write(fakeLibJar, new byte[] { 1 });
+
+        Path realJar = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.jar",
+                java.util.Collections.singletonList(java.nio.file.Paths.get("verificador-integridade").toAbsolutePath().normalize()));
+        Path realExe = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.exe",
+                java.util.Collections.singletonList(java.nio.file.Paths.get("verificador-integridade").toAbsolutePath().normalize()));
+        check(realJar != null && realExe != null, "repo verificador-integridade binaries must exist for layout test");
+
+        Path installedJar = fakeVerifierDir.resolve("integridade-verifier.jar");
+        Path installedExe = fakeVerifierDir.resolve("integridade-verifier.exe");
+        Files.copy(realJar, installedJar);
+        Files.copy(realExe, installedExe);
+        try {
+            java.util.List<Path> dirs = VerifierIntegrity.verifierSourceDirs(fakeLibJar);
+            check(dirs.contains(fakeVerifierDir.toAbsolutePath().normalize()),
+                    "verifierSourceDirs must include <IPED_ROOT>/verificador-integridade");
+            Path foundJar = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.jar", dirs);
+            Path foundExe = VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.exe", dirs);
+            check(installedJar.toAbsolutePath().normalize().equals(foundJar),
+                    "must resolve installed verifier JAR from <IPED_ROOT>/verificador-integridade");
+            check(installedExe.toAbsolutePath().normalize().equals(foundExe),
+                    "must resolve installed verifier EXE from <IPED_ROOT>/verificador-integridade");
+
+            Path emptyIpedJar = temp.resolve("missing-iped").resolve("lib").resolve("iped-viewers-impl-4.3.1.jar");
+            java.util.List<Path> emptyDirs = VerifierIntegrity.verifierSourceDirs(emptyIpedJar);
+            check(VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.jar", emptyDirs) == null,
+                    "missing verifier dir must return null without throwing");
+            check(VerifierIntegrity.findTrustedVerifierFile("integridade-verifier.exe",
+                    java.util.Collections.singletonList(temp.resolve("does-not-exist"))) == null,
+                    "nonexistent explicit dir must return null without throwing");
+        } finally {
+            Files.deleteIfExists(installedJar);
+            Files.deleteIfExists(installedExe);
+            Files.deleteIfExists(fakeVerifierDir);
+            Files.deleteIfExists(fakeLibJar);
+            Files.deleteIfExists(fakeLibJar.getParent());
+            Files.deleteIfExists(fakeIped);
+        }
     }
 
     private static void check(boolean ok, String message) {

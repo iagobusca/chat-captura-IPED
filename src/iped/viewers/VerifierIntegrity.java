@@ -67,7 +67,17 @@ public final class VerifierIntegrity {
 
     /** Procura somente artefatos com SHA-256 explicitamente autorizado pelo plugin. */
     private static Path findTrustedVerifierFile(String name) {
-        for (Path dir : verifierSourceDirs()) {
+        return findTrustedVerifierFile(name, verifierSourceDirs());
+    }
+
+    static Path findTrustedVerifierFile(String name, List<Path> sourceDirs) {
+        if (name == null || name.isBlank() || sourceDirs == null) {
+            return null;
+        }
+        for (Path dir : sourceDirs) {
+            if (dir == null) {
+                continue;
+            }
             Path candidate = dir.resolve(name);
             if (!Files.isRegularFile(candidate)) continue;
             try {
@@ -78,37 +88,52 @@ public final class VerifierIntegrity {
         return null;
     }
 
-    /** Locais conhecidos, em ordem: origem do projeto e depois caminhos relativos ao IPED. */
+    /** Locais conhecidos relativos ao JAR instalado do plugin e overrides explicitos. */
     private static List<Path> verifierSourceDirs() {
-        LinkedHashSet<Path> candidates = new LinkedHashSet<>();
-        candidates.add(java.nio.file.Paths.get(
-                "C:/Avilla-Forensics-Free/IPED-4.3.1_and_java_plugins/plugins/chat-captura IPED/verificador-integridade"));
+        Path codeLocation = null;
         try {
-            Path loc = VerifierIntegrity.class.getProtectionDomain().getCodeSource().getLocation().toURI() != null
-                    ? java.nio.file.Paths.get(VerifierIntegrity.class.getProtectionDomain().getCodeSource().getLocation().toURI())
-                    : null;
-            if (loc != null) {
-                Path ipedRoot = loc.getParent();
-                if (ipedRoot != null) ipedRoot = ipedRoot.getParent();
-                if (ipedRoot != null) {
-                    candidates.add(ipedRoot.resolve("verificador-integridade")); //$NON-NLS-1$
-                    candidates.add(ipedRoot.resolve("lib")); //$NON-NLS-1$
-                    candidates.add(ipedRoot.resolveSibling("verificador-integridade")); //$NON-NLS-1$
-                    candidates.add(ipedRoot.resolveSibling("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
-                    if (ipedRoot.getParent() != null) {
-                        candidates.add(ipedRoot.getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
-                        candidates.add(ipedRoot.getParent().resolve("verificador-integridade")); //$NON-NLS-1$
-                        if (ipedRoot.getParent().getParent() != null) {
-                            candidates.add(ipedRoot.getParent().getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$
-                        }
-                    }
-                }
+            java.security.CodeSource cs = VerifierIntegrity.class.getProtectionDomain().getCodeSource();
+            if (cs != null && cs.getLocation() != null && cs.getLocation().toURI() != null) {
+                codeLocation = java.nio.file.Paths.get(cs.getLocation().toURI());
             }
         } catch (Exception ignored) {
         }
-        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/IPED_v11/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
-        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/Prova_v3/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
-        candidates.add(java.nio.file.Paths.get("F:/Download/Avilla-Acquisitions/Prova_v2/plugins/chat-captura IPED/verificador-integridade")); //$NON-NLS-1$
+        LinkedHashSet<Path> candidates = new LinkedHashSet<>(verifierSourceDirs(codeLocation));
+        candidates.add(java.nio.file.Paths.get("verificador-integridade").toAbsolutePath().normalize()); //$NON-NLS-1$
+        return new ArrayList<>(candidates);
+    }
+
+    static List<Path> verifierSourceDirs(Path codeLocation) {
+        LinkedHashSet<Path> candidates = new LinkedHashSet<>();
+        String explicitDir = System.getProperty("iped.verifier.dir"); //$NON-NLS-1$
+        if (explicitDir != null && !explicitDir.isBlank()) {
+            candidates.add(java.nio.file.Paths.get(explicitDir));
+        }
+        if (codeLocation != null) {
+            if (Files.isDirectory(codeLocation)) {
+                candidates.add(codeLocation.resolve("verificador-integridade")); //$NON-NLS-1$
+                candidates.add(codeLocation.resolveSibling("verificador-integridade")); //$NON-NLS-1$
+            }
+            Path ipedRoot = codeLocation.getParent();
+            if (ipedRoot != null) {
+                candidates.add(ipedRoot.resolve("verificador-integridade")); //$NON-NLS-1$
+                ipedRoot = ipedRoot.getParent();
+            }
+            if (ipedRoot != null) {
+                candidates.add(ipedRoot.resolve("verificador-integridade")); //$NON-NLS-1$
+                candidates.add(ipedRoot.resolve("lib")); //$NON-NLS-1$
+                candidates.add(ipedRoot.resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                candidates.add(ipedRoot.resolveSibling("verificador-integridade")); //$NON-NLS-1$
+                candidates.add(ipedRoot.resolveSibling("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                if (ipedRoot.getParent() != null) {
+                    candidates.add(ipedRoot.getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    candidates.add(ipedRoot.getParent().resolve("verificador-integridade")); //$NON-NLS-1$
+                    if (ipedRoot.getParent().getParent() != null) {
+                        candidates.add(ipedRoot.getParent().getParent().resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    }
+                }
+            }
+        }
         List<Path> normalized = new ArrayList<>();
         for (Path candidate : candidates) {
             Path path = candidate.toAbsolutePath().normalize();
