@@ -6942,7 +6942,34 @@ private String js(String value) {
     }
 
     private String csv(String value) {
-        return "\"" + safe(value).replace("\"", "\"\"") + "\""; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        return sanitizeCsvCell(safe(value));
+    }
+
+    static String sanitizeCsvCell(String value) {
+        String text = value == null ? "" : value; //$NON-NLS-1$
+        boolean needsPrefix = false;
+        if (!text.isEmpty()) {
+            char first = text.charAt(0);
+            if (first == '=' || first == '+' || first == '-' || first == '@'
+                    || first == '\t' || first == '\r' || first == '\n') {
+                needsPrefix = true;
+            } else {
+                for (int i = 0; i < text.length(); i++) {
+                    char ch = text.charAt(i);
+                    if (Character.isWhitespace(ch)) {
+                        if (ch == '\t' || ch == '\r' || ch == '\n') {
+                            needsPrefix = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    needsPrefix = (ch == '=' || ch == '+' || ch == '-' || ch == '@');
+                    break;
+                }
+            }
+        }
+        String safeCell = needsPrefix ? "'" + text : text; //$NON-NLS-1$
+        return "\"" + safeCell.replace("\"", "\"\"") + "\""; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
     }
 
     private String html(String value) {
