@@ -32,6 +32,40 @@ public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
     private static final String VERIFIER_VERSION = "1.3.5";
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
+    private static final Pattern HTML_TAG_PATTERN = Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
+    private static final Pattern HTML_META_TAG_PATTERN = Pattern.compile("(?is)<meta\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
+    private static final Pattern HTML_SCRIPT_ELEMENT_PATTERN = Pattern.compile("(?is)<script\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>(.*?)</script\\s*>");
+    private static final Pattern HTML_STYLE_ELEMENT_PATTERN = Pattern.compile("(?is)<style\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>(.*?)</style\\s*>");
+    private static final Map<String, Set<String>> ALLOWED_HTML_ATTRIBUTES = buildAllowedHtmlAttributes();
+
+    private static Map<String, Set<String>> buildAllowedHtmlAttributes() {
+        Map<String, Set<String>> map = new HashMap<>();
+        map.put("html", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("lang"))));
+        map.put("head", Collections.emptySet());
+        map.put("title", Collections.emptySet());
+        map.put("body", Collections.emptySet());
+        map.put("header", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
+        map.put("nav", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
+        map.put("section", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "role", "aria-modal", "aria-labelledby"))));
+        map.put("aside", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
+        map.put("h2", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id"))));
+        map.put("div", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "title", "data-capture-message-key", "data-iped-capture-date", "data-time", "data-src1", "data-src2"))));
+        map.put("span", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title", "data-iped-capture-date", "data-time"))));
+        map.put("p", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
+        map.put("strong", Collections.emptySet());
+        map.put("small", Collections.emptySet());
+        map.put("b", Collections.emptySet());
+        map.put("i", Collections.emptySet());
+        map.put("br", Collections.emptySet());
+        map.put("ul", Collections.emptySet());
+        map.put("li", Collections.emptySet());
+        map.put("a", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("href", "class", "title", "download", "target", "rel", "aria-label", "data-capture-censored"))));
+        map.put("img", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "alt", "title", "width", "height", "data-capture-censored"))));
+        map.put("audio", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "controls", "preload"))));
+        map.put("video", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "controls", "preload", "width", "height"))));
+        map.put("iframe", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "title", "sandbox"))));
+        return Collections.unmodifiableMap(map);
+    }
     private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();";
     private static final String LEGACY_CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}window.addEventListener('hashchange',function(){if(location.hash.indexOf('#preview-')!==0)stop();});document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-close'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-close'))stop();});})();";
     private static final String CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-Pq7vIvwsQpte7OdNyOYYE9cKIEPmIFR7E/G7kB1JaJI='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
@@ -613,20 +647,20 @@ public final class IntegrityVerifier {
         if(presentationVersion==0){validateLegacyRenderedHtml(html,attachmentPaths,messageKeys);return;}
         if(presentationVersion!=2)throw new IOException("Versão de apresentação HTML desconhecida.");
         String csp=validateCaptureMeta(html,true);
-        Matcher scripts=Pattern.compile("(?is)<script\\b([^>]*)>(.*?)</script\\s*>").matcher(html);int scriptCount=0;String script="";while(scripts.find()){scriptCount++;if(!scripts.group(1).trim().isEmpty())throw new IOException("Atributos de script não são permitidos.");script=scripts.group(2);}Matcher scriptOpen=Pattern.compile("(?is)<script\\b").matcher(html);int scriptOpenCount=0;while(scriptOpen.find())scriptOpenCount++;if(scriptCount!=1||scriptOpenCount!=1)throw new IOException("HTML deve conter somente um script fixo de mídia.");boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(script),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(script);if(!currentScript&&!legacyScript)throw new IOException("HTML contém script diferente dos scripts fixos autorizados.");if(currentScript&&!CAPTURE_CSP.equals(csp)||legacyScript&&!LEGACY_CAPTURE_CSP.equals(csp))throw new IOException("A CSP não corresponde ao script fixo autorizado.");
+        Matcher scripts=HTML_SCRIPT_ELEMENT_PATTERN.matcher(html);int scriptCount=0;String script="";while(scripts.find()){scriptCount++;if(!scripts.group(1).trim().isEmpty())throw new IOException("Atributos de script não são permitidos.");script=scripts.group(2);}Matcher scriptOpen=Pattern.compile("(?is)<script\\b").matcher(html);int scriptOpenCount=0;while(scriptOpen.find())scriptOpenCount++;if(scriptCount!=1||scriptOpenCount!=1)throw new IOException("HTML deve conter somente um script fixo de mídia.");boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(script),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(script);if(!currentScript&&!legacyScript)throw new IOException("HTML contém script diferente dos scripts fixos autorizados.");if(currentScript&&!CAPTURE_CSP.equals(csp)||legacyScript&&!LEGACY_CAPTURE_CSP.equals(csp))throw new IOException("A CSP não corresponde ao script fixo autorizado.");
         validateHtmlStructure(html,attachmentPaths,mimeByPath,messageKeys,true);
-        Matcher styles=Pattern.compile("(?is)<style\\b[^>]*>(.*?)</style\\s*>").matcher(html);int styleCount=0;while(styles.find()){styleCount++;validateCaptureCss(styles.group(1));}if(styleCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
+        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;while(styles.find()){styleCount++;if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");validateCaptureCss(styles.group(2));}Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=2||styleOpenCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
     }
 
     private static void validateLegacyRenderedHtml(String html,Set<String> attachmentPaths,Set<String> messageKeys)throws Exception{
         validateCaptureMeta(html,false);
         if(Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math)\\b|\\son[a-z0-9_-]+\\s*=|javascript:").matcher(html).find())throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
         validateHtmlStructure(html,attachmentPaths,Collections.emptyMap(),messageKeys,false);
-        Matcher styles=Pattern.compile("(?is)<style\\b[^>]*>(.*?)</style\\s*>").matcher(html);while(styles.find())validateCaptureCss(styles.group(1));
+        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;while(styles.find()){styleCount++;if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");validateCaptureCss(styles.group(2));}Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=styleOpenCount)throw new IOException("HTML contém elemento de estilo malformado.");
     }
 
     private static String validateCaptureMeta(String html,boolean modern)throws IOException{
-        Matcher tags=Pattern.compile("(?is)<meta\\b([^>]*)>").matcher(html);int count=0,charset=0,csp=0;
+        Matcher tags=HTML_META_TAG_PATTERN.matcher(html);int count=0,charset=0,csp=0;
         String legacyCsp="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'";
         String cspContent="";
         while(tags.find()){
@@ -643,18 +677,19 @@ public final class IntegrityVerifier {
     }
 
     private static Map<String,String> parseHtmlAttributes(String input)throws IOException{
-        Map<String,String> attrs=new HashMap<>();Matcher matcher=Pattern.compile("(?is)([a-z_:][a-z0-9_:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+)))?").matcher(input);int end=0;
+        Map<String,String> attrs=new HashMap<>();Matcher matcher=Pattern.compile("(?is)([a-z_:][a-z0-9_:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>\"'`=]+)))?").matcher(input);int end=0;
         while(matcher.find()){String gap=input.substring(end,matcher.start()).trim();if(!gap.isEmpty()&&!gap.matches("(?is)/?"))throw new IOException("Atributo HTML malformado.");String name=matcher.group(1).toLowerCase(Locale.ROOT);String value=matcher.group(2)!=null?matcher.group(2):matcher.group(3)!=null?matcher.group(3):matcher.group(4)!=null?matcher.group(4):"";if(attrs.put(name,value)!=null)throw new IOException("Atributo HTML duplicado.");end=matcher.end();}
         String tail=input.substring(end).trim();if(!tail.isEmpty()&&!tail.matches("(?is)/?"))throw new IOException("Atributo HTML sem valor entre aspas.");return attrs;
     }
 
     private static void validateHtmlStructure(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,boolean modern)throws Exception{
-        Matcher tags=Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b([^>]*)>").matcher(html);Set<String> ids=new HashSet<>(),renderedKeys=new HashSet<>(),resources=new HashSet<>();List<String> pendingFragments=new ArrayList<>();
+        Matcher tags=HTML_TAG_PATTERN.matcher(html);Set<String> ids=new HashSet<>(),renderedKeys=new HashSet<>(),resources=new HashSet<>();List<String> pendingFragments=new ArrayList<>();
         while(tags.find()){
             String tag=tags.group(1).toLowerCase(Locale.ROOT);Map<String,String> attrs=parseHtmlAttributes(tags.group(2));
-            if("meta".equals(tag)||"script".equals(tag))continue;
-            if("object".equals(tag)||"embed".equals(tag)||"form".equals(tag)||"link".equals(tag)||"base".equals(tag)||"svg".equals(tag)||"math".equals(tag))throw new IOException("HTML contém elemento ativo ou não permitido.");
-            for(String name:attrs.keySet())if(name.startsWith("on")||"style".equals(name)||"srcdoc".equals(name)||"action".equals(name)||"formaction".equals(name))throw new IOException("HTML contém atributo ativo não permitido.");
+            if("meta".equals(tag)||"style".equals(tag)||(modern&&"script".equals(tag)))continue;
+            Set<String> allowedAttrs=ALLOWED_HTML_ATTRIBUTES.get(tag);
+            if(allowedAttrs==null)throw new IOException("HTML contém elemento ativo ou não permitido: "+tag);
+            for(String name:attrs.keySet())if(!allowedAttrs.contains(name))throw new IOException("HTML contém atributo não permitido: "+name);
             String id=attrs.get("id");if(id!=null&&!ids.add(id))throw new IOException("HTML contém ID duplicado.");
             String key=attrs.get("data-capture-message-key");if(key!=null&&!renderedKeys.add(key))throw new IOException("HTML contém chave de mensagem duplicada.");
             if("iframe".equals(tag)){

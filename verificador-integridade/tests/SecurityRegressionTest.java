@@ -28,6 +28,7 @@ public final class SecurityRegressionTest {
             extraFileInHtmlMessageCaptureIsFlagged(root);
             craftedHistoryReportInjectionIsRejectedAndEscaped(root);
             junctionInsideCaptureAndOutputAreRejected(root);
+            disallowedHtmlAttributesAndQuoteTricksAreRejected(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -437,6 +438,66 @@ public final class SecurityRegressionTest {
         int code = p.waitFor();
         if (code != 0) {
             throw new IOException("mklink /J failed (" + code + "): " + output);
+        }
+    }
+
+    private static void disallowedHtmlAttributesAndQuoteTricksAreRejected(Path root) throws Exception {
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+
+        String msgKey = repeat('a', 64);
+        java.util.Set<String> keys = Collections.singleton(msgKey);
+        String okBodyModern = "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                + csp + "\"><title>WhatsApp</title><style>body{background:#eee}</style><style>.capture-modal{display:none}</style></head><body>"
+                + "<div id=\"capture-topbar\">Conversa</div><div id=\"capture-conversation\"><div class=\"linha\" data-capture-message-key=\""
+                + msgKey + "\" title=\">\">Ola</div></div><script>" + stopScript + "</script></body></html>";
+        validate.invoke(null, okBodyModern, Collections.emptySet(), Collections.emptyMap(), keys, 2);
+
+        String okBodyLegacy = "<!doctype html><div class=\"linha\" data-capture-message-key=\"" + msgKey + "\" title=\">\">Ola</div>";
+        validate.invoke(null, okBodyLegacy, Collections.emptySet(), Collections.emptyMap(), keys, 0);
+
+        String[] modernPayloads = new String[] {
+                okBodyModern.replace("title=\">\"", "srcset=\"https://evil.example/a.png\""),
+                okBodyModern.replace("title=\">\"", "ping=\"https://evil.example/track\""),
+                okBodyModern.replace("<body>", "<body background=\"https://evil.example/bg.png\">"),
+                okBodyModern.replace("title=\">\"", "title=\">\" onclick=\"alert(1)\""),
+                okBodyModern.replace("title=\">\"", "http-equiv=\"refresh\"")
+        };
+        String[] legacyPayloads = new String[] {
+                okBodyLegacy.replace("title=\">\"", "srcset=\"https://evil.example/a.png\""),
+                okBodyLegacy.replace("title=\">\"", "ping=\"https://evil.example/track\""),
+                okBodyLegacy.replace("title=\">\"", "background=\"https://evil.example/bg.png\""),
+                okBodyLegacy.replace("title=\">\"", "title=\">\" onclick=\"alert(1)\"")
+        };
+
+        for (String payload : modernPayloads) {
+            assertValidateHtmlRejected(validate, payload, keys, 2);
+        }
+        for (String payload : legacyPayloads) {
+            assertValidateHtmlRejected(validate, payload, keys, 0);
+        }
+    }
+
+    private static void assertValidateHtmlRejected(Method validate, String html, java.util.Set<String> keys, int version) throws Exception {
+        boolean rejected = false;
+        try {
+            validate.invoke(null, html, Collections.emptySet(), Collections.emptyMap(), keys, version);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof IOException) {
+                rejected = true;
+            } else {
+                throw e;
+            }
+        }
+        if (!rejected) {
+            throw new AssertionError("Disallowed HTML payload was accepted in presentationVersion=" + version + ": " + html);
         }
     }
 
