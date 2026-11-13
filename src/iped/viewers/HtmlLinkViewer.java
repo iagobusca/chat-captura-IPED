@@ -2,6 +2,7 @@ package iped.viewers;
 
 import java.io.File;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +14,7 @@ import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +42,7 @@ import java.util.Date;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -62,6 +65,8 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import javax.swing.JButton;
 import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
@@ -82,6 +87,7 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.DMatch;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
@@ -7860,11 +7866,32 @@ String invalidReason;
     }
 
     static class SensitiveImageMatcher implements AutoCloseable {
+        static final int MAX_SENSITIVE_IMAGE_BYTES = 32 * 1024 * 1024;
+        static final int MAX_IMAGE_DIMENSION = 8192;
+        static final long MAX_IMAGE_PIXELS = 33_554_432L;
         private static final int MIN_FEATURES = 20;
         private static final int MIN_GOOD_MATCHES = 12;
         private static final double LOWE_RATIO = 0.72d;
         private static final float MAX_HAMMING_DISTANCE = 60f;
         private static volatile boolean opencvLoaded;
+
+        enum ImageFormat {
+            PNG("png"), //$NON-NLS-1$
+            JPEG("jpeg"), //$NON-NLS-1$
+            BMP("bmp"), //$NON-NLS-1$
+            GIF("gif"), //$NON-NLS-1$
+            WEBP("webp"); //$NON-NLS-1$
+
+            private final String formatName;
+
+            ImageFormat(String formatName) {
+                this.formatName = formatName;
+            }
+
+            String formatName() {
+                return formatName;
+            }
+        }
 
         private final ORB orb;
         private final DescriptorMatcher matcher;
@@ -7885,9 +7912,13 @@ String invalidReason;
                 matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
                 try (Stream<Path> stream = Files.list(folder)) {
                     stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
-                        addReferenceFileHash(path.toFile());
+                        byte[] content = readBoundedImageBytes(path.toFile());
+                        if (content == null || detectSupportedImageFormat(content) == null) {
+                            return;
+                        }
+                        addReferenceFileHash(content);
                         referenceImageCount++;
-                        Mat descriptors = descriptors(path.toFile());
+                        Mat descriptors = descriptors(content);
                         if (descriptors != null && !descriptors.empty()) {
                             referenceDescriptors.add(descriptors);
                         } else {
@@ -7948,33 +7979,296 @@ String invalidReason;
         }
 
         boolean matches(File candidate) {
-            if (matchesReferenceFileHash(candidate)) {
-                return true;
+            byte[] content = readBoundedImageBytes(candidate);
+            if (content == null) {
+                return false;
             }
-            Mat candidateDescriptors = descriptors(candidate);
-            try {
-                return matchesDescriptors(candidateDescriptors);
-            } finally {
-                releaseQuietly(candidateDescriptors);
-            }
+            return matches(content);
         }
 
         boolean matches(byte[] content) {
-            if (content == null || content.length == 0) {
+            if (content == null || content.length == 0 || content.length > MAX_SENSITIVE_IMAGE_BYTES) {
+                return false;
+            }
+            if (detectSupportedImageFormat(content) == null) {
                 return false;
             }
             if (matchesReferenceFileHash(content)) {
                 return true;
             }
-            MatOfByte encoded = new MatOfByte(content);
-            Mat image = null;
-            Mat candidate = null;
+            Mat candidate = descriptors(content);
             try {
-                image = Imgcodecs.imdecode(encoded, Imgcodecs.IMREAD_COLOR);
-                candidate = descriptorsOf(image);
                 return matchesDescriptors(candidate);
             } finally {
                 releaseQuietly(candidate);
+            }
+        }
+
+        static ImageFormat detectSupportedImageFormat(byte[] content) {
+            if (content == null || content.length < 2 || content.length > MAX_SENSITIVE_IMAGE_BYTES) {
+                return null;
+            }
+            if (content.length >= 8
+                    && (content[0] & 0xFF) == 0x89
+                    && content[1] == 0x50
+                    && content[2] == 0x4E
+                    && content[3] == 0x47
+                    && content[4] == 0x0D
+                    && content[5] == 0x0A
+                    && content[6] == 0x1A
+                    && content[7] == 0x0A) {
+                return ImageFormat.PNG;
+            }
+            if (content.length >= 3
+                    && (content[0] & 0xFF) == 0xFF
+                    && (content[1] & 0xFF) == 0xD8
+                    && (content[2] & 0xFF) == 0xFF) {
+                return ImageFormat.JPEG;
+            }
+            if (content[0] == 'B' && content[1] == 'M') {
+                return ImageFormat.BMP;
+            }
+            if (content.length >= 6
+                    && content[0] == 'G'
+                    && content[1] == 'I'
+                    && content[2] == 'F'
+                    && content[3] == '8'
+                    && (content[4] == '7' || content[4] == '9')
+                    && content[5] == 'a') {
+                return ImageFormat.GIF;
+            }
+            if (content.length >= 12
+                    && content[0] == 'R'
+                    && content[1] == 'I'
+                    && content[2] == 'F'
+                    && content[3] == 'F'
+                    && content[8] == 'W'
+                    && content[9] == 'E'
+                    && content[10] == 'B'
+                    && content[11] == 'P') {
+                return ImageFormat.WEBP;
+            }
+            return null;
+        }
+
+        static boolean areValidImageDimensions(int width, int height) {
+            if (width <= 0 || height <= 0 || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+                return false;
+            }
+            return ((long) width) * ((long) height) <= MAX_IMAGE_PIXELS;
+        }
+
+        static byte[] readBoundedImageBytes(File file) {
+            if (file == null) {
+                return null;
+            }
+            Path path = file.toPath();
+            if (!CaptureIntegrity.isSafeRegularFile(path)) {
+                return null;
+            }
+            try {
+                long declaredSize = Files.size(path);
+                if (declaredSize <= 0L || declaredSize > MAX_SENSITIVE_IMAGE_BYTES) {
+                    return null;
+                }
+                try (InputStream in = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+                    ByteArrayOutputStream out = new ByteArrayOutputStream((int) Math.min(declaredSize, 65536L));
+                    byte[] buffer = new byte[8192];
+                    long total = 0L;
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        total += read;
+                        if (total > MAX_SENSITIVE_IMAGE_BYTES) {
+                            return null;
+                        }
+                        out.write(buffer, 0, read);
+                    }
+                    return total == 0L ? null : out.toByteArray();
+                }
+            } catch (IOException e) {
+                LOGGER.debug("Unable to read image file {}", file, e); //$NON-NLS-1$
+                return null;
+            }
+        }
+
+        static int[] readValidatedDimensions(byte[] content) {
+            ImageFormat format = detectSupportedImageFormat(content);
+            if (format == null) {
+                return null;
+            }
+            if (format == ImageFormat.WEBP) {
+                return parseWebpDimensions(content);
+            }
+            return readImageIoDimensionsAndOptionalDecode(content, format, null);
+        }
+
+        private static int[] parseWebpDimensions(byte[] content) {
+            if (content == null || content.length < 25) {
+                return null;
+            }
+            if (content[12] == 'V' && content[13] == 'P' && content[14] == '8' && content[15] == 'X') {
+                if (content.length < 30) {
+                    return null;
+                }
+                int width = 1 + ((content[24] & 0xFF) | ((content[25] & 0xFF) << 8) | ((content[26] & 0xFF) << 16));
+                int height = 1 + ((content[27] & 0xFF) | ((content[28] & 0xFF) << 8) | ((content[29] & 0xFF) << 16));
+                return areValidImageDimensions(width, height) ? new int[] { width, height } : null;
+            }
+            if (content[12] == 'V' && content[13] == 'P' && content[14] == '8' && content[15] == 'L') {
+                if (content[20] != 0x2F) {
+                    return null;
+                }
+                long bits = (content[21] & 0xFFL)
+                        | ((content[22] & 0xFFL) << 8)
+                        | ((content[23] & 0xFFL) << 16)
+                        | ((content[24] & 0xFFL) << 24);
+                int width = 1 + (int) (bits & 0x3FFFL);
+                int height = 1 + (int) ((bits >> 14) & 0x3FFFL);
+                return areValidImageDimensions(width, height) ? new int[] { width, height } : null;
+            }
+            if (content[12] == 'V' && content[13] == 'P' && content[14] == '8' && content[15] == ' ') {
+                if (content.length < 30
+                        || (content[20] & 0x01) != 0
+                        || (content[23] & 0xFF) != 0x9D
+                        || content[24] != 0x01
+                        || content[25] != 0x2A) {
+                    return null;
+                }
+                int width = ((content[26] & 0xFF) | ((content[27] & 0xFF) << 8)) & 0x3FFF;
+                int height = ((content[28] & 0xFF) | ((content[29] & 0xFF) << 8)) & 0x3FFF;
+                return areValidImageDimensions(width, height) ? new int[] { width, height } : null;
+            }
+            return null;
+        }
+
+        static Mat decodeToGrayMat(byte[] content) {
+            ImageFormat format = detectSupportedImageFormat(content);
+            if (format == null) {
+                return null;
+            }
+            if (format == ImageFormat.WEBP) {
+                return decodeWebpWithOpenCv(content);
+            }
+            BufferedImage image = decodeImageIoWithBounds(content, format);
+            if (image == null) {
+                return null;
+            }
+            return toGrayCvMat(image);
+        }
+
+        private static BufferedImage decodeImageIoWithBounds(byte[] content, ImageFormat format) {
+            BufferedImage[] decoded = new BufferedImage[1];
+            if (readImageIoDimensionsAndOptionalDecode(content, format, decoded) == null) {
+                return null;
+            }
+            return decoded[0];
+        }
+
+        private static int[] readImageIoDimensionsAndOptionalDecode(
+                byte[] content, ImageFormat format, BufferedImage[] decodedOut) {
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(content);
+                    ImageInputStream iis = ImageIO.createImageInputStream(bais)) {
+                if (iis == null) {
+                    return null;
+                }
+                ImageReader reader = findPreferredImageReader(format);
+                if (reader == null) {
+                    return null;
+                }
+                try {
+                    reader.setInput(iis, true, true);
+                    int width = reader.getWidth(0);
+                    int height = reader.getHeight(0);
+                    if (!areValidImageDimensions(width, height)) {
+                        return null;
+                    }
+                    if (decodedOut != null) {
+                        BufferedImage decoded = reader.read(0);
+                        if (decoded == null || !areValidImageDimensions(decoded.getWidth(), decoded.getHeight())) {
+                            return null;
+                        }
+                        decodedOut[0] = decoded;
+                    }
+                    return new int[] { width, height };
+                } finally {
+                    reader.dispose();
+                }
+            } catch (IOException | RuntimeException e) {
+                LOGGER.debug("Rejected malformed {} image before OpenCV", format.formatName(), e); //$NON-NLS-1$
+                return null;
+            }
+        }
+
+        private static ImageReader findPreferredImageReader(ImageFormat format) {
+            Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName(format.formatName());
+            ImageReader preferred = null;
+            ImageReader fallback = null;
+            while (readers.hasNext()) {
+                ImageReader candidate = readers.next();
+                String moduleName = candidate.getClass().getModule() != null
+                        ? candidate.getClass().getModule().getName()
+                        : null;
+                if (preferred == null && "java.desktop".equals(moduleName)) { //$NON-NLS-1$
+                    preferred = candidate;
+                } else if (fallback == null && preferred == null) {
+                    fallback = candidate;
+                } else {
+                    candidate.dispose();
+                }
+            }
+            if (preferred != null) {
+                if (fallback != null) {
+                    fallback.dispose();
+                }
+                return preferred;
+            }
+            return fallback;
+        }
+
+        private static Mat toGrayCvMat(BufferedImage image) {
+            int width = image.getWidth();
+            int height = image.getHeight();
+            if (!areValidImageDimensions(width, height)) {
+                return null;
+            }
+            BufferedImage gray = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
+            Graphics2D g = gray.createGraphics();
+            try {
+                g.drawImage(image, 0, 0, null);
+            } finally {
+                g.dispose();
+            }
+            byte[] pixels = ((DataBufferByte) gray.getRaster().getDataBuffer()).getData();
+            if (pixels.length != width * height) {
+                return null;
+            }
+            Mat mat = new Mat(height, width, CvType.CV_8UC1);
+            try {
+                mat.put(0, 0, pixels);
+                Mat result = mat;
+                mat = null;
+                return result;
+            } finally {
+                releaseQuietly(mat);
+            }
+        }
+
+        private static Mat decodeWebpWithOpenCv(byte[] content) {
+            if (parseWebpDimensions(content) == null) {
+                return null;
+            }
+            MatOfByte encoded = new MatOfByte(content);
+            Mat image = null;
+            try {
+                image = Imgcodecs.imdecode(encoded, Imgcodecs.IMREAD_GRAYSCALE);
+                if (image == null || image.empty() || !areValidImageDimensions(image.cols(), image.rows())) {
+                    releaseQuietly(image);
+                    return null;
+                }
+                Mat result = image;
+                image = null;
+                return result;
+            } finally {
                 releaseQuietly(image);
                 releaseQuietly(encoded);
             }
@@ -7999,59 +8293,14 @@ String invalidReason;
             }
         }
 
-        private void addReferenceFileHash(File file) {
-            try {
-                String md5 = digestFile(file, "MD5"); //$NON-NLS-1$
-                String sha256 = digestFile(file, "SHA-256"); //$NON-NLS-1$
-                if (!md5.isBlank()) {
-                    referenceFileHashes.add(md5);
-                }
-                if (!sha256.isBlank()) {
-                    referenceFileHashes.add(sha256);
-                }
-            } catch (IOException e) {
-                LOGGER.debug("Unable to hash sensitive reference image {}", file, e); //$NON-NLS-1$
+        private void addReferenceFileHash(byte[] content) {
+            String md5 = hex(content, "MD5"); //$NON-NLS-1$
+            String sha256 = hex(content, "SHA-256"); //$NON-NLS-1$
+            if (!md5.isBlank()) {
+                referenceFileHashes.add(md5);
             }
-        }
-
-        private boolean matchesReferenceFileHash(File candidate) {
-            if (candidate == null || referenceFileHashes.isEmpty()
-                    || !CaptureIntegrity.isSafeRegularFile(candidate.toPath())) {
-                return false;
-            }
-            try {
-                String md5 = digestFile(candidate, "MD5"); //$NON-NLS-1$
-                if (!md5.isBlank() && referenceFileHashes.contains(md5)) {
-                    return true;
-                }
-                String sha256 = digestFile(candidate, "SHA-256"); //$NON-NLS-1$
-                return !sha256.isBlank() && referenceFileHashes.contains(sha256);
-            } catch (IOException e) {
-                LOGGER.debug("Unable to hash candidate image {}", candidate, e); //$NON-NLS-1$
-                return false;
-            }
-        }
-
-        private static String digestFile(File file, String algorithm) throws IOException {
-            if (file == null || !CaptureIntegrity.isSafeRegularFile(file.toPath())) {
-                return ""; //$NON-NLS-1$
-            }
-            try {
-                MessageDigest digest = MessageDigest.getInstance(algorithm);
-                try (InputStream in = Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS);
-                        DigestInputStream dis = new DigestInputStream(in, digest)) {
-                    byte[] buffer = new byte[8192];
-                    while (dis.read(buffer) != -1) {
-                        // consume stream
-                    }
-                }
-                StringBuilder sb = new StringBuilder();
-                for (byte b : digest.digest()) {
-                    sb.append(String.format("%02X", b)); //$NON-NLS-1$
-                }
-                return sb.toString();
-            } catch (Exception e) {
-                throw new IOException("Unable to calculate " + algorithm + " for " + file, e); //$NON-NLS-1$ //$NON-NLS-2$
+            if (!sha256.isBlank()) {
+                referenceFileHashes.add(sha256);
             }
         }
 
@@ -8094,11 +8343,11 @@ String invalidReason;
             }
         }
 
-        private Mat descriptors(File image) {
-            if (image == null || !CaptureIntegrity.isSafeRegularFile(image.toPath())) {
+        private Mat descriptors(byte[] content) {
+            Mat img = decodeToGrayMat(content);
+            if (img == null) {
                 return null;
             }
-            Mat img = Imgcodecs.imread(image.getAbsolutePath());
             try {
                 return descriptorsOf(img);
             } finally {
