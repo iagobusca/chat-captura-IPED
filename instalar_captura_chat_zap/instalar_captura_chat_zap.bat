@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
+set "SCRIPT_ROOT=%SCRIPT_DIR:~0,-1%"
 
 REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
@@ -9,8 +10,6 @@ if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_SOURCE=%SCRIPT_DIR%dependencies\opencv-4120.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
-set "OPENCV_TARGET=%IPED_ROOT%\lib\opencv-4120.jar"
-set "OPENCV_DLL_TARGET=%IPED_ROOT%\opencv_java4120.dll"
 
 REM Sobe ate a pasta raiz do IPED, procurando o iped.exe.
 set "IPED_ROOT="
@@ -22,9 +21,23 @@ for /L %%L in (1,1,6) do (
 if "!IPED_ROOT!"=="" if exist "%SCRIPT_DIR%..\..\iped-4.3.1\lib\iped-viewers-impl-4.3.1.jar" set "IPED_ROOT=%SCRIPT_DIR%..\..\iped-4.3.1"
 if "!IPED_ROOT!"=="" if exist "%SCRIPT_DIR%..\..\..\iped-4.3.1\lib\iped-viewers-impl-4.3.1.jar" set "IPED_ROOT=%SCRIPT_DIR%..\..\..\iped-4.3.1"
 
+if "%IPED_ROOT%"=="" (
+    echo.
+    echo ERRO: pasta raiz do IPED nao encontrada.
+    echo Coloque o instalador dentro da pasta do IPED ou ao lado de "iped-4.3.1".
+    echo.
+    pause
+    exit /b 1
+)
+for %%I in ("%IPED_ROOT%") do set "IPED_ROOT=%%~fI"
+if not "%IPED_ROOT:~-2%"==":\" if "%IPED_ROOT:~-1%"=="\" set "IPED_ROOT=%IPED_ROOT:~0,-1%"
+
 set "TARGET_JAR=%IPED_ROOT%\lib\iped-viewers-impl-4.3.1.jar"
 set "JSON_TARGET=%IPED_ROOT%\lib\json-20260719.jar"
 set "JSON_OLD=%IPED_ROOT%\lib\json-20250517.jar"
+set "OPENCV_TARGET=%IPED_ROOT%\lib\opencv-4120.jar"
+set "OPENCV_DLL_TARGET=%IPED_ROOT%\opencv_java4120.dll"
+set "OPENCV_PLUGINS_DLL_TARGET=%IPED_ROOT%\plugins\opencv_java4120.dll"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
@@ -69,6 +82,12 @@ if "%STAMP%"=="" set "STAMP=backup"
 set "BACKUP_JAR=%TARGET_JAR%.bak-%STAMP%"
 set "BACKUP_JSON=%JSON_OLD%.bak-%STAMP%"
 set "BACKUP_JSON_TARGET=%JSON_TARGET%.bak-%STAMP%"
+set "BACKUP_OPENCV_JAR=%OPENCV_TARGET%.bak-%STAMP%"
+set "BACKUP_OPENCV_DLL=%OPENCV_DLL_TARGET%.bak-%STAMP%"
+set "BACKUP_OPENCV_PLUGINS_DLL=%OPENCV_PLUGINS_DLL_TARGET%.bak-%STAMP%"
+set "OPENCV_JAR_WRITTEN=0"
+set "OPENCV_DLL_WRITTEN=0"
+set "OPENCV_PLUGINS_DLL_WRITTEN=0"
 
 echo Criando backup:
 echo "%BACKUP_JAR%"
@@ -141,28 +160,91 @@ REM Instala o OpenCV (necessario para censura por similaridade em capturas html-
 if exist "%OPENCV_SOURCE%" (
     if not exist "%OPENCV_TARGET%" (
         copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
+        if errorlevel 1 (
+            echo ERRO: nao foi possivel instalar opencv-4120.jar. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
+        set "OPENCV_JAR_WRITTEN=1"
     ) else (
         REM Atualiza apenas se o hash diferir.
         for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_SOURCE%' -Algorithm SHA256).Hash"') do set "OPENCV_SRC_HASH=%%i"
         for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_TARGET%' -Algorithm SHA256).Hash"') do set "OPENCV_DST_HASH=%%i"
-        if not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
+        if not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" (
+            copy /Y "%OPENCV_TARGET%" "%BACKUP_OPENCV_JAR%" >nul
+            if errorlevel 1 (
+                echo ERRO: nao foi possivel criar backup do opencv-4120.jar. Restaurando backup.
+                call :ROLLBACK
+                pause
+                exit /b 1
+            )
+            copy /Y "%OPENCV_SOURCE%" "%OPENCV_TARGET%" >nul
+            if errorlevel 1 (
+                echo ERRO: nao foi possivel atualizar opencv-4120.jar. Restaurando backup.
+                set "OPENCV_JAR_WRITTEN=1"
+                call :ROLLBACK
+                pause
+                exit /b 1
+            )
+            set "OPENCV_JAR_WRITTEN=1"
+        )
     )
-    if exist "%OPENCV_DLL_SOURCE%" (
-        copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_DLL_TARGET%" >nul
-        REM Instala tambem na pasta plugins/, onde o plugin procura por padrao.
-        if not exist "%IPED_ROOT%\plugins" mkdir "%IPED_ROOT%\plugins"
-        copy /Y "%OPENCV_DLL_SOURCE%" "%IPED_ROOT%\plugins\opencv_java4120.dll" >nul
+)
+if exist "%OPENCV_DLL_SOURCE%" (
+    if exist "%OPENCV_DLL_TARGET%" (
+        copy /Y "%OPENCV_DLL_TARGET%" "%BACKUP_OPENCV_DLL%" >nul
+        if errorlevel 1 (
+            echo ERRO: nao foi possivel criar backup da opencv_java4120.dll. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
     )
+    copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_DLL_TARGET%" >nul
+    if errorlevel 1 (
+        echo ERRO: nao foi possivel instalar opencv_java4120.dll na raiz do IPED. Restaurando backup.
+        set "OPENCV_DLL_WRITTEN=1"
+        call :ROLLBACK
+        pause
+        exit /b 1
+    )
+    set "OPENCV_DLL_WRITTEN=1"
+    REM Instala tambem na pasta plugins/, onde o plugin procura por padrao.
+    if not exist "%IPED_ROOT%\plugins" (
+        mkdir "%IPED_ROOT%\plugins"
+        if errorlevel 1 (
+            echo ERRO: nao foi possivel criar a pasta plugins do IPED. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
+    )
+    if exist "%OPENCV_PLUGINS_DLL_TARGET%" (
+        copy /Y "%OPENCV_PLUGINS_DLL_TARGET%" "%BACKUP_OPENCV_PLUGINS_DLL%" >nul
+        if errorlevel 1 (
+            echo ERRO: nao foi possivel criar backup de plugins\opencv_java4120.dll. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
+    )
+    copy /Y "%OPENCV_DLL_SOURCE%" "%OPENCV_PLUGINS_DLL_TARGET%" >nul
+    if errorlevel 1 (
+        echo ERRO: nao foi possivel instalar opencv_java4120.dll em plugins\. Restaurando backup.
+        set "OPENCV_PLUGINS_DLL_WRITTEN=1"
+        call :ROLLBACK
+        pause
+        exit /b 1
+    )
+    set "OPENCV_PLUGINS_DLL_WRITTEN=1"
 )
 
 REM Injeta os bundles de idioma do plugin no JAR instalado.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-localization.ps1" -Jar "%TARGET_JAR%" -ResourceDir "%SCRIPT_DIR%" -LocaleDir "%IPED_ROOT%\localization"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-localization.ps1" -Jar "%TARGET_JAR%" -ResourceDir "%SCRIPT_ROOT%" -LocaleDir "%IPED_ROOT%\localization"
 if errorlevel 1 (
     echo ERRO: falha ao instalar os arquivos de idioma. Restaurando backup.
-    copy /Y "%BACKUP_JAR%" "%TARGET_JAR%" >nul
-    if exist "%JSON_TARGET%" del /Q "%JSON_TARGET%" >nul
-    if exist "%BACKUP_JSON%" move /Y "%BACKUP_JSON%" "%JSON_OLD%" >nul
-    if exist "%BACKUP_JSON_TARGET%" move /Y "%BACKUP_JSON_TARGET%" "%JSON_TARGET%" >nul
+    call :ROLLBACK
     pause
     exit /b 1
 )
@@ -189,3 +271,33 @@ echo Feche e abra novamente o IPED para carregar o plugin.
 echo.
 pause
 endlocal
+exit /b 0
+
+:ROLLBACK
+if "%OPENCV_PLUGINS_DLL_WRITTEN%"=="1" (
+    if exist "%BACKUP_OPENCV_PLUGINS_DLL%" (
+        move /Y "%BACKUP_OPENCV_PLUGINS_DLL%" "%OPENCV_PLUGINS_DLL_TARGET%" >nul
+    ) else if exist "%OPENCV_PLUGINS_DLL_TARGET%" (
+        del /Q "%OPENCV_PLUGINS_DLL_TARGET%" >nul 2>&1
+    )
+)
+if "%OPENCV_DLL_WRITTEN%"=="1" (
+    if exist "%BACKUP_OPENCV_DLL%" (
+        move /Y "%BACKUP_OPENCV_DLL%" "%OPENCV_DLL_TARGET%" >nul
+    ) else if exist "%OPENCV_DLL_TARGET%" (
+        del /Q "%OPENCV_DLL_TARGET%" >nul 2>&1
+    )
+)
+if "%OPENCV_JAR_WRITTEN%"=="1" (
+    if exist "%BACKUP_OPENCV_JAR%" (
+        move /Y "%BACKUP_OPENCV_JAR%" "%OPENCV_TARGET%" >nul
+    ) else if exist "%OPENCV_TARGET%" (
+        del /Q "%OPENCV_TARGET%" >nul 2>&1
+    )
+)
+if exist "%JSON_TARGET%" del /Q "%JSON_TARGET%" >nul 2>&1
+if exist "%JSON_OLD%" if not exist "%BACKUP_JSON%" del /Q "%JSON_OLD%" >nul 2>&1
+if exist "%BACKUP_JSON%" move /Y "%BACKUP_JSON%" "%JSON_OLD%" >nul
+if exist "%BACKUP_JSON_TARGET%" move /Y "%BACKUP_JSON_TARGET%" "%JSON_TARGET%" >nul
+if exist "%BACKUP_JAR%" copy /Y "%BACKUP_JAR%" "%TARGET_JAR%" >nul
+goto :eof
