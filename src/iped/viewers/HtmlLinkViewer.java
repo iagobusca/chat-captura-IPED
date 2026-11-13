@@ -789,7 +789,10 @@ private void clearChatCaptureMarks() {
                     }
                     String linkedName = target.chatRefId == null || target.chatRefId.trim().isEmpty()
                             ? linkedFolderName(originMessageId, title)
-                            : target.chatRefId.trim();
+                            : safeName(target.chatRefId);
+                    if (linkedName.isEmpty()) {
+                        linkedName = linkedFolderName(originMessageId, title);
+                    }
                     File folder = new File(destination, linkedName);
                     ChatCaptureLinkedWindow window = new ChatCaptureLinkedWindow(
                             SwingUtilities.getWindowAncestor(chatCapturePanel), attachSearcher, item, title, destination,
@@ -821,12 +824,13 @@ private void clearChatCaptureMarks() {
 
     /** Nome da subpasta: identifica o chat e a mensagem de origem. */
     private String linkedFolderName(String originMessageId, String chatTitle) {
-        String title = safe(chatTitle).replaceAll("[\\\\/:*?\"<>|]", "_"); //$NON-NLS-1$
+        String title = safeName(chatTitle);
         if (title.length() > 40) {
-            title = title.substring(0, 40);
+            title = safeName(title.substring(0, 40));
         }
         String suffix = originMessageId == null || originMessageId.isBlank() ? "" : "_msg" + originMessageId; //$NON-NLS-1$
-        return safeName(title + suffix);
+        String result = safeName(title + suffix);
+        return result.isEmpty() ? "vinculado" : result; //$NON-NLS-1$
     }
 
     private String pendingLinkLabel() {
@@ -3555,10 +3559,11 @@ createReportThumbnails(captureDir, exported);
     }
 
     private String safeAttachmentName(String requested, String fallback) {
-        String value = requested == null || requested.isBlank() ? fallback : requested;
-        value = fileName(value.replace('\\', '/')).replaceAll("[\\p{Cntrl}\\\\/:*?\"<>|]+", "_").trim(); //$NON-NLS-1$ //$NON-NLS-2$
-        if (value.length() > 180) value = value.substring(value.length() - 180);
-        return value.isBlank() ? "anexo.bin" : value; //$NON-NLS-1$
+        String value = sanitizeFileName(requested);
+        if (value.isEmpty()) {
+            value = sanitizeFileName(fallback);
+        }
+        return value.isEmpty() ? "anexo.bin" : value; //$NON-NLS-1$
     }
 
     private static String sniffHtmlAttachmentMime(byte[] bytes) {
@@ -4612,14 +4617,15 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 if (source == null || !source.exists()) {
                     continue;
                 }
-                Path groupDir = attachmentsDir.resolve(groupFolder(item));
+                Path groupDir = CaptureIntegrity.resolveContained(attachmentsDir, groupFolder(item));
                 Files.createDirectories(groupDir);
                 String name = safeName(item.getName());
                 if (name.isBlank()) {
                     name = hash;
                 }
-                Path target = uniquePath(groupDir.resolve(name));
-                Files.copy(source.toPath(), target, StandardCopyOption.REPLACE_EXISTING);
+                Path candidate = CaptureIntegrity.resolveContained(groupDir, name);
+                Path target = uniquePath(candidate);
+                copyFileCreateNew(source.toPath(), target);
                 hashFile(target, exported, captureDir.relativize(target).toString(), hash, item);
             }
             exportedAttachmentHashes.add(hash);
@@ -4788,7 +4794,11 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 String sha = safe(file.sha256);
                 String first = sha.length() > 0 ? sha.substring(0, 1).toUpperCase() : "0"; //$NON-NLS-1$
                 String second = sha.length() > 1 ? sha.substring(1, 2).toUpperCase() : "0"; //$NON-NLS-1$
-                Path thumbPath = captureDir.resolve("thumbs").resolve(first).resolve(second).resolve((sha.isBlank() ? safeName(fileName(file.relativePath)) : sha) + ".jpg"); //$NON-NLS-1$ //$NON-NLS-2$
+                String thumbBase = sha.isBlank() ? safeName(fileName(file.relativePath)) : safeName(sha);
+                if (thumbBase.isBlank()) {
+                    thumbBase = "thumb"; //$NON-NLS-1$
+                }
+                Path thumbPath = captureDir.resolve("thumbs").resolve(first).resolve(second).resolve(thumbBase + ".jpg"); //$NON-NLS-1$ //$NON-NLS-2$
                 Files.createDirectories(thumbPath.getParent());
                 ImageIO.write(thumb, "jpg", thumbPath.toFile()); //$NON-NLS-1$
                 file.thumbRelativePath = captureDir.relativize(thumbPath).toString().replace('\\', '/');
@@ -6881,8 +6891,65 @@ private String js(String value) {
         return "Arquivo"; //$NON-NLS-1$
     }
 
+    private static final Pattern WINDOWS_RESERVED_DEVICE_PATTERN = Pattern.compile(
+            "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", Pattern.CASE_INSENSITIVE); //$NON-NLS-1$
+
+    /**
+     * Normaliza um nome de arquivo de segmento único seguro para Windows/POSIX,
+     * retornando string vazia para entradas nulas ou equivalentes a {@code .}/{@code ..}.
+     */
+    static String sanitizeFileName(String value) {
+        if (value == null || value.isBlank()) {
+            return ""; //$NON-NLS-1$
+        }
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        String cleaned = slash >= 0 ? value.substring(slash + 1) : value;
+        cleaned = cleaned.replaceAll("[\\p{Cntrl}\\\\/:*?\"<>|]+", "_").trim(); //$NON-NLS-1$ //$NON-NLS-2$
+        cleaned = stripTrailingDotsAndSpaces(cleaned);
+        if (cleaned.isEmpty() || ".".equals(cleaned) || "..".equals(cleaned)) { //$NON-NLS-1$ //$NON-NLS-2$
+            return ""; //$NON-NLS-1$
+        }
+        if (cleaned.length() > 180) {
+            int dot = cleaned.lastIndexOf('.');
+            if (dot > 0 && cleaned.length() - dot <= 16) {
+                String ext = cleaned.substring(dot);
+                String base = stripTrailingDotsAndSpaces(cleaned.substring(0, 180 - ext.length()));
+                cleaned = base.isEmpty() ? ext : (base + ext);
+            } else {
+                cleaned = stripTrailingDotsAndSpaces(cleaned.substring(0, 180));
+            }
+            if (cleaned.isEmpty() || ".".equals(cleaned) || "..".equals(cleaned)) { //$NON-NLS-1$ //$NON-NLS-2$
+                return ""; //$NON-NLS-1$
+            }
+        }
+        int firstDot = cleaned.indexOf('.');
+        String basePart = (firstDot >= 0 ? cleaned.substring(0, firstDot) : cleaned).trim();
+        if (WINDOWS_RESERVED_DEVICE_PATTERN.matcher(basePart).matches()) {
+            cleaned = "_" + cleaned; //$NON-NLS-1$
+            if (cleaned.length() > 180) {
+                cleaned = stripTrailingDotsAndSpaces(cleaned.substring(0, 180));
+            }
+        }
+        return cleaned;
+    }
+
+    private static String stripTrailingDotsAndSpaces(String value) {
+        int end = value.length();
+        while (end > 0 && (value.charAt(end - 1) == '.' || value.charAt(end - 1) == ' ')) {
+            end--;
+        }
+        return value.substring(0, end).trim();
+    }
+
+    /** Copia arquivo falhando atomicamente se o destino já existir. */
+    static void copyFileCreateNew(Path source, Path target) throws IOException {
+        try (java.io.OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) {
+            Files.copy(source, out);
+        }
+    }
+
     private String safeName(String value) {
-        return value == null ? "" : value.replaceAll("[\\\\/:*?\"<>|]+", "_").trim(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return sanitizeFileName(value);
     }
 
     private static class CaptureRootEntry {
