@@ -1019,26 +1019,27 @@ private void clearChatCaptureMarks() {
         try {
             if (manifest.isFile()) {
                 String content = CaptureIntegrity.readJsonUtf8Limited(manifest.toPath());
-                title = ChatAnnotationStore.field(content, "title");
+                JSONObject root = new JSONObject(content);
+                title = jsonString(root, "title"); //$NON-NLS-1$
                 if (title.isEmpty()) {
-                    title = ChatAnnotationStore.field(content, "chatTitle");
+                    title = jsonString(root, "chatTitle"); //$NON-NLS-1$
                 }
-                sourceName = ChatAnnotationStore.field(content, "sourceName");
-                sourceHash = ChatAnnotationStore.field(content, "sourceHash");
-                sourcePath = ChatAnnotationStore.field(content, "sourcePath");
-                String sourceMetadata = ChatAnnotationStore.extractObject(content, "sourceMetadata");
+                sourceName = jsonString(root, "sourceName"); //$NON-NLS-1$
+                sourceHash = jsonString(root, "sourceHash"); //$NON-NLS-1$
+                sourcePath = jsonString(root, "sourcePath"); //$NON-NLS-1$
+                JSONObject sourceMetadata = root.optJSONObject("sourceMetadata"); //$NON-NLS-1$
                 if (sourceMetadata != null) {
                     if (sourceName.isEmpty()) {
-                        sourceName = ChatAnnotationStore.field(sourceMetadata, "nome");
+                        sourceName = jsonString(sourceMetadata, "nome"); //$NON-NLS-1$
                     }
                     if (sourceHash.isEmpty()) {
-                        sourceHash = ChatAnnotationStore.field(sourceMetadata, "hash");
+                        sourceHash = jsonString(sourceMetadata, "hash"); //$NON-NLS-1$
                     }
                     if (sourcePath.isEmpty()) {
-                        sourcePath = ChatAnnotationStore.field(sourceMetadata, "caminho");
+                        sourcePath = jsonString(sourceMetadata, "caminho"); //$NON-NLS-1$
                     }
                     if (title.isEmpty()) {
-                        title = ChatAnnotationStore.field(sourceMetadata, "nome");
+                        title = jsonString(sourceMetadata, "nome"); //$NON-NLS-1$
                     }
                 }
             }
@@ -1388,7 +1389,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         return loadRecaptureJobs(outputRoot, folders, descriptorOnly, null);
     }
 
-    private List<RecaptureJob> loadRecaptureJobs(Path outputRoot, List<String> folders, boolean descriptorOnly,
+    List<RecaptureJob> loadRecaptureJobs(Path outputRoot, List<String> folders, boolean descriptorOnly,
             java.util.function.IntConsumer progress) throws IOException {
         List<RecaptureJob> jobs = new ArrayList<>();
         long pageMetadataBytes = 0;
@@ -1418,71 +1419,14 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 throw new IOException("Os metadados desta página excedem o orçamento seguro de 16 MiB; selecione uma página menor.");
             }
             String content = CaptureIntegrity.readJsonUtf8Limited(manifest);
-            JSONObject savedManifest = new JSONObject(content);
-            job.captureFingerprint = savedManifest.optJSONObject("captureFingerprint");
-            job.artifactGenerators = savedManifest.optJSONObject("artifactGenerators");
-            job.expectedArtifacts = savedManifest.optJSONArray("artifacts");
-            JSONObject priorCensorship = savedManifest.optJSONObject("censorship"); //$NON-NLS-1$
-            job.priorCensorshipDigest = priorCensorship == null ? "" : priorCensorship.optString("presentationDigest", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            job.htmlMessageCapture = "html-message-v1".equals(savedManifest.optString("captureFormat")); //$NON-NLS-1$ //$NON-NLS-2$
-            job.legacyCapture = !job.htmlMessageCapture;
-            // Legacy captures may store the numeric message ids separately; enrich anchors with them.
-            if (job.legacyCapture) {
-                if (job.startAnchor.id.isBlank()) job.startAnchor.id = safe(job.startMessageId);
-                if (job.endAnchor.id.isBlank()) job.endAnchor.id = safe(job.endMessageId);
-            }
-            job.legacyAnnotations = !job.htmlMessageCapture && jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
-            job.status = jsonField(content, "status"); //$NON-NLS-1$
-            job.startMessageId = jsonField(content, "startMessageId"); //$NON-NLS-1$
-            job.endMessageId = jsonField(content, "endMessageId"); //$NON-NLS-1$
-            job.startAnchor = readAnchor(content, "startAnchor"); //$NON-NLS-1$
-            job.endAnchor = readAnchor(content, "endAnchor"); //$NON-NLS-1$
-            if (job.htmlMessageCapture) {
-                JSONObject anchors = savedManifest.optJSONObject("anchors"); //$NON-NLS-1$
-                job.startMessageId = anchors == null ? "" : anchors.optString("start"); //$NON-NLS-1$ //$NON-NLS-2$
-                job.endMessageId = anchors == null ? "" : anchors.optString("end"); //$NON-NLS-1$ //$NON-NLS-2$
-                job.startAnchor.id = job.startMessageId;
-                job.endAnchor.id = job.endMessageId;
-                job.startAnchorLabel = "ID " + job.startMessageId; //$NON-NLS-1$
-                job.endAnchorLabel = "ID " + job.endMessageId; //$NON-NLS-1$
-            }
-            // Capturas v2 nao gravam startMessageId/endMessageId; usa o id das ancoras.
-            if (job.startMessageId == null || job.startMessageId.isBlank()) {
-                job.startMessageId = job.startAnchor == null ? "" : safe(job.startAnchor.id); //$NON-NLS-1$
-            }
-            if (job.endMessageId == null || job.endMessageId.isBlank()) {
-                job.endMessageId = job.endAnchor == null ? "" : safe(job.endAnchor.id); //$NON-NLS-1$
-            }
-            String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            job.sourceName = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name")); //$NON-NLS-1$ //$NON-NLS-2$
-            job.sourceTitle = firstNonBlank(jsonField(source, "title"), jsonField(source, "name"), jsonField(source, "nome")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            job.sourceHash = firstNonBlank(jsonField(source, "itemHash"), jsonField(source, "hash"), jsonField(source, "sha256")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            job.sourcePath = jsonField(source, "caminho"); //$NON-NLS-1$
-
-            // Compatibilidade com capturas legadas: tenta recuperar dados de origem
-            // a partir de whatsapp-coordinates.json e texto.txt quando o manifest
-            // (versao 1) nao trouxe sourceMetadata completo.
-            if (Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) {
-                String coordinateContent = CaptureIntegrity.readJsonUtf8Limited(coordinates);
-                CaptureAnchor coordinateStartAnchor = firstBlockAnchor(coordinateContent, job.startMessageId);
-                CaptureAnchor coordinateEndAnchor = lastBlockAnchor(coordinateContent, job.endMessageId);
-                if (!job.startAnchor.isUsable()) {
-                    job.startAnchor = coordinateStartAnchor;
-                } else {
-                    job.startAnchor = enrichAnchorFromCoordinates(job.startAnchor, coordinateStartAnchor);
-                }
-                if (!job.endAnchor.isUsable()) {
-                    job.endAnchor = coordinateEndAnchor;
-                } else {
-                    job.endAnchor = enrichAnchorFromCoordinates(job.endAnchor, coordinateEndAnchor);
-                }
-                if (job.sourceName == null || job.sourceName.isBlank()) {
-                    String coordSource = jsonObjectField(coordinateContent, "sourceMetadata"); //$NON-NLS-1$
-                    job.sourceName = firstNonBlank(job.sourceName, jsonField(coordSource, "nome"), jsonField(coordSource, "title")); //$NON-NLS-1$ //$NON-NLS-2$
-                    job.sourceTitle = firstNonBlank(job.sourceTitle, jsonField(coordSource, "title"), jsonField(coordSource, "nome")); //$NON-NLS-1$ //$NON-NLS-2$
-                    job.sourceHash = firstNonBlank(job.sourceHash, jsonField(coordSource, "hash")); //$NON-NLS-1$
-                    job.sourcePath = firstNonBlank(job.sourcePath, jsonField(coordSource, "caminho")); //$NON-NLS-1$
-                }
+            String coordinateContent = Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)
+                    ? CaptureIntegrity.readJsonUtf8Limited(coordinates)
+                    : null;
+            if (!populateRecaptureJobMetadata(job, content, coordinateContent)) {
+                LOGGER.warn("Invalid manifest JSON in {}", manifest); //$NON-NLS-1$
+                job.invalidReason = "manifest.json inválido"; //$NON-NLS-1$
+                jobs.add(job);
+                continue;
             }
 
             Path text = folderPath.resolve("texto.txt"); //$NON-NLS-1$
@@ -1541,6 +1485,78 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             if (progress != null) progress.accept(jobs.size());
         }
         return jobs;
+    }
+
+    static boolean populateRecaptureJobMetadata(RecaptureJob job, String manifestContent, String coordinateContent) {
+        JSONObject savedManifest = parseJsonObjectOrNull(manifestContent);
+        if (savedManifest == null) {
+            return false;
+        }
+        job.captureFingerprint = savedManifest.optJSONObject("captureFingerprint");
+        job.artifactGenerators = savedManifest.optJSONObject("artifactGenerators");
+        job.expectedArtifacts = savedManifest.optJSONArray("artifacts");
+        JSONObject priorCensorship = savedManifest.optJSONObject("censorship"); //$NON-NLS-1$
+        job.priorCensorshipDigest = jsonString(priorCensorship, "presentationDigest"); //$NON-NLS-1$
+        job.htmlMessageCapture = "html-message-v1".equals(jsonString(savedManifest, "captureFormat")); //$NON-NLS-1$ //$NON-NLS-2$
+        job.legacyCapture = !job.htmlMessageCapture;
+        job.legacyAnnotations = !job.htmlMessageCapture && jsonLong(savedManifest, "version", 1L) < 2L; //$NON-NLS-1$
+        job.status = jsonString(savedManifest, "status"); //$NON-NLS-1$
+        job.startMessageId = jsonString(savedManifest, "startMessageId"); //$NON-NLS-1$
+        job.endMessageId = jsonString(savedManifest, "endMessageId"); //$NON-NLS-1$
+        job.startAnchor = readAnchor(savedManifest, "startAnchor"); //$NON-NLS-1$
+        job.endAnchor = readAnchor(savedManifest, "endAnchor"); //$NON-NLS-1$
+        // Legacy captures may store the numeric message ids separately; enrich anchors after loading both.
+        if (job.legacyCapture) {
+            if (job.startAnchor.id.isBlank()) job.startAnchor.id = safe(job.startMessageId);
+            if (job.endAnchor.id.isBlank()) job.endAnchor.id = safe(job.endMessageId);
+        }
+        if (job.htmlMessageCapture) {
+            JSONObject anchors = savedManifest.optJSONObject("anchors"); //$NON-NLS-1$
+            job.startMessageId = jsonString(anchors, "start"); //$NON-NLS-1$
+            job.endMessageId = jsonString(anchors, "end"); //$NON-NLS-1$
+            job.startAnchor.id = job.startMessageId;
+            job.endAnchor.id = job.endMessageId;
+            job.startAnchorLabel = "ID " + job.startMessageId; //$NON-NLS-1$
+            job.endAnchorLabel = "ID " + job.endMessageId; //$NON-NLS-1$
+        }
+        // Capturas v2 nao gravam startMessageId/endMessageId; usa o id das ancoras.
+        if (job.startMessageId == null || job.startMessageId.isBlank()) {
+            job.startMessageId = job.startAnchor == null ? "" : safe(job.startAnchor.id); //$NON-NLS-1$
+        }
+        if (job.endMessageId == null || job.endMessageId.isBlank()) {
+            job.endMessageId = job.endAnchor == null ? "" : safe(job.endAnchor.id); //$NON-NLS-1$
+        }
+        JSONObject source = savedManifest.optJSONObject("sourceMetadata"); //$NON-NLS-1$
+        job.sourceName = firstNonBlank(jsonString(source, "nome"), jsonString(source, "name")); //$NON-NLS-1$ //$NON-NLS-2$
+        job.sourceTitle = firstNonBlank(jsonString(source, "title"), jsonString(source, "name"), jsonString(source, "nome")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        job.sourceHash = firstNonBlank(jsonString(source, "itemHash"), jsonString(source, "hash"), jsonString(source, "sha256")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        job.sourcePath = jsonString(source, "caminho"); //$NON-NLS-1$
+
+        // Compatibilidade com capturas legadas: tenta recuperar dados de origem
+        // a partir de whatsapp-coordinates.json quando o manifest nao trouxe sourceMetadata completo.
+        if (coordinateContent != null && !coordinateContent.isBlank()) {
+            CaptureAnchor coordinateStartAnchor = firstBlockAnchor(coordinateContent, job.startMessageId);
+            CaptureAnchor coordinateEndAnchor = lastBlockAnchor(coordinateContent, job.endMessageId);
+            if (!job.startAnchor.isUsable()) {
+                job.startAnchor = coordinateStartAnchor;
+            } else {
+                job.startAnchor = enrichAnchorFromCoordinates(job.startAnchor, coordinateStartAnchor);
+            }
+            if (!job.endAnchor.isUsable()) {
+                job.endAnchor = coordinateEndAnchor;
+            } else {
+                job.endAnchor = enrichAnchorFromCoordinates(job.endAnchor, coordinateEndAnchor);
+            }
+            if (job.sourceName == null || job.sourceName.isBlank()) {
+                JSONObject coordRoot = parseJsonObjectOrNull(coordinateContent);
+                JSONObject coordSource = coordRoot == null ? null : coordRoot.optJSONObject("sourceMetadata"); //$NON-NLS-1$
+                job.sourceName = firstNonBlank(job.sourceName, jsonString(coordSource, "nome"), jsonString(coordSource, "title")); //$NON-NLS-1$ //$NON-NLS-2$
+                job.sourceTitle = firstNonBlank(job.sourceTitle, jsonString(coordSource, "title"), jsonString(coordSource, "nome")); //$NON-NLS-1$ //$NON-NLS-2$
+                job.sourceHash = firstNonBlank(job.sourceHash, jsonString(coordSource, "hash")); //$NON-NLS-1$
+                job.sourcePath = firstNonBlank(job.sourcePath, jsonString(coordSource, "caminho")); //$NON-NLS-1$
+            }
+        }
+        return true;
     }
 
     private interface RecaptureLoad<T> { T load(java.util.function.IntConsumer progress) throws Exception; }
@@ -1801,7 +1817,9 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             }
             updateRecaptureProgress(job, batchCurrent, batchTotal, 5, "Validando resultado temporario da re-extracao...", false); //$NON-NLS-1$
             Path manifest = result.captureDir.resolve("manifest.json"); //$NON-NLS-1$
-            String status = Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS) ? jsonField(CaptureIntegrity.readJsonUtf8Limited(manifest), "status") : result.status; //$NON-NLS-1$
+            String status = Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)
+                    ? jsonString(parseJsonObjectOrNull(CaptureIntegrity.readJsonUtf8Limited(manifest)), "status") //$NON-NLS-1$
+                    : result.status;
             if (!"completed".equals(status)) { //$NON-NLS-1$
                 deleteDirectoryIfExists(result.captureDir);
                 throw new IOException("Re-extração nao completou: " + status); //$NON-NLS-1$
@@ -3665,11 +3683,11 @@ createReportThumbnails(captureDir, exported);
         Path coordinates = job.folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
         if (!Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) return ""; //$NON-NLS-1$
         String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
-        String annotations = ChatAnnotationStore.extractObject(content, "annotations"); //$NON-NLS-1$
-        if (annotations == null || annotations.isBlank()) return ""; //$NON-NLS-1$
         try {
-            JSONObject parsed = new JSONObject(annotations);
-            return parsed.toString(2) + System.lineSeparator();
+            JSONObject root = new JSONObject(content);
+            JSONObject annotations = root.optJSONObject("annotations"); //$NON-NLS-1$
+            if (annotations == null) return ""; //$NON-NLS-1$
+            return annotations.toString(2) + System.lineSeparator();
         } catch (RuntimeException invalid) {
             throw new IOException("As anotações legadas estão inválidas; a captura antiga foi preservada.", invalid); //$NON-NLS-1$
         }
@@ -4102,45 +4120,22 @@ createReportThumbnails(captureDir, exported);
         entry.status = "unknown"; //$NON-NLS-1$
 
         Path manifest = captureDir.resolve("manifest.json"); //$NON-NLS-1$
-        String chronologicalStart = ""; //$NON-NLS-1$
-        String chronologicalEnd = ""; //$NON-NLS-1$
+        String[] chronologicalBounds = new String[] { "", "" }; //$NON-NLS-1$ //$NON-NLS-2$
         if (CaptureIntegrity.isSafeRegularFile(manifest)) {
-            String content = CaptureIntegrity.readJsonUtf8Limited(manifest);
-
-            // Capturas html-message-v1 usam um esquema de anotações próprio; o campo "version"
-            // do manifesto nao indica anotações legadas nessas capturas.
-            entry.legacyAnnotations = !"html-message-v1".equals(jsonField(content, "captureFormat")) //$NON-NLS-1$ //$NON-NLS-2$
-                    && jsonLongField(content, "version", 1L) < 2L; //$NON-NLS-1$
-            entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
-            chronologicalStart = readAnchor(content, "startAnchor").date; //$NON-NLS-1$
-            chronologicalEnd = readAnchor(content, "endAnchor").date; //$NON-NLS-1$
-            String annotations = ChatAnnotationStore.extractObject(content, "annotations"); //$NON-NLS-1$
-            entry.annotationsEnabled = annotations != null && !annotations.isEmpty(); //$NON-NLS-1$
-            String counts = entry.annotationsEnabled ? ChatAnnotationStore.extractObject(annotations, "counts") : null; //$NON-NLS-1$
-            if (counts != null) {
-                entry.notesCount = (int) jsonLongField(counts, "notes", 0L); //$NON-NLS-1$
-                entry.linksCount = (int) jsonLongField(counts, "annotatedMessages", 0L); //$NON-NLS-1$
-                entry.contactsCount = (int) jsonLongField(counts, "contacts", 0L); //$NON-NLS-1$
+            if (!populateCaptureRootManifestJson(entry, CaptureIntegrity.readJsonUtf8Limited(manifest), chronologicalBounds)) {
+                LOGGER.warn("Invalid manifest JSON in {}", manifest); //$NON-NLS-1$
             }
-            String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            entry.chatId = inferChatId(entry.title);
-            entry.sizeBytes = jsonLongField(source, "size", jsonLongField(source, "tamanho", 0)); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         Path coordinates = captureDir.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-        if ((entry.title == null || entry.title.isBlank()) && CaptureIntegrity.isSafeRegularFile(coordinates)) {
-            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
-            String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
-            entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            entry.chatId = inferChatId(entry.title);
-            entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
+        if (((entry.title == null || entry.title.isBlank()) || chronologicalBounds[0].isBlank() || chronologicalBounds[1].isBlank())
+                && CaptureIntegrity.isSafeRegularFile(coordinates)) {
+            if (!populateCaptureRootCoordinatesJson(entry, CaptureIntegrity.readJsonUtf8Limited(coordinates), chronologicalBounds)) {
+                LOGGER.warn("Invalid coordinates JSON in {}", coordinates); //$NON-NLS-1$
+            }
         }
-        if ((chronologicalStart.isBlank() || chronologicalEnd.isBlank()) && CaptureIntegrity.isSafeRegularFile(coordinates)) {
-            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
-            chronologicalStart = nonBlank(chronologicalStart, readAnchor(content, "startAnchor").date); //$NON-NLS-1$
-            chronologicalEnd = nonBlank(chronologicalEnd, readAnchor(content, "endAnchor").date); //$NON-NLS-1$
-        }
+        String chronologicalStart = chronologicalBounds[0];
+        String chronologicalEnd = chronologicalBounds[1];
 
         Path text = captureDir.resolve("texto.txt"); //$NON-NLS-1$
         if (CaptureIntegrity.isSafeRegularFile(text)) {
@@ -4164,6 +4159,52 @@ createReportThumbnails(captureDir, exported);
         entry.linksManifest = entry.folder + "/manifest.json"; //$NON-NLS-1$
         entry.linksHashes = entry.folder + "/hashes.txt"; //$NON-NLS-1$
         return entry;
+    }
+
+    static boolean populateCaptureRootManifestJson(CaptureRootEntry entry, String manifestContent,
+            String[] chronologicalBounds) {
+        JSONObject manifestJson = parseJsonObjectOrNull(manifestContent);
+        if (manifestJson == null) {
+            entry.status = "invalid"; //$NON-NLS-1$
+            return false;
+        }
+        // Capturas html-message-v1 usam um esquema de anotações próprio; o campo "version"
+        // do manifesto nao indica anotações legadas nessas capturas.
+        entry.legacyAnnotations = !"html-message-v1".equals(jsonString(manifestJson, "captureFormat")) //$NON-NLS-1$ //$NON-NLS-2$
+                && jsonLong(manifestJson, "version", 1L) < 2L; //$NON-NLS-1$
+        entry.status = nonBlank(jsonString(manifestJson, "status"), entry.status); //$NON-NLS-1$
+        chronologicalBounds[0] = readAnchor(manifestJson, "startAnchor").date; //$NON-NLS-1$
+        chronologicalBounds[1] = readAnchor(manifestJson, "endAnchor").date; //$NON-NLS-1$
+        JSONObject annotations = manifestJson.optJSONObject("annotations"); //$NON-NLS-1$
+        entry.annotationsEnabled = annotations != null;
+        JSONObject counts = entry.annotationsEnabled ? annotations.optJSONObject("counts") : null; //$NON-NLS-1$
+        if (counts != null) {
+            entry.notesCount = (int) jsonLong(counts, "notes", 0L); //$NON-NLS-1$
+            entry.linksCount = (int) jsonLong(counts, "annotatedMessages", 0L); //$NON-NLS-1$
+            entry.contactsCount = (int) jsonLong(counts, "contacts", 0L); //$NON-NLS-1$
+        }
+        JSONObject source = manifestJson.optJSONObject("sourceMetadata"); //$NON-NLS-1$
+        entry.title = firstNonBlank(jsonString(source, "nome"), jsonString(source, "name"), jsonString(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        entry.chatId = inferChatId(entry.title);
+        entry.sizeBytes = jsonLong(source, "size", jsonLong(source, "tamanho", 0L)); //$NON-NLS-1$ //$NON-NLS-2$
+        return true;
+    }
+
+    static boolean populateCaptureRootCoordinatesJson(CaptureRootEntry entry, String coordContent,
+            String[] chronologicalBounds) {
+        JSONObject coordJson = parseJsonObjectOrNull(coordContent);
+        if (coordJson == null) {
+            return false;
+        }
+        if (entry.title == null || entry.title.isBlank()) {
+            JSONObject source = coordJson.optJSONObject("sourceMetadata"); //$NON-NLS-1$
+            entry.title = firstNonBlank(jsonString(source, "nome"), jsonString(source, "name"), jsonString(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            entry.chatId = inferChatId(entry.title);
+            entry.status = nonBlank(jsonString(coordJson, "status"), entry.status); //$NON-NLS-1$
+        }
+        chronologicalBounds[0] = nonBlank(chronologicalBounds[0], readAnchor(coordJson, "startAnchor").date); //$NON-NLS-1$
+        chronologicalBounds[1] = nonBlank(chronologicalBounds[1], readAnchor(coordJson, "endAnchor").date); //$NON-NLS-1$
+        return true;
     }
 
     private void sortCaptureRootEntries(List<CaptureRootEntry> captures) {
@@ -4486,7 +4527,7 @@ createReportThumbnails(captureDir, exported);
         return header;
     }
 
-    private String inferChatId(String value) {
+    private static String inferChatId(String value) {
         String text = safe(value);
         int dash = text.lastIndexOf(" - "); //$NON-NLS-1$
         if (dash >= 0 && dash + 3 < text.length()) {
@@ -4501,7 +4542,7 @@ createReportThumbnails(captureDir, exported);
         return last;
     }
 
-    private String firstNonBlank(String... values) {
+    private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
                 return value;
@@ -4510,37 +4551,91 @@ createReportThumbnails(captureDir, exported);
         return ""; //$NON-NLS-1$
     }
 
-    private String jsonObjectField(String content, String field) {
-        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\\{([^{}]*)\\}", Pattern.DOTALL).matcher(safe(content)); //$NON-NLS-1$ //$NON-NLS-2$
-        return matcher.find() ? matcher.group(1) : ""; //$NON-NLS-1$
+    private static JSONObject parseJsonObjectOrNull(String jsonText) {
+        if (jsonText == null || jsonText.isBlank()) {
+            return null;
+        }
+        try {
+            return new JSONObject(jsonText);
+        } catch (org.json.JSONException invalid) {
+            return null;
+        }
     }
 
-    private String jsonField(String content, String field) {
-        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*(\"((?:\\\\.|[^\"])*)\"|null|true|false|-?\\d+)", Pattern.DOTALL).matcher(safe(content)); //$NON-NLS-1$ //$NON-NLS-2$
-        if (!matcher.find()) {
+    private static String jsonString(JSONObject object, String key) {
+        if (object == null || key == null || object.isNull(key)) {
             return ""; //$NON-NLS-1$
         }
-        String quoted = matcher.group(2);
-        return quoted != null ? unescapeJson(quoted) : matcher.group(1);
+        Object value = object.opt(key);
+        if (value == null || value == JSONObject.NULL || value instanceof JSONObject || value instanceof JSONArray) {
+            return ""; //$NON-NLS-1$
+        }
+        return String.valueOf(value);
     }
 
-    private CaptureAnchor readAnchor(String content, String field) {
-        String object = jsonObjectField(content, field);
-        if (object.isBlank()) {
+    private static long jsonLong(JSONObject object, String key, long fallback) {
+        if (object == null || key == null || object.isNull(key)) {
+            return fallback;
+        }
+        Object value = object.opt(key);
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value instanceof String) {
+            try {
+                String trimmed = ((String) value).trim();
+                return trimmed.isEmpty() ? fallback : Long.parseLong(trimmed);
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private static double jsonDouble(JSONObject object, String key, double fallback) {
+        if (object == null || key == null || object.isNull(key)) {
+            return fallback;
+        }
+        Object value = object.opt(key);
+        if (value instanceof Number) {
+            double parsed = ((Number) value).doubleValue();
+            return Double.isFinite(parsed) ? parsed : fallback;
+        }
+        if (value instanceof String) {
+            try {
+                String trimmed = ((String) value).trim();
+                if (trimmed.isEmpty()) {
+                    return fallback;
+                }
+                double parsed = Double.parseDouble(trimmed);
+                return Double.isFinite(parsed) ? parsed : fallback;
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    static CaptureAnchor readAnchor(JSONObject parent, String field) {
+        return readAnchor(parent == null ? null : parent.optJSONObject(field));
+    }
+
+    static CaptureAnchor readAnchor(JSONObject object) {
+        if (object == null) {
             return new CaptureAnchor();
         }
         CaptureAnchor anchor = new CaptureAnchor();
-        anchor.type = jsonField(object, "type"); //$NON-NLS-1$
-        anchor.id = jsonField(object, "id"); //$NON-NLS-1$
-        anchor.text = jsonField(object, "text"); //$NON-NLS-1$
-        anchor.date = jsonField(object, "date"); //$NON-NLS-1$
-        anchor.hash = jsonField(object, "hash"); //$NON-NLS-1$
-        anchor.documentTop = jsonDoubleField(object, "documentTop", -1); //$NON-NLS-1$
-        anchor.documentBottom = jsonDoubleField(object, "documentBottom", -1); //$NON-NLS-1$
+        anchor.type = jsonString(object, "type"); //$NON-NLS-1$
+        anchor.id = jsonString(object, "id"); //$NON-NLS-1$
+        anchor.text = jsonString(object, "text"); //$NON-NLS-1$
+        anchor.date = jsonString(object, "date"); //$NON-NLS-1$
+        anchor.hash = jsonString(object, "hash"); //$NON-NLS-1$
+        anchor.documentTop = jsonDouble(object, "documentTop", -1); //$NON-NLS-1$
+        anchor.documentBottom = jsonDouble(object, "documentBottom", -1); //$NON-NLS-1$
         return anchor.normalized();
     }
 
-    private CaptureAnchor enrichAnchorFromCoordinates(CaptureAnchor anchor, CaptureAnchor coordinateAnchor) {
+    private static CaptureAnchor enrichAnchorFromCoordinates(CaptureAnchor anchor, CaptureAnchor coordinateAnchor) {
         if (anchor == null) {
             return coordinateAnchor == null ? new CaptureAnchor() : coordinateAnchor.normalized();
         }
@@ -4571,7 +4666,7 @@ createReportThumbnails(captureDir, exported);
         return anchor.normalized();
     }
 
-    private CaptureAnchor firstBlockAnchor(String coordinatesJson, String preferredId) {
+    static CaptureAnchor firstBlockAnchor(String coordinatesJson, String preferredId) {
         List<CaptureAnchor> anchors = readCoordinateAnchors(coordinatesJson);
         if (preferredId != null && !preferredId.isBlank()) {
             for (CaptureAnchor anchor : anchors) {
@@ -4588,7 +4683,7 @@ createReportThumbnails(captureDir, exported);
         return new CaptureAnchor();
     }
 
-    private CaptureAnchor lastBlockAnchor(String coordinatesJson, String preferredId) {
+    static CaptureAnchor lastBlockAnchor(String coordinatesJson, String preferredId) {
         List<CaptureAnchor> anchors = readCoordinateAnchors(coordinatesJson);
         if (preferredId != null && !preferredId.isBlank()) {
             for (CaptureAnchor anchor : anchors) {
@@ -4606,7 +4701,7 @@ createReportThumbnails(captureDir, exported);
         return new CaptureAnchor();
     }
 
-    private List<CaptureAnchor> readCoordinateAnchors(String coordinatesJson) {
+    static List<CaptureAnchor> readCoordinateAnchors(String coordinatesJson) {
         List<CaptureAnchor> anchors = new ArrayList<>();
         String safe = safe(coordinatesJson);
         // As ancoras reais ficam dentro de "frames[].blocks". startAnchor/endAnchor do
@@ -4618,69 +4713,40 @@ createReportThumbnails(captureDir, exported);
             if (frames != null) {
                 for (int i = 0; i < frames.length(); i++) {
                     JSONObject frame = frames.optJSONObject(i);
-                    if (frame == null) {
-                        continue;
-                    }
-                    JSONArray blocks = frame.optJSONArray("blocks"); //$NON-NLS-1$
-                    if (blocks == null) {
-                        continue;
-                    }
-                    for (int j = 0; j < blocks.length(); j++) {
-                        JSONObject b = blocks.optJSONObject(j);
-                        if (b == null) {
-                            continue;
-                        }
-                        CaptureAnchor anchor = new CaptureAnchor();
-                        anchor.id = b.optString("id", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.type = b.optString("type", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.text = b.optString("text", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.hash = b.optString("hash", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.date = extractMessageDate(anchor.text);
-                        anchor.documentTop = b.optDouble("documentTop", -1); //$NON-NLS-1$
-                        anchor.documentBottom = b.optDouble("documentBottom", -1); //$NON-NLS-1$
-                        anchors.add(anchor.normalized());
+                    if (frame != null) {
+                        addCoordinateAnchorsFromBlocks(frame.optJSONArray("blocks"), anchors); //$NON-NLS-1$
                     }
                 }
             }
             // Fallback: blocks no nivel raiz (formatos alternativos).
             if (anchors.isEmpty()) {
-                JSONArray blocks = root.optJSONArray("blocks"); //$NON-NLS-1$
-                if (blocks != null) {
-                    for (int j = 0; j < blocks.length(); j++) {
-                        JSONObject b = blocks.optJSONObject(j);
-                        if (b == null) {
-                            continue;
-                        }
-                        CaptureAnchor anchor = new CaptureAnchor();
-                        anchor.id = b.optString("id", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.type = b.optString("type", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.text = b.optString("text", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.hash = b.optString("hash", ""); //$NON-NLS-1$ //$NON-NLS-2$
-                        anchor.date = extractMessageDate(anchor.text);
-                        anchor.documentTop = b.optDouble("documentTop", -1); //$NON-NLS-1$
-                        anchor.documentBottom = b.optDouble("documentBottom", -1); //$NON-NLS-1$
-                        anchors.add(anchor.normalized());
-                    }
-                }
+                addCoordinateAnchorsFromBlocks(root.optJSONArray("blocks"), anchors); //$NON-NLS-1$
             }
         } catch (Exception e) {
-            // Fallback para JSON malformado: regex original sobre o arquivo inteiro.
-            Matcher matcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
-                    .matcher(safe);
-            while (matcher.find()) {
-                String object = matcher.group();
-                CaptureAnchor anchor = new CaptureAnchor();
-                anchor.id = jsonField(object, "id"); //$NON-NLS-1$
-                anchor.type = jsonField(object, "type"); //$NON-NLS-1$
-                anchor.text = jsonField(object, "text"); //$NON-NLS-1$
-                anchor.hash = jsonField(object, "hash"); //$NON-NLS-1$
-                anchor.date = extractMessageDate(anchor.text);
-                anchor.documentTop = jsonDoubleField(object, "documentTop", -1); //$NON-NLS-1$
-                anchor.documentBottom = jsonDoubleField(object, "documentBottom", -1); //$NON-NLS-1$
-                anchors.add(anchor.normalized());
-            }
+            LOGGER.warn("Unable to parse coordinate blocks JSON: {}", e.getMessage()); //$NON-NLS-1$
         }
         return anchors;
+    }
+
+    private static void addCoordinateAnchorsFromBlocks(JSONArray blocks, List<CaptureAnchor> anchors) {
+        if (blocks == null) {
+            return;
+        }
+        for (int j = 0; j < blocks.length(); j++) {
+            JSONObject b = blocks.optJSONObject(j);
+            if (b == null) {
+                continue;
+            }
+            CaptureAnchor anchor = new CaptureAnchor();
+            anchor.id = jsonString(b, "id"); //$NON-NLS-1$
+            anchor.type = jsonString(b, "type"); //$NON-NLS-1$
+            anchor.text = jsonString(b, "text"); //$NON-NLS-1$
+            anchor.hash = jsonString(b, "hash"); //$NON-NLS-1$
+            anchor.date = extractMessageDate(anchor.text);
+            anchor.documentTop = jsonDouble(b, "documentTop", -1); //$NON-NLS-1$
+            anchor.documentBottom = jsonDouble(b, "documentBottom", -1); //$NON-NLS-1$
+            anchors.add(anchor.normalized());
+        }
     }
 
     private CaptureAnchor anchorForMessage(List<CaptureFrame> frames, String messageId, boolean lastFallback) {
@@ -4719,49 +4785,9 @@ createReportThumbnails(captureDir, exported);
         return anchor.normalized();
     }
 
-    private String extractMessageDate(String text) {
+    private static String extractMessageDate(String text) {
         Matcher matcher = Pattern.compile("(\\d{4}[-/]\\d{2}[-/]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\s+[-+]\\d{2}:?\\d{2})?)").matcher(safe(text)); //$NON-NLS-1$
         return matcher.find() ? matcher.group(1).trim() : ""; //$NON-NLS-1$
-    }
-
-    private long jsonLongField(String content, String field, long fallback) {
-        String value = jsonField(content, field);
-        try {
-            return value.isBlank() || "null".equals(value) ? fallback : Long.parseLong(value); //$NON-NLS-1$
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
-
-    private double jsonDoubleField(String content, String field, double fallback) {
-        String value = jsonField(content, field);
-        try {
-            return value.isBlank() || "null".equals(value) ? fallback : Double.parseDouble(value); //$NON-NLS-1$
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
-
-    private String unescapeJson(String value) {
-        StringBuilder out = new StringBuilder();
-        boolean escaping = false;
-        for (int i = 0; i < safe(value).length(); i++) {
-            char c = value.charAt(i);
-            if (!escaping && c == '\\') {
-                escaping = true;
-                continue;
-            }
-            if (escaping) {
-                if (c == 'n') out.append('\n');
-                else if (c == 'r') out.append('\r');
-                else if (c == 't') out.append('\t');
-                else out.append(c);
-                escaping = false;
-            } else {
-                out.append(c);
-            }
-        }
-        return out.toString();
     }
 
     private void writeCaptureRootIndexJson(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
@@ -6595,33 +6621,75 @@ private void setCaptureInteractionEnabled(boolean enabled) {
             if (!CaptureIntegrity.isSafeRegularFile(coordinates)) {
                 return false;
             }
-            String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
-            Matcher blockMatcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
-                    .matcher(content);
-            while (blockMatcher.find()) {
-                String object = blockMatcher.group();
-                String blockHash = jsonField(object, "hash").trim().toUpperCase(); //$NON-NLS-1$
-                if (!wanted.equals(blockHash)) {
+            return matchesSensitiveImageInCoordinatesJson(job.folderPath, CaptureIntegrity.readJsonUtf8Limited(coordinates),
+                    wanted, matcher);
+        } catch (Exception e) {
+            LOGGER.debug("Unable to match sensitive image from previous capture for hash {}", hash, e); //$NON-NLS-1$
+        }
+        return false;
+    }
+
+    static boolean matchesSensitiveImageInCoordinatesJson(Path captureRoot, String coordinatesJson, String wantedHash,
+            SensitiveImageMatcher matcher) {
+        return matchesSensitiveImageInCoordinatesJson(captureRoot, coordinatesJson, wantedHash,
+                matcher == null ? null : (java.util.function.Predicate<File>) matcher::matches);
+    }
+
+    static boolean matchesSensitiveImageInCoordinatesJson(Path captureRoot, String coordinatesJson, String wantedHash,
+            java.util.function.Predicate<File> matcher) {
+        if (captureRoot == null || matcher == null || wantedHash == null || wantedHash.isBlank()) {
+            return false;
+        }
+        JSONObject root = parseJsonObjectOrNull(coordinatesJson);
+        if (root == null) {
+            return false;
+        }
+        String wanted = wantedHash.trim().toUpperCase();
+        JSONArray frames = root.optJSONArray("frames"); //$NON-NLS-1$
+        if (frames != null) {
+            for (int i = 0; i < frames.length(); i++) {
+                JSONObject frame = frames.optJSONObject(i);
+                if (frame == null) {
                     continue;
                 }
-                String file = jsonField(object, "file"); //$NON-NLS-1$
-                if (file == null || file.isBlank() || "null".equals(file)) { //$NON-NLS-1$
-                    continue;
-                }
-                Path candidate;
-                try {
-                    candidate = CaptureIntegrity.resolveContained(job.folderPath, file);
-                } catch (IOException unsafe) {
-                    LOGGER.warn("Ignoring unsafe previous capture frame path {}: {}", file, unsafe.getMessage()); //$NON-NLS-1$
-                    continue;
-                }
-                if (CaptureIntegrity.isSafeRegularFile(candidate) && matcher.matches(candidate.toFile())) {
-                    LOGGER.info("Sensitive blur matched previous capture file {} for hash {}", candidate, wanted); //$NON-NLS-1$
+                String frameFile = firstNonBlank(jsonString(frame, "file"), jsonString(frame, "image")); //$NON-NLS-1$ //$NON-NLS-2$
+                if (matchesCoordinateBlockArray(captureRoot, frame.optJSONArray("blocks"), frameFile, wanted, matcher)) { //$NON-NLS-1$
                     return true;
                 }
             }
-        } catch (Exception e) {
-            LOGGER.debug("Unable to match sensitive image from previous capture for hash {}", hash, e); //$NON-NLS-1$
+        }
+        return matchesCoordinateBlockArray(captureRoot, root.optJSONArray("blocks"), "", wanted, matcher); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static boolean matchesCoordinateBlockArray(Path captureRoot, JSONArray blocks, String frameFile, String wantedHash,
+            java.util.function.Predicate<File> matcher) {
+        if (blocks == null) {
+            return false;
+        }
+        for (int j = 0; j < blocks.length(); j++) {
+            JSONObject block = blocks.optJSONObject(j);
+            if (block == null) {
+                continue;
+            }
+            String blockHash = jsonString(block, "hash").trim().toUpperCase(); //$NON-NLS-1$
+            if (!wantedHash.equals(blockHash)) {
+                continue;
+            }
+            String file = firstNonBlank(jsonString(block, "file"), frameFile); //$NON-NLS-1$
+            if (file.isBlank()) {
+                continue;
+            }
+            Path candidate;
+            try {
+                candidate = CaptureIntegrity.resolveContained(captureRoot, file);
+            } catch (IOException unsafe) {
+                LOGGER.warn("Ignoring unsafe previous capture frame path {}: {}", file, unsafe.getMessage()); //$NON-NLS-1$
+                continue;
+            }
+            if (CaptureIntegrity.isSafeRegularFile(candidate) && matcher.test(candidate.toFile())) {
+                LOGGER.info("Sensitive blur matched previous capture file {} for hash {}", candidate, wantedHash); //$NON-NLS-1$
+                return true;
+            }
         }
         return false;
     }
@@ -7174,11 +7242,11 @@ private String js(String value) {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private String safe(String value) {
+    private static String safe(String value) {
         return value == null ? "" : value; //$NON-NLS-1$
     }
 
-    private String nonBlank(String value, String fallback) {
+    private static String nonBlank(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 
@@ -7344,7 +7412,7 @@ private String js(String value) {
         return sanitizeFileName(value);
     }
 
-    private static class CaptureRootEntry {
+    static class CaptureRootEntry {
         String folder;
         String title;
         String chatId;
@@ -7466,7 +7534,7 @@ String status;
         }
     }
 
-    private static class RecaptureJob {
+    static class RecaptureJob {
         String folder = ""; //$NON-NLS-1$
         Path folderPath;
         String title = ""; //$NON-NLS-1$
@@ -7526,7 +7594,7 @@ String invalidReason;
         }
     }
 
-    private static class CaptureAnchor {
+    static class CaptureAnchor {
         String id = ""; //$NON-NLS-1$
         String type = ""; //$NON-NLS-1$
         String text = ""; //$NON-NLS-1$

@@ -513,6 +513,12 @@ class ChatAnnotationStore {
             }
             char next = value.charAt(++i);
             switch (next) {
+                case 'b':
+                    out.append('\b');
+                    break;
+                case 'f':
+                    out.append('\f');
+                    break;
                 case 'n':
                     out.append('\n');
                     break;
@@ -542,150 +548,175 @@ class ChatAnnotationStore {
     }
 
     /**
+     * Encontra o valor bruto (string {@code "..."}, objeto {@code {...}}, array {@code [...]} ou literal)
+     * de uma chave de primeiro nivel do objeto JSON, ignorando ocorrencias dentro de strings ou niveis aninhados.
+     */
+    private static String findTopLevelRawValue(String json, String key) {
+        if (json == null || key == null) {
+            return null;
+        }
+        for (String[] entry : splitObjectEntries(json)) {
+            if (key.equals(entry[0])) {
+                return entry[1];
+            }
+        }
+        return null;
+    }
+
+    /**
      * Extrai o conteudo bruto de um objeto JSON de primeiro nivel por chave.
-     * Suficiente para o formato gravado por esta classe.
      */
     static String extractObject(String json, String key) {
-        if (json == null) {
-            return null; //$NON-NLS-1$
-        }
-        String needle = "\"" + key + "\""; //$NON-NLS-1$
-        int at = json.indexOf(needle);
-        if (at < 0) {
-            return null; //$NON-NLS-1$
-        }
-        int colon = json.indexOf(':', at + needle.length());
-        if (colon < 0) {
-            return null; //$NON-NLS-1$
-        }
-        int start = skipSpace(json, colon + 1);
-        if (start >= json.length() || json.charAt(start) != '{') {
-            return null; //$NON-NLS-1$
-        }
-        int end = matchBracket(json, start, '{', '}');
-        return end < 0 ? null : json.substring(start, end + 1);
+        String raw = findTopLevelRawValue(json, key);
+        return raw != null && raw.startsWith("{") ? raw : null; //$NON-NLS-1$
     }
 
     static String extractArray(String json, String key) {
-        if (json == null) {
-            return null; //$NON-NLS-1$
-        }
-        String needle = "\"" + key + "\""; //$NON-NLS-1$
-        int at = json.indexOf(needle);
-        if (at < 0) {
-            return null; //$NON-NLS-1$
-        }
-        int colon = json.indexOf(':', at + needle.length());
-        if (colon < 0) {
-            return null; //$NON-NLS-1$
-        }
-        int start = skipSpace(json, colon + 1);
-        if (start >= json.length() || json.charAt(start) != '[') {
-            return null; //$NON-NLS-1$
-        }
-        int end = matchBracket(json, start, '[', ']');
-        return end < 0 ? null : json.substring(start, end + 1);
+        String raw = findTopLevelRawValue(json, key);
+        return raw != null && raw.startsWith("[") ? raw : null; //$NON-NLS-1$
     }
 
     static String field(String json, String key) {
-        if (json == null) {
+        String raw = findTopLevelRawValue(json, key);
+        if (raw == null || raw.isEmpty() || "null".equals(raw)) { //$NON-NLS-1$
             return ""; //$NON-NLS-1$
         }
-        String needle = "\"" + key + "\""; //$NON-NLS-1$
-        int at = json.indexOf(needle);
-        if (at < 0) {
+        if (raw.startsWith("{") || raw.startsWith("[")) { //$NON-NLS-1$ //$NON-NLS-2$
             return ""; //$NON-NLS-1$
         }
-        int colon = json.indexOf(':', at + needle.length());
-        if (colon < 0) {
-            return ""; //$NON-NLS-1$
+        if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) { //$NON-NLS-1$ //$NON-NLS-2$
+            return unescape(raw.substring(1, raw.length() - 1));
         }
-        int start = skipSpace(json, colon + 1);
-        if (start >= json.length() || json.charAt(start) != '"') {
-            return ""; //$NON-NLS-1$
-        }
-        StringBuilder out = new StringBuilder();
-        for (int i = start + 1; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '\\') {
-                out.append(c);
-                i++;
-                if (i < json.length()) {
-                    out.append(json.charAt(i));
-                }
-                continue;
-            }
-            if (c == '"') {
-                return unescape(out.toString());
-            }
-            out.append(c);
-        }
-        return unescape(out.toString());
+        return raw;
     }
 
-    /** Divide {@code {"k":{...},"k2":{...}}} em pares chave/conteudo. */
+    /** Divide {@code {"k":{...},"k2":{...}}} em pares chave/conteudo de primeiro nivel. */
     static List<String[]> splitObjectEntries(String objectJson) {
         List<String[]> entries = new ArrayList<>();
-        if (objectJson == null || objectJson.length() < 2) {
+        if (objectJson == null) {
             return entries;
         }
-        int i = 1;
+        int start = skipSpace(objectJson, 0);
+        if (start >= objectJson.length() || objectJson.charAt(start) != '{') {
+            return entries;
+        }
+        int i = skipSpace(objectJson, start + 1);
+        if (i < objectJson.length() && objectJson.charAt(i) == '}') {
+            return entries;
+        }
         while (i < objectJson.length()) {
-            while (i < objectJson.length()
-                    && (objectJson.charAt(i) == ',' || Character.isWhitespace(objectJson.charAt(i)))) {
-                i++;
-            }
-            if (i >= objectJson.length() || objectJson.charAt(i) == '}') {
-                break;
+            i = skipSpace(objectJson, i);
+            if (i >= objectJson.length()) {
+                return new ArrayList<>();
             }
             int keyEnd = matchQuote(objectJson, i);
             if (keyEnd < 0) {
-                break;
+                return new ArrayList<>();
             }
             String key = unescape(objectJson.substring(i + 1, keyEnd - 1));
-            int colon = objectJson.indexOf(':', keyEnd);
-            if (colon < 0) {
-                break;
+            int colon = skipSpace(objectJson, keyEnd);
+            if (colon >= objectJson.length() || objectJson.charAt(colon) != ':') {
+                return new ArrayList<>();
             }
             int valueStart = skipSpace(objectJson, colon + 1);
-            if (valueStart >= objectJson.length()) {
-                break;
+            int valueEndExclusive = matchValueEndExclusive(objectJson, valueStart);
+            if (valueEndExclusive < 0) {
+                return new ArrayList<>();
             }
-            char open = objectJson.charAt(valueStart);
-            int valueEnd = open == '{' ? matchBracket(objectJson, valueStart, '{', '}')
-                    : open == '[' ? matchBracket(objectJson, valueStart, '[', ']') : matchQuote(objectJson, valueStart);
-            if (valueEnd < 0) {
-                break;
+            entries.add(new String[] { key, objectJson.substring(valueStart, valueEndExclusive).trim() });
+            int afterValue = skipSpace(objectJson, valueEndExclusive);
+            if (afterValue >= objectJson.length()) {
+                return new ArrayList<>();
             }
-            entries.add(new String[] { key, objectJson.substring(valueStart, valueEnd + 1) });
-            i = valueEnd + 1;
+            char next = objectJson.charAt(afterValue);
+            if (next == '}') {
+                int trailing = skipSpace(objectJson, afterValue + 1);
+                return trailing == objectJson.length() ? entries : new ArrayList<>();
+            }
+            if (next != ',') {
+                return new ArrayList<>();
+            }
+            i = afterValue + 1;
         }
-        return entries;
+        return new ArrayList<>();
     }
 
     static List<String> splitArrayElements(String arrayJson) {
         List<String> elements = new ArrayList<>();
-        if (arrayJson == null || arrayJson.length() < 2) {
+        if (arrayJson == null) {
             return elements;
         }
-        int i = 1;
-        while (i < arrayJson.length()) {
-            while (i < arrayJson.length() && (arrayJson.charAt(i) == ',' || Character.isWhitespace(arrayJson.charAt(i)))) {
-                i++;
-            }
-            if (i >= arrayJson.length() || arrayJson.charAt(i) == ']') {
-                break;
-            }
-            char open = arrayJson.charAt(i);
-            int end = open == '{' ? matchBracket(arrayJson, i, '{', '}') : open == '[' ? matchBracket(arrayJson, i, '[', ']')
-                    : matchQuote(arrayJson, i);
-            if (end < 0) {
-                break;
-            }
-            elements.add(arrayJson.substring(i, end + 1));
-            i = end + 1;
+        int start = skipSpace(arrayJson, 0);
+        if (start >= arrayJson.length() || arrayJson.charAt(start) != '[') {
+            return elements;
         }
-        return elements;
+        int i = skipSpace(arrayJson, start + 1);
+        if (i < arrayJson.length() && arrayJson.charAt(i) == ']') {
+            return elements;
+        }
+        while (i < arrayJson.length()) {
+            i = skipSpace(arrayJson, i);
+            if (i >= arrayJson.length()) {
+                return new ArrayList<>();
+            }
+            int endExclusive = matchValueEndExclusive(arrayJson, i);
+            if (endExclusive < 0) {
+                return new ArrayList<>();
+            }
+            elements.add(arrayJson.substring(i, endExclusive).trim());
+            int afterValue = skipSpace(arrayJson, endExclusive);
+            if (afterValue >= arrayJson.length()) {
+                return new ArrayList<>();
+            }
+            char next = arrayJson.charAt(afterValue);
+            if (next == ']') {
+                int trailing = skipSpace(arrayJson, afterValue + 1);
+                return trailing == arrayJson.length() ? elements : new ArrayList<>();
+            }
+            if (next != ',') {
+                return new ArrayList<>();
+            }
+            i = afterValue + 1;
+        }
+        return new ArrayList<>();
+    }
+
+    private static int matchValueEndExclusive(String json, int start) {
+        if (json == null || start < 0 || start >= json.length()) {
+            return -1;
+        }
+        char open = json.charAt(start);
+        if (open == '"') {
+            return matchQuote(json, start);
+        }
+        if (open == '{') {
+            int end = matchBracket(json, start, '{', '}');
+            return end < 0 ? -1 : end + 1;
+        }
+        if (open == '[') {
+            int end = matchBracket(json, start, '[', ']');
+            return end < 0 ? -1 : end + 1;
+        }
+        int j = start;
+        while (j < json.length()) {
+            char c = json.charAt(j);
+            if (c == ',' || c == '}' || c == ']' || Character.isWhitespace(c)) {
+                break;
+            }
+            j++;
+        }
+        if (j == start) {
+            return -1;
+        }
+        String token = json.substring(start, j);
+        return isJsonPrimitiveToken(token) ? j : -1;
+    }
+
+    private static boolean isJsonPrimitiveToken(String token) {
+        if ("true".equals(token) || "false".equals(token) || "null".equals(token)) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            return true;
+        }
+        return token.matches("-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?"); //$NON-NLS-1$
     }
 
     private static int skipSpace(String json, int from) {
