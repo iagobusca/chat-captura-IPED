@@ -29,6 +29,7 @@ public final class SecurityRegressionTest {
             craftedHistoryReportInjectionIsRejectedAndEscaped(root);
             junctionInsideCaptureAndOutputAreRejected(root);
             disallowedHtmlAttributesAndQuoteTricksAreRejected(root);
+            largeHtmlCaptureOver16MiBUpTo64MiBIsAccepted(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -512,6 +513,153 @@ public final class SecurityRegressionTest {
             out.append(String.format("%02x", b));
         }
         return out.toString();
+    }
+
+    private static void largeHtmlCaptureOver16MiBUpTo64MiBIsAccepted(Path root) throws Exception {
+        Path work = Files.createDirectories(root.resolve("p3-large-html"));
+        Path cap = Files.createDirectories(work.resolve("cap-large-valid"));
+
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+
+        String conversationKey = sha256Utf8("conv-large-p3");
+        String sourceFingerprint = sha256Utf8("src-large-p3");
+        String chunkText = repeat('A', 920_000);
+
+        Method msgHashMethod = IntegrityVerifier.class.getDeclaredMethod("htmlMessageHash", JSONObject.class);
+        msgHashMethod.setAccessible(true);
+
+        JSONArray messages = new JSONArray();
+        JSONArray publicHashes = new JSONArray();
+        StringBuilder bodyRows = new StringBuilder(20_000_000);
+        int count = 20;
+        for (int i = 0; i < count; i++) {
+            String domId = Integer.toString(100 + i);
+            String ts = String.format("2026-11-12 10:00:%02d", i);
+            String key = sha256Utf8(conversationKey + "\n" + domId + "\n" + ts + "\nAlice\nincoming\ntext\n0");
+
+            JSONObject msg = new JSONObject();
+            msg.put("domId", domId);
+            msg.put("order", i);
+            msg.put("timestamp", ts);
+            msg.put("sender", "Alice");
+            msg.put("direction", "incoming");
+            msg.put("type", "text");
+            msg.put("duplicateOrdinal", 0);
+            msg.put("text", chunkText);
+            msg.put("classes", "msg");
+            msg.put("attachments", new JSONArray());
+            msg.put("key", key);
+            String messageHash = (String) msgHashMethod.invoke(null, msg);
+            msg.put("messageHash", messageHash);
+            messages.put(msg);
+            publicHashes.put(new JSONObject().put("domId", domId).put("key", key).put("messageHash", messageHash));
+
+            bodyRows.append("<div class=\"linha\" data-capture-message-key=\"").append(key)
+                    .append("\">").append(chunkText).append("</div>");
+        }
+
+        byte[] messagesBytes = new JSONObject().put("messages", messages).toString().getBytes(StandardCharsets.UTF_8);
+        if (messagesBytes.length <= 16 * 1024 * 1024) {
+            throw new AssertionError("Teste invalido: messages.json deve exceder 16 MiB, obteve " + messagesBytes.length);
+        }
+        Files.write(cap.resolve("messages.json"), messagesBytes);
+
+        StringBuilder htmlBuilder = new StringBuilder(messagesBytes.length + 4096);
+        htmlBuilder.append("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"")
+                .append(csp)
+                .append("\"><title>WhatsApp</title><style>body{background:#eee}#capture-topbar{background:#47595a}#capture-conversation{padding-top:90px}</style><style>.capture-modal{display:none}</style></head><body>")
+                .append("<div id=\"capture-topbar\">Conversa</div><div id=\"capture-conversation\">")
+                .append(bodyRows)
+                .append("</div><script>")
+                .append(stopScript)
+                .append("</script></body></html>");
+        byte[] htmlBytes = htmlBuilder.toString().getBytes(StandardCharsets.UTF_8);
+        if (htmlBytes.length <= 16 * 1024 * 1024) {
+            throw new AssertionError("Teste invalido: whatsapp.html deve exceder 16 MiB, obteve " + htmlBytes.length);
+        }
+        Files.write(cap.resolve("whatsapp.html"), htmlBytes);
+        String htmlSha = sha256Bytes(htmlBytes);
+
+        JSONObject sourceMeta = new JSONObject()
+                .put("name", "msgstore.db")
+                .put("size", 10L)
+                .put("type", "application/octet-stream")
+                .put("itemHash", "")
+                .put("deleted", false);
+        JSONObject anchors = new JSONObject().put("start", "100").put("end", Integer.toString(100 + count - 1));
+        JSONObject manifest = new JSONObject()
+                .put("schemaVersion", 1)
+                .put("captureFormat", "html-message-v1")
+                .put("presentationVersion", 2)
+                .put("ipedVersion", "4.3.1")
+                .put("pluginVersion", "2.6.2-beta")
+                .put("status", "completed")
+                .put("state", "complete")
+                .put("messagesFile", "messages.json")
+                .put("messageCount", count)
+                .put("sourceFingerprint", sourceFingerprint)
+                .put("conversationKey", conversationKey)
+                .put("sourceMetadata", sourceMeta)
+                .put("anchors", anchors)
+                .put("htmlSha256", htmlSha)
+                .put("messageHashes", publicHashes);
+
+        Method rootHashMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "htmlCaptureRootHash", JSONArray.class, String.class, String.class, String.class, JSONObject.class);
+        rootHashMethod.setAccessible(true);
+        String rootHash = (String) rootHashMethod.invoke(null, messages, htmlSha, "", "", manifest);
+        manifest.put("captureRootHash", rootHash);
+        Files.write(cap.resolve("manifest.json"), manifest.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Object captureObj = newCapture(cap);
+        verifyMethod.invoke(null, captureObj);
+
+        // Above 64 MiB HTML must still fail
+        Path over64Html = cap.resolve("whatsapp.html");
+        byte[] oldHtml = Files.readAllBytes(over64Html);
+        try (java.io.OutputStream out = Files.newOutputStream(over64Html)) {
+            byte[] pad = new byte[1024 * 1024];
+            java.util.Arrays.fill(pad, (byte) ' ');
+            for (int i = 0; i < 64; i++) {
+                out.write(pad);
+            }
+            out.write((byte) ' ');
+        }
+        try {
+            verifyMethod.invoke(null, newCapture(cap));
+            throw new AssertionError("whatsapp.html > 64 MiB deveria ter falhado");
+        } catch (InvocationTargetException expected) {
+            Throwable cause = expected.getCause();
+            if (!(cause instanceof IOException) || cause.getMessage() == null || !cause.getMessage().contains("excede o limite")) {
+                throw new AssertionError("Erro inesperado para whatsapp.html > 64 MiB: " + cause);
+            }
+        } finally {
+            Files.write(over64Html, oldHtml);
+        }
+
+        // Manifest > 16 MiB must still fail (MAX_METADATA_BYTES preserved)
+        Path over16Manifest = cap.resolve("manifest.json");
+        byte[] bigManifest = new byte[16 * 1024 * 1024 + 1024];
+        java.util.Arrays.fill(bigManifest, (byte) ' ');
+        bigManifest[0] = '{';
+        bigManifest[bigManifest.length - 1] = '}';
+        Files.write(over16Manifest, bigManifest);
+        try {
+            verifyMethod.invoke(null, newCapture(cap));
+            throw new AssertionError("manifest.json > 16 MiB deveria ter falhado");
+        } catch (InvocationTargetException expected) {
+            Throwable cause = expected.getCause();
+            if (!(cause instanceof IOException) || cause.getMessage() == null || !cause.getMessage().contains("excede o limite")) {
+                throw new AssertionError("Erro inesperado para manifest.json > 16 MiB: " + cause);
+            }
+        }
     }
 
     private static Object newCapture(Path folder) throws Exception {

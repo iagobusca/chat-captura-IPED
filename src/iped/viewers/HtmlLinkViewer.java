@@ -1900,8 +1900,8 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         if (!oldManifest.optString("conversationKey").equals(newManifest.optString("conversationKey"))) {
             throw new IOException("A origem/conversa atual não corresponde à captura selecionada para Re-Extrair."); //$NON-NLS-1$
         }
-        JSONObject oldWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(previousCapture.resolve("messages.json"))); //$NON-NLS-1$
-        JSONObject newWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(currentCapture.resolve("messages.json"))); //$NON-NLS-1$
+        JSONObject oldWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(previousCapture.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES)); //$NON-NLS-1$
+        JSONObject newWrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(currentCapture.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES)); //$NON-NLS-1$
         JSONArray oldMessages = oldWrapper.optJSONArray("messages"), newMessages = newWrapper.optJSONArray("messages"); //$NON-NLS-1$ //$NON-NLS-2$
         if (oldMessages == null || newMessages == null) throw new IOException("Manifesto de mensagens ausente na reconciliação."); //$NON-NLS-1$
         Map<String, JSONObject> oldByKey = new java.util.TreeMap<>(), newByKey = new java.util.TreeMap<>();
@@ -2043,7 +2043,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         if (currentConversation.isBlank() || !currentConversation.equalsIgnoreCase(manifest.optString("conversationKey"))) {
             throw new IOException("A conversa da candidata HTML diverge da conversa localizada."); //$NON-NLS-1$
         }
-        JSONObject wrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(messagesPath));
+        JSONObject wrapper = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(messagesPath, MAX_HTML_MESSAGE_CAPTURE_BYTES));
         JSONArray messages = wrapper.optJSONArray("messages"); //$NON-NLS-1$
         if (messages == null || messages.length() == 0 || messages.length() > MAX_HTML_MESSAGE_COUNT
                 || messages.length() != manifest.optInt("messageCount", -1)) {

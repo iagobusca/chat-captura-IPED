@@ -31,6 +31,7 @@ final class CaptureIntegrity {
     static final String AUDIT_FILE = "reextracao-auditoria.jsonl";
     static final int MAX_INVENTORY_FILES = 25000;
     static final long MAX_JSON_BYTES = 16L * 1024L * 1024L;
+    static final long MAX_HTML_CAPTURE_BYTES = 64L * 1024L * 1024L;
     static final int MAX_RELATIVE_PATH_CHARS = 4096;
     static final long MAX_AUDIT_BYTES = 16L * 1024L * 1024L;
 
@@ -199,21 +200,33 @@ final class CaptureIntegrity {
     }
 
     static String readUtf8Limited(Path path) throws IOException {
-        long size = Files.size(path);
-        if (size > MAX_JSON_BYTES) {
-            throw new IOException("JSON metadata exceeds the limit of " + MAX_JSON_BYTES + " bytes: " + path);
+        return readUtf8Limited(path, MAX_JSON_BYTES);
+    }
+
+    static String readUtf8Limited(Path path, long maxBytes) throws IOException {
+        if (maxBytes <= 0 || maxBytes > MAX_HTML_CAPTURE_BYTES) {
+            throw new IllegalArgumentException("Invalid UTF-8 read limit: " + maxBytes);
         }
+        long size = Files.size(path);
+        if (size > maxBytes) {
+            throw new IOException("JSON metadata exceeds the limit of " + maxBytes + " bytes: " + path);
+        }
+        int limit = (int) maxBytes;
         try (InputStream input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
-            byte[] bytes = input.readNBytes((int) MAX_JSON_BYTES + 1);
-            if (bytes.length > MAX_JSON_BYTES || input.read() != -1) {
-                throw new IOException("JSON metadata exceeds the limit of " + MAX_JSON_BYTES + " bytes: " + path);
+            byte[] bytes = input.readNBytes(limit + 1);
+            if (bytes.length > limit || input.read() != -1) {
+                throw new IOException("JSON metadata exceeds the limit of " + maxBytes + " bytes: " + path);
             }
             return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 
     static String readJsonUtf8Limited(Path path) throws IOException {
-        String json = readUtf8Limited(path);
+        return readJsonUtf8Limited(path, MAX_JSON_BYTES);
+    }
+
+    static String readJsonUtf8Limited(Path path, long maxBytes) throws IOException {
+        String json = readUtf8Limited(path, maxBytes);
         int depth = 0;
         boolean quoted = false;
         boolean escaped = false;

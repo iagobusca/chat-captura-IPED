@@ -22,6 +22,7 @@ public final class CaptureIntegrityTest {
         frameSignaturesTrackSequenceAndCompleteness();
         auditLogIsExcludedFromArtifactInventory();
         junctionsAndReparsePointsInsideCaptureAreRejected();
+        htmlCaptureReadsAllowUpTo64MiBWhileDefaultRemains16MiB();
         System.out.println("CaptureIntegrityTest: PASS");
     }
 
@@ -231,6 +232,47 @@ public final class CaptureIntegrityTest {
         } finally {
             Files.deleteIfExists(junction);
             deleteTree(work);
+        }
+    }
+
+    private static void htmlCaptureReadsAllowUpTo64MiBWhileDefaultRemains16MiB() throws Exception {
+        Path root = Files.createTempDirectory("capture-integrity-p3-");
+        try {
+            String largePayload = "{\"payload\":\"" + repeat('Z', 17 * 1024 * 1024) + "\"}";
+            Path over16 = root.resolve("messages-17m.json");
+            Files.write(over16, largePayload.getBytes(StandardCharsets.UTF_8));
+
+            JSONObject readOk = new JSONObject(
+                    CaptureIntegrity.readJsonUtf8Limited(over16, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES));
+            equal(17 * 1024 * 1024, readOk.getString("payload").length(), "17 MiB JSON read with 64 MiB limit");
+
+            boolean rejectedByDefault = false;
+            try {
+                CaptureIntegrity.readJsonUtf8Limited(over16);
+            } catch (java.io.IOException expected) {
+                rejectedByDefault = true;
+            }
+            check(rejectedByDefault, "17 MiB JSON must still fail under default 16 MiB metadata cap");
+
+            Path over64 = root.resolve("messages-65m.json");
+            try (java.io.OutputStream out = Files.newOutputStream(over64)) {
+                out.write("{\"payload\":\"".getBytes(StandardCharsets.UTF_8));
+                byte[] chunk = new byte[1024 * 1024];
+                java.util.Arrays.fill(chunk, (byte) 'Q');
+                for (int i = 0; i < 64; i++) {
+                    out.write(chunk);
+                }
+                out.write("\"}".getBytes(StandardCharsets.UTF_8));
+            }
+            boolean rejectedOver64 = false;
+            try {
+                CaptureIntegrity.readJsonUtf8Limited(over64, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES);
+            } catch (java.io.IOException expected) {
+                rejectedOver64 = true;
+            }
+            check(rejectedOver64, "> 64 MiB JSON must still fail under MAX_HTML_CAPTURE_BYTES");
+        } finally {
+            deleteTree(root);
         }
     }
 
