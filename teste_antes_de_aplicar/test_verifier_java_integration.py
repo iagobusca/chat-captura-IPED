@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -539,6 +540,35 @@ public final class PublicAnonHarness {
             self.assertIn("K_FULL=MATCH_FULL", run.stdout)
             self.assertIn("K_PUB=MATCH_PUBLIC", run.stdout)
             self.assertIn("K_BAD=DIVERGE", run.stdout)
+
+    def test_cli_flags_and_headless_error_paths(self):
+        self.assertTrue(CLASSES.is_dir(), "compile the verifier classes before this integration test")
+        base_cmd = [str(JAVA), "-cp", f"{CLASSES};{VERIFIER_JAR}", "IntegrityVerifier"]
+        targets = [base_cmd]
+        exe_override = os.environ.get("TEST_VERIFIER_EXE", "").strip()
+        if exe_override:
+            targets.append([exe_override])
+        for prefix in targets:
+            ver = subprocess.run(prefix + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+            self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
+            self.assertIn("Verificador de Integridade", ver.stdout)
+
+            hlp = subprocess.run(prefix + ["--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+            self.assertEqual(hlp.returncode, 0, hlp.stdout + hlp.stderr)
+            self.assertIn("--verify-only", hlp.stdout)
+
+            st = subprocess.run(prefix + ["--self-test"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+            self.assertEqual(st.returncode, 0, st.stdout + st.stderr)
+            self.assertIn("SELF_TEST_OK", st.stdout)
+
+            bad = subprocess.run(prefix + ["--nao-existe"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertNotIn("NoSuchFileException", bad.stderr)
+
+            with tempfile.TemporaryDirectory() as empty_dir:
+                empty = subprocess.run(prefix + ["--verify-only", empty_dir], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+                self.assertNotEqual(empty.returncode, 0)
+                self.assertIn("Nenhuma captura", empty.stderr)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

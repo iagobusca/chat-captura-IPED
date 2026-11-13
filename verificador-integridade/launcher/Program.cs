@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows.Forms;
@@ -9,10 +10,21 @@ using System.Windows.Forms;
 internal static class Program
 {
     private const string LockFileName = ".integridade-verifier.lock";
+    private const int ATTACH_PARENT_PROCESS = -1;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AttachConsole(int dwProcessId);
 
     [STAThread]
     private static int Main(string[] args)
     {
+        bool selfTest = IsSelfTest(args);
+        bool isCliMode = args.Any(IsCliFlag);
+        bool hasAttachedConsole = false;
+        if (isCliMode || selfTest)
+        {
+            hasAttachedConsole = AttachParentConsoleIfAvailable();
+        }
         string? tempRoot = null;
         FileStream? instanceLock = null;
         try
@@ -53,25 +65,57 @@ internal static class Program
             }
             VerifyExtractedFiles(tempRoot);
 
-            if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
+            if (selfTest)
             {
+                int selfTestExit = RunBundledJarCli(tempRoot, captureRoot, hasAttachedConsole, new[] { "--self-test" });
+                if (selfTestExit != 0)
+                {
+                    return selfTestExit;
+                }
                 int delay = GetSelfTestDelay(args);
                 if (delay > 0) Thread.Sleep(delay);
                 return 0;
             }
 
+            if (isCliMode)
+            {
+                List<string> cliArgs = new List<string>(args);
+                bool needsCaptureRoot = args.Any(a =>
+                    string.Equals(a, "--verify-only", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a, "--export-history", StringComparison.OrdinalIgnoreCase));
+                bool hasPositional = args.Any(a => !IsCliFlag(a));
+                if (needsCaptureRoot && !hasPositional)
+                {
+                    cliArgs.Add(captureRoot);
+                }
+                return RunBundledJarCli(tempRoot, captureRoot, hasAttachedConsole, cliArgs);
+            }
+
             string verifier = Path.Combine(tempRoot, "integridade-verifier.exe");
             var start = new ProcessStartInfo(verifier) { WorkingDirectory = captureRoot, UseShellExecute = false };
-            start.ArgumentList.Add(captureRoot);
+            if (args.Length > 0)
+            {
+                foreach (string arg in args)
+                {
+                    start.ArgumentList.Add(arg);
+                }
+            }
+            else
+            {
+                start.ArgumentList.Add(captureRoot);
+            }
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Não foi possível iniciar o verificador Java empacotado.");
             process.WaitForExit();
             return process.ExitCode;
         }
         catch (Exception ex)
         {
-            Console.WriteLine("ERRO: " + ex);
-            try { MessageBox.Show("Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
-                "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            Console.Error.WriteLine("ERRO: " + ex.Message);
+            if (!isCliMode && !selfTest)
+            {
+                try { MessageBox.Show("Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
+                    "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+            }
             return 1;
         }
         finally
@@ -79,6 +123,99 @@ internal static class Program
             instanceLock?.Dispose();
             if (tempRoot != null) { try { Directory.Delete(tempRoot, true); } catch { } }
         }
+    }
+
+    private static bool IsCliFlag(string? arg)
+    {
+        if (string.IsNullOrWhiteSpace(arg))
+        {
+            return false;
+        }
+        string trimmed = arg.Trim();
+        return trimmed.StartsWith("-", StringComparison.Ordinal) || string.Equals(trimmed, "/?", StringComparison.Ordinal);
+    }
+
+    private static bool IsSelfTest(string[] args) =>
+        args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)
+            || a.StartsWith("--self-test-hold-ms=", StringComparison.OrdinalIgnoreCase));
+
+    private static bool AttachParentConsoleIfAvailable()
+    {
+        try
+        {
+            if (Console.IsOutputRedirected && Console.IsErrorRedirected)
+            {
+                return false;
+            }
+            if (!AttachConsole(ATTACH_PARENT_PROCESS))
+            {
+                return false;
+            }
+            if (!Console.IsOutputRedirected)
+            {
+                Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+            }
+            if (!Console.IsErrorRedirected)
+            {
+                Console.SetError(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static int RunBundledJarCli(string tempRoot, string captureRoot, bool hasAttachedConsole, IEnumerable<string> cliArgs)
+    {
+        string javaExe = Path.Combine(tempRoot, "runtime", "bin", "java.exe");
+        string verifierJar = Path.Combine(tempRoot, "app", "integridade-verifier.jar");
+        if (!File.Exists(javaExe) || !File.Exists(verifierJar))
+        {
+            throw new FileNotFoundException("Runtime ou JAR CLI empacotado não encontrado na instância extraída.");
+        }
+        Encoding ioEncoding = Encoding.UTF8;
+        if (hasAttachedConsole || Console.IsOutputRedirected)
+        {
+            try { Console.OutputEncoding = ioEncoding; } catch { }
+        }
+        var start = new ProcessStartInfo(javaExe)
+        {
+            WorkingDirectory = captureRoot,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = ioEncoding,
+            StandardErrorEncoding = ioEncoding
+        };
+        start.ArgumentList.Add("-Dfile.encoding=UTF-8");
+        start.ArgumentList.Add("-jar");
+        start.ArgumentList.Add(verifierJar);
+        foreach (string arg in cliArgs)
+        {
+            start.ArgumentList.Add(arg);
+        }
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Não foi possível iniciar o verificador Java CLI.");
+        var stdoutTask = PumpStreamAsync(process.StandardOutput, Console.Out);
+        var stderrTask = PumpStreamAsync(process.StandardError, Console.Error);
+        process.WaitForExit();
+        Task.WaitAll(stdoutTask, stderrTask);
+        Console.Out.Flush();
+        Console.Error.Flush();
+        return process.ExitCode;
+    }
+
+    private static async Task PumpStreamAsync(StreamReader reader, TextWriter writer)
+    {
+        char[] buffer = new char[4096];
+        int read;
+        while ((read = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+        {
+            await writer.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+        }
+        await writer.FlushAsync().ConfigureAwait(false);
     }
 
     private static int GetSelfTestDelay(string[] args)

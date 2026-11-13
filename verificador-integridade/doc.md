@@ -61,9 +61,21 @@ O JAR pode ser executado com Java 8 (1.8) ou superior. JSON acima de 16 MiB, pro
 
 ```powershell
 java -jar .\integridade-verifier.jar
+java -jar .\integridade-verifier.jar --version
+java -jar .\integridade-verifier.jar --verify-only C:\caminho\capturas
+.\integridade-verifier.exe --verify-only C:\caminho\capturas | Out-Host
+.\integridade-verifier.exe --export-history C:\caminho\capturas | Out-Host
 ```
 
-A opção interna de compilação `--self-test` extrai e valida o pacote, sem abrir a interface. A opção de teste `--self-test-hold-ms=<milissegundos>` mantém o processo aberto por até 60 segundos para conferir instâncias simultâneas.
+As opções CLI disponíveis tanto no JAR quanto no EXE são:
+
+- `--verify-only [pasta]`: executa a verificação local em modo não interativo e imprime `content=`/`history=` na saída padrão (se `[pasta]` for omitida, usa a pasta do aplicativo).
+- `--export-history [pasta]`: gera `integridade/historico-capturas.txt` e imprime os hashes públicos em modo não interativo.
+- `--version` (`-v`): imprime a versão do verificador e sai com código `0`.
+- `--self-test`: valida integridade do pacote extraído (no EXE) e autodiagnóstico de runtime/limites JSON (no JAR e no EXE), sem abrir a interface. `--self-test-hold-ms=<milissegundos>` mantém o processo aberto por até 60 segundos para testes de concorrência.
+- `--help` (`-h`): exibe a sintaxe e as opções de linha de comando.
+
+> Observação no PowerShell interativo: como `integridade-verifier.exe` é empacotado sem janela de console dedicada (`WinExe`) para evitar janelas pretas no duplo clique, encadeie `| Out-Host` ou use `Start-Process -Wait` quando desejar aguardar a conclusão e capturar a saída diretamente no terminal interativo.
 
 ## Pastas temporarias
 

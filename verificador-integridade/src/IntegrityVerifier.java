@@ -116,13 +116,135 @@ public final class IntegrityVerifier {
     }
     private IntegrityVerifier() {}
 
+    private static final class CliOptions {
+        boolean verifyOnly;
+        boolean exportHistory;
+        boolean showVersion;
+        boolean showHelp;
+        boolean selfTest;
+        boolean tooManyArgs;
+        String unknownFlag;
+        String positionalFolder;
+    }
+
+    private static CliOptions parseCliOptions(String[] args) {
+        CliOptions options = new CliOptions();
+        if (args == null) {
+            return options;
+        }
+        for (String rawArg : args) {
+            if (rawArg == null) {
+                continue;
+            }
+            String arg = rawArg.trim();
+            if ("--verify-only".equalsIgnoreCase(arg)) {
+                options.verifyOnly = true;
+            } else if ("--export-history".equalsIgnoreCase(arg)) {
+                options.exportHistory = true;
+            } else if ("--version".equalsIgnoreCase(arg) || "-v".equalsIgnoreCase(arg)) {
+                options.showVersion = true;
+            } else if ("--help".equalsIgnoreCase(arg) || "-h".equalsIgnoreCase(arg)
+                    || "-?".equals(arg) || "/?".equals(arg)) {
+                options.showHelp = true;
+            } else if ("--self-test".equalsIgnoreCase(arg)
+                    || arg.toLowerCase(Locale.ROOT).startsWith("--self-test-hold-ms=")) {
+                options.selfTest = true;
+            } else if (arg.startsWith("-")) {
+                options.unknownFlag = arg;
+                break;
+            } else if (options.positionalFolder == null) {
+                options.positionalFolder = rawArg;
+            } else {
+                options.tooManyArgs = true;
+            }
+        }
+        return options;
+    }
+
+    private static String cliUsage() {
+        return "Uso: integridade-verifier [--verify-only [pasta] | --export-history [pasta] | --version | --self-test | --help]\n"
+                + "  --verify-only [pasta]     Verifica capturas em modo CLI (sem interface grafica)\n"
+                + "  --export-history [pasta]  Gera integridade/historico-capturas.txt em modo CLI\n"
+                + "  --version, -v             Exibe a versao do verificador\n"
+                + "  --self-test               Executa autodiagnostico rapido de runtime e limites\n"
+                + "  --help, -h                Exibe esta ajuda";
+    }
+
+    private static void runSelfTest() throws Exception {
+        MessageDigest.getInstance(ALG);
+        if (MAX_METADATA_BYTES <= 0 || MAX_HTML_CAPTURE_BYTES < MAX_METADATA_BYTES || MAX_JSON_DEPTH < 16) {
+            throw new IllegalStateException("Limites internos inconsistentes no verificador.");
+        }
+        JSONObject parsed = parseBoundedJson("{\"ok\":true,\"nested\":{\"v\":1}}", Paths.get("self-test.json"));
+        if (!parsed.optBoolean("ok", false)) {
+            throw new IllegalStateException("Falha ao interpretar JSON no autodiagnostico.");
+        }
+        StringBuilder deep = new StringBuilder("{\"d\":");
+        for (int i = 0; i <= MAX_JSON_DEPTH + 1; i++) {
+            deep.append('[');
+        }
+        for (int i = 0; i <= MAX_JSON_DEPTH + 1; i++) {
+            deep.append(']');
+        }
+        deep.append('}');
+        boolean depthRejected = false;
+        try {
+            parseBoundedJson(deep.toString(), Paths.get("self-test-depth.json"));
+        } catch (IOException expected) {
+            depthRejected = true;
+        }
+        if (!depthRejected) {
+            throw new IllegalStateException("Falha ao rejeitar JSON com profundidade excessiva.");
+        }
+        System.out.println("SELF_TEST_OK " + VERIFIER_VERSION);
+    }
+
     public static void main(String[] args) throws Exception {
-        boolean verifyOnly = args.length > 0 && "--verify-only".equalsIgnoreCase(args[0]);
-        boolean exportHistory = args.length > 0 && "--export-history".equalsIgnoreCase(args[0]);
-        Path root = args.length > (verifyOnly || exportHistory ? 1 : 0) ? Paths.get(args[verifyOnly || exportHistory ? 1 : 0]) : applicationFolder();
+        CliOptions cli = parseCliOptions(args);
+        if (cli.unknownFlag != null) {
+            System.err.println("Opção não reconhecida: " + cli.unknownFlag);
+            System.err.println(cliUsage());
+            throw new IOException("Opção de linha de comando inválida: " + cli.unknownFlag);
+        }
+        if (cli.tooManyArgs) {
+            System.err.println("Argumentos posicionais em excesso. Informe apenas uma pasta de capturas.");
+            System.err.println(cliUsage());
+            throw new IOException("Argumentos de linha de comando inválidos.");
+        }
+        if (cli.verifyOnly && cli.exportHistory) {
+            System.err.println("As opções --verify-only e --export-history são mutuamente exclusivas.");
+            System.err.println(cliUsage());
+            throw new IOException("Opções de linha de comando incompatíveis.");
+        }
+        if (cli.showHelp) {
+            System.out.println(cliUsage());
+            return;
+        }
+        if (cli.showVersion) {
+            System.out.println("Verificador de Integridade " + VERIFIER_VERSION);
+            return;
+        }
+        if (cli.selfTest) {
+            runSelfTest();
+            return;
+        }
+        boolean verifyOnly = cli.verifyOnly;
+        boolean exportHistory = cli.exportHistory;
+        boolean cliMode = verifyOnly || exportHistory;
+        Path root = cli.positionalFolder != null ? Paths.get(cli.positionalFolder) : applicationFolder();
         root = root.toAbsolutePath().normalize();
-        List<Capture> captures = (verifyOnly||exportHistory)?discover(root):discoverInteractive(root);
-        if (captures.isEmpty()) { JOptionPane pane=new JOptionPane("Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,JOptionPane.INFORMATION_MESSAGE);JDialog notice=pane.createDialog(null,"Integridade");Image ic=verifierIcon();if(ic!=null)notice.setIconImage(ic);notice.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){System.exit(0);}});notice.setVisible(true);System.exit(0);return; }
+        if (cliMode && !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            System.err.println("Pasta de capturas inválida ou não encontrada: " + root);
+            throw new IOException("Pasta de capturas inválida ou não encontrada: " + root);
+        }
+        List<Capture> captures = cliMode ? discover(root) : discoverInteractive(root);
+        if (captures.isEmpty()) {
+            if (cliMode) {
+                System.err.println("Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta: " + root);
+                throw new IOException("Nenhuma captura encontrada na pasta: " + root);
+            }
+            JOptionPane pane=new JOptionPane("Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,JOptionPane.INFORMATION_MESSAGE);JDialog notice=pane.createDialog(null,"Integridade");Image ic=verifierIcon();if(ic!=null)notice.setIconImage(ic);notice.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosing(java.awt.event.WindowEvent e){System.exit(0);}});notice.setVisible(true);System.exit(0);return;
+        }
         if (verifyOnly) {
             boolean ok=true; long totalItems=0,totalMetadata=0;
             for(Capture c:captures){try{long metadata=candidateMetadataBytes(c);if(totalMetadata+metadata>MAX_SELECTED_METADATA_BYTES)throw new IOException("O limite global de metadados selecionados foi excedido; verificação interrompida.");verify(c,(int)Math.max(0,MAX_SELECTED_ITEMS-totalItems));totalMetadata+=metadata;totalItems+=c.items.size();}catch(Exception e){c.error=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();ok=false;}System.out.println(c.name+" | "+(c.error.isEmpty()?c.historyStatus:"ERRO: "+c.error)+" | content="+c.hash+" | history="+c.historyHash);ok &= c.historyStatus.startsWith("consistente com registro local");if(c.error.contains("interrompida")||c.error.contains("limite global"))break;}
