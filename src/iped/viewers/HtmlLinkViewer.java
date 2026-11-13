@@ -2898,7 +2898,7 @@ createReportThumbnails(captureDir, exported);
             throw e;
         } finally {
             clearSensitiveBlur();
-            sensitiveImageMatcher = null;
+            closeSensitiveImageMatcher();
             sensitiveBlurHashes.clear();
             pendingAnnotations = null;
             pendingLink = null;
@@ -6424,16 +6424,26 @@ private void setCaptureInteractionEnabled(boolean enabled) {
         return hashes;
     }
 
+    private void closeSensitiveImageMatcher() {
+        SensitiveImageMatcher existing = sensitiveImageMatcher;
+        sensitiveImageMatcher = null;
+        if (existing != null) {
+            existing.close();
+        }
+    }
+
     private void prepareSensitiveImageMatcher() {
         sensitiveBlurHashes.clear();
-        sensitiveImageMatcher = null;
+        closeSensitiveImageMatcher();
         if (!CaptureIntegrity.isSafeDirectory(sensitiveImagesFolder)) {
             return;
         }
+        SensitiveImageMatcher matcher = null;
         try {
-            SensitiveImageMatcher matcher = new SensitiveImageMatcher(sensitiveImagesFolder, sensitiveSimilarityPercent);
+            matcher = new SensitiveImageMatcher(sensitiveImagesFolder, sensitiveSimilarityPercent);
             if (matcher.hasReferences()) {
                 sensitiveImageMatcher = matcher;
+                matcher = null;
                 chatCapturePanel.setStatusText("Blur sensivel ativo (" + sensitiveSimilarityPercent + "%): " //$NON-NLS-1$ //$NON-NLS-2$
                         + sensitiveImagesFolder);
             } else {
@@ -6446,6 +6456,10 @@ private void setCaptureInteractionEnabled(boolean enabled) {
             LOGGER.warn("Unable to initialize sensitive image blur from {}", sensitiveImagesFolder, e); //$NON-NLS-1$
             chatCapturePanel.setStatusText("Blur sensivel desativado: " + e.getMessage()); //$NON-NLS-1$
             sensitiveImagesFolder = null;
+        } finally {
+            if (matcher != null) {
+                matcher.close();
+            }
         }
     }
 
@@ -7680,7 +7694,7 @@ String invalidReason;
         String sha256;
     }
 
-    private static class SensitiveImageMatcher {
+    static class SensitiveImageMatcher implements AutoCloseable {
         private static final int MIN_FEATURES = 20;
         private static final int MIN_GOOD_MATCHES = 12;
         private static final double LOWE_RATIO = 0.72d;
@@ -7693,6 +7707,7 @@ String invalidReason;
         private final Set<String> referenceFileHashes = new HashSet<>();
         private final List<Mat> referenceDescriptors = new ArrayList<>();
         private int referenceImageCount;
+        private boolean closed;
 
         SensitiveImageMatcher(Path folder, int similarityPercent) throws IOException {
             if (!CaptureIntegrity.isSafeDirectory(folder)) {
@@ -7700,34 +7715,63 @@ String invalidReason;
             }
             loadOpenCv();
             minSimilarityRatio = Math.max(0.50d, Math.min(0.90d, similarityPercent / 100.0d));
-            orb = ORB.create(3000);
-            matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
-            try (Stream<Path> stream = Files.list(folder)) {
-                stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
-                    addReferenceFileHash(path.toFile());
-                    referenceImageCount++;
-                    Mat descriptors = descriptors(path.toFile());
-                    if (descriptors != null && !descriptors.empty()) {
-                        referenceDescriptors.add(descriptors);
-                    }
-                });
+            try {
+                orb = ORB.create(3000);
+                matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
+                try (Stream<Path> stream = Files.list(folder)) {
+                    stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
+                        addReferenceFileHash(path.toFile());
+                        referenceImageCount++;
+                        Mat descriptors = descriptors(path.toFile());
+                        if (descriptors != null && !descriptors.empty()) {
+                            referenceDescriptors.add(descriptors);
+                        } else {
+                            releaseQuietly(descriptors);
+                        }
+                    });
+                }
+            } catch (IOException | RuntimeException | Error e) {
+                close();
+                throw e;
             }
         }
 
-        boolean hasReferences() {
-            return !referenceDescriptors.isEmpty() || !referenceFileHashes.isEmpty();
+        synchronized boolean hasReferences() {
+            return !closed && (!referenceDescriptors.isEmpty() || !referenceFileHashes.isEmpty());
+        }
+
+        synchronized int referenceDescriptorCount() {
+            return referenceDescriptors.size();
         }
 
         int referenceImageCount() {
             return referenceImageCount;
         }
 
-        boolean matches(File candidate) {
-            if (matchesReferenceFileHash(candidate)) {
-                return true;
+        @Override
+        public synchronized void close() {
+            if (closed) {
+                return;
             }
-            Mat candidateDescriptors = descriptors(candidate);
-            if (candidateDescriptors == null || candidateDescriptors.empty()) {
+            closed = true;
+            for (Mat descriptors : referenceDescriptors) {
+                releaseQuietly(descriptors);
+            }
+            referenceDescriptors.clear();
+            referenceFileHashes.clear();
+        }
+
+        private static void releaseQuietly(Mat mat) {
+            if (mat != null) {
+                try {
+                    mat.release();
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+
+        private synchronized boolean matchesDescriptors(Mat candidateDescriptors) {
+            if (closed || candidateDescriptors == null || candidateDescriptors.empty()) {
                 return false;
             }
             for (Mat reference : referenceDescriptors) {
@@ -7738,6 +7782,18 @@ String invalidReason;
             return false;
         }
 
+        boolean matches(File candidate) {
+            if (matchesReferenceFileHash(candidate)) {
+                return true;
+            }
+            Mat candidateDescriptors = descriptors(candidate);
+            try {
+                return matchesDescriptors(candidateDescriptors);
+            } finally {
+                releaseQuietly(candidateDescriptors);
+            }
+        }
+
         boolean matches(byte[] content) {
             if (content == null || content.length == 0) {
                 return false;
@@ -7746,19 +7802,17 @@ String invalidReason;
                 return true;
             }
             MatOfByte encoded = new MatOfByte(content);
-            Mat image = Imgcodecs.imdecode(encoded, Imgcodecs.IMREAD_COLOR);
-            encoded.release();
-            Mat candidate = descriptorsOf(image);
-            image.release();
-            if (candidate == null || candidate.empty()) {
-                return false;
+            Mat image = null;
+            Mat candidate = null;
+            try {
+                image = Imgcodecs.imdecode(encoded, Imgcodecs.IMREAD_COLOR);
+                candidate = descriptorsOf(image);
+                return matchesDescriptors(candidate);
+            } finally {
+                releaseQuietly(candidate);
+                releaseQuietly(image);
+                releaseQuietly(encoded);
             }
-            for (Mat reference : referenceDescriptors) {
-                if (isSimilar(reference, candidate)) {
-                    return true;
-                }
-            }
-            return false;
         }
 
         private boolean matchesReferenceFileHash(byte[] content) {
@@ -7853,43 +7907,65 @@ String invalidReason;
 
         private int countGoodKnnMatches(Mat query, Mat train) {
             List<MatOfDMatch> knn = new ArrayList<>();
-            matcher.knnMatch(query, train, knn, 2);
-            int good = 0;
-            for (MatOfDMatch mat : knn) {
-                DMatch[] matches = mat.toArray();
-                if (matches.length < 2) {
-                    continue;
+            try {
+                matcher.knnMatch(query, train, knn, 2);
+                int good = 0;
+                for (MatOfDMatch mat : knn) {
+                    DMatch[] matches = mat.toArray();
+                    if (matches.length < 2) {
+                        continue;
+                    }
+                    DMatch best = matches[0];
+                    DMatch second = matches[1];
+                    if (best.distance <= MAX_HAMMING_DISTANCE && best.distance < second.distance * LOWE_RATIO) {
+                        good++;
+                    }
                 }
-                DMatch best = matches[0];
-                DMatch second = matches[1];
-                if (best.distance <= MAX_HAMMING_DISTANCE && best.distance < second.distance * LOWE_RATIO) {
-                    good++;
+                return good;
+            } finally {
+                for (MatOfDMatch mat : knn) {
+                    releaseQuietly(mat);
                 }
             }
-            return good;
         }
 
         private Mat descriptors(File image) {
-            if (image == null || !image.isFile()) {
+            if (image == null || !CaptureIntegrity.isSafeRegularFile(image.toPath())) {
                 return null;
             }
-            return descriptorsOf(Imgcodecs.imread(image.getAbsolutePath()));
+            Mat img = Imgcodecs.imread(image.getAbsolutePath());
+            try {
+                return descriptorsOf(img);
+            } finally {
+                releaseQuietly(img);
+            }
         }
 
-        private Mat descriptorsOf(Mat img) {
+        Mat descriptorsOf(Mat img) {
             if (img == null || img.empty()) {
                 return null;
             }
-            Mat gray = new Mat();
-            if (img.channels() > 1) {
-                Imgproc.cvtColor(img, gray, Imgproc.COLOR_BGR2GRAY);
-            } else {
-                gray = img;
-            }
+            boolean ownsGray = img.channels() > 1;
+            Mat gray = ownsGray ? new Mat() : img;
+            Mat mask = new Mat();
             MatOfKeyPoint keypoints = new MatOfKeyPoint();
             Mat descriptors = new Mat();
-            orb.detectAndCompute(gray, new Mat(), keypoints, descriptors);
-            return descriptors;
+            try {
+                if (ownsGray) {
+                    Imgproc.cvtColor(img, gray, Imgproc.COLOR_BGR2GRAY);
+                }
+                orb.detectAndCompute(gray, mask, keypoints, descriptors);
+                Mat result = descriptors;
+                descriptors = null;
+                return result;
+            } finally {
+                releaseQuietly(descriptors);
+                releaseQuietly(keypoints);
+                releaseQuietly(mask);
+                if (ownsGray) {
+                    releaseQuietly(gray);
+                }
+            }
         }
 
         private static boolean isSupportedImage(Path path) {
@@ -7899,10 +7975,15 @@ String invalidReason;
         }
 
         private static synchronized void loadOpenCv() throws IOException {
+            loadOpenCv(null);
+        }
+
+        static synchronized void loadOpenCv(Path codeSourceOverride) throws IOException {
             if (opencvLoaded) {
                 return;
             }
-            Path verifiedDll = resolveVerifiedOpenCvDll(viewerCodeSourcePath());
+            Path verifiedDll = resolveVerifiedOpenCvDll(
+                    codeSourceOverride != null ? codeSourceOverride : viewerCodeSourcePath());
             System.load(verifiedDll.toString());
             opencvLoaded = true;
             LOGGER.info("OpenCV loaded for sensitive image blur (verified SHA-256): {}", Core.VERSION); //$NON-NLS-1$

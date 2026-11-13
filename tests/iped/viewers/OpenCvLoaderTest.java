@@ -1,5 +1,8 @@
 package iped.viewers;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -7,6 +10,9 @@ import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
+import javax.imageio.ImageIO;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
 
 public final class OpenCvLoaderTest {
     private OpenCvLoaderTest() {
@@ -28,11 +34,77 @@ public final class OpenCvLoaderTest {
             testValidRootDllAccepted(root, validSourceDll);
             testTamperedDllRejected(root);
             testUserDirDllIgnored(root, validSourceDll);
+            testMatcherCloseAndMatRelease(root, validSourceDll);
             System.out.println("OpenCvLoaderTest: PASS");
         } finally {
             System.setProperty("user.dir", originalUserDir);
             deleteTree(root);
         }
+    }
+
+    private static void testMatcherCloseAndMatRelease(Path root, Path validSourceDll) throws Exception {
+        Path iped = root.resolve("iped-matcher-lifecycle");
+        Path libJar = iped.resolve("lib").resolve("iped-viewers-impl-4.3.1.jar");
+        Path pluginsDll = iped.resolve("plugins").resolve("opencv_java4120.dll");
+        Files.createDirectories(libJar.getParent());
+        Files.createDirectories(pluginsDll.getParent());
+        Files.writeString(libJar, "jar-placeholder");
+        Files.copy(validSourceDll, pluginsDll);
+        HtmlLinkViewer.SensitiveImageMatcher.loadOpenCv(libJar);
+
+        Path refDir = Files.createDirectories(root.resolve("refs"));
+        Path refPng = refDir.resolve("ref.png");
+        writeTexturedPng(refPng);
+        byte[] refBytes = Files.readAllBytes(refPng);
+
+        try (HtmlLinkViewer.SensitiveImageMatcher matcher = new HtmlLinkViewer.SensitiveImageMatcher(refDir, 80)) {
+            if (!matcher.hasReferences() || matcher.referenceDescriptorCount() < 1) {
+                throw new AssertionError("Expected ORB reference descriptors to load");
+            }
+            Mat callerGray = new Mat(64, 64, CvType.CV_8UC1);
+            try {
+                Mat callerDesc = matcher.descriptorsOf(callerGray);
+                if (callerDesc != null) {
+                    callerDesc.release();
+                }
+                if (callerGray.empty()) {
+                    throw new AssertionError("Caller single-channel Mat must not be released by descriptorsOf");
+                }
+            } finally {
+                callerGray.release();
+            }
+            for (int i = 0; i < 20; i++) {
+                if (!matcher.matches(refPng.toFile()) || !matcher.matches(refBytes)) {
+                    throw new AssertionError("Expected reference image to match itself cleanly across repeated calls");
+                }
+            }
+            matcher.close();
+            matcher.close(); // idempotent
+            if (matcher.referenceDescriptorCount() != 0 || matcher.matches(refBytes)) {
+                throw new AssertionError("Closed SensitiveImageMatcher must clear descriptors and not match afterward");
+            }
+        }
+    }
+
+    private static void writeTexturedPng(Path path) throws IOException {
+        BufferedImage img = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        try {
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, 128, 128);
+            g.setColor(Color.BLACK);
+            for (int y = 8; y < 120; y += 10) {
+                for (int x = 8; x < 120; x += 10) {
+                    if (((x + y) / 10) % 2 == 0) {
+                        g.fillRect(x, y, 6, 6);
+                    }
+                }
+                g.drawLine(0, y, 127, 127 - y);
+            }
+        } finally {
+            g.dispose();
+        }
+        ImageIO.write(img, "png", path.toFile());
     }
 
     private static void testValidPluginsDllAccepted(Path root, Path validSourceDll) throws Exception {
