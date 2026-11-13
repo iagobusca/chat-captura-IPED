@@ -77,7 +77,7 @@ public final class IntegrityVerifier {
         String path, expected; long size, bytes; String actual, state;
     }
     private static final class Capture {
-        Path dir; String name, hash, historyHash = "", contentRootHash = "", integrityFileHash = "", historyStatus = "registro ausente/legado", error = ""; JSONArray historyEvents = new JSONArray(); List<Item> items = new ArrayList<>(); long bytes, metadataBytes; int fileCount;
+        Path dir; String name, hash, historyHash = "", contentRootHash = "", integrityFileHash = "", historyStatus = "registro ausente/legado", error = ""; JSONArray historyEvents = new JSONArray(); List<Item> items = new ArrayList<>(); Set<String> allowedFiles = new HashSet<>(); long bytes, metadataBytes; int fileCount;
     }
     private IntegrityVerifier() {}
 
@@ -386,8 +386,15 @@ public final class IntegrityVerifier {
             verifyMessageCapture(c,format);
             String messageManifestStatus=c.historyStatus;
             if(integrity!=null&&integrity.optInt("schemaVersion",0)>=2){
+                c.allowedFiles.add("integridade.json");
                 verifyHistory(c,integrity);
                 validateMigrationIntegrity(c,format,integrity);
+                JSONObject migration=format.optJSONObject("migration");
+                if(migration!=null){
+                    c.allowedFiles.add("migration.json");
+                    if(migration.optBoolean("legacyAnnotationsPreserved",false))
+                        c.allowedFiles.add("legacy-annotations.json");
+                }
                 String localHistoryStatus=c.historyStatus;
                 c.historyStatus=localHistoryStatus+"; "+messageManifestStatus;
             }else{
@@ -397,6 +404,7 @@ public final class IntegrityVerifier {
                         ||Files.exists(c.dir.resolve("legacy-annotations.json"),LinkOption.NOFOLLOW_LINKS))
                     throw new IOException("Artefato legado de migração sem metadados no manifesto.");
             }
+            checkUnexpectedHtmlCaptureFiles(c,maxItemsAllowed);
             return;
         }
         if(integrity!=null && integrity.optInt("schemaVersion",0)>=2) verifyHistory(c,integrity);
@@ -556,7 +564,44 @@ public final class IntegrityVerifier {
         for(Item item:c.items){if(item.path.startsWith("mensagem:")){String id=item.path.substring("mensagem:".length());String state=reconciliationStates.get(id);if(state!=null)item.state=state;}}
         c.hash=htmlCaptureRootHash(messages,htmlSha,annotationsSha,reconciliationSha,manifest);
         c.items.sort(Comparator.comparing(i->i.path));c.fileCount=messages.length()+attachmentPaths.size()+2+(annotationsSha.isEmpty()?0:1)+(reconciliationSha.isEmpty()?0:1);c.bytes=Files.size(htmlPath)+Files.size(messagesPath)+Files.size(c.dir.resolve("manifest.json"))+attachmentBytes+(annotationsSha.isEmpty()?0:Files.size(c.dir.resolve("annotations.json")))+(reconciliationSha.isEmpty()?0:Files.size(c.dir.resolve("message-reconciliation.json")));if(c.bytes>MAX_HTML_CAPTURE_BYTES||c.fileCount>MAX_CAPTURE_FILES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
+        c.allowedFiles.clear();
+        c.allowedFiles.add("manifest.json");
+        c.allowedFiles.add(messagesName);
+        c.allowedFiles.add("whatsapp.html");
+        c.allowedFiles.add("reextracao-auditoria.jsonl");
+        c.allowedFiles.addAll(attachmentPaths);
+        if(!annotationsSha.isEmpty())c.allowedFiles.add("annotations.json");
+        if(!reconciliationSha.isEmpty())c.allowedFiles.add("message-reconciliation.json");
         c.historyStatus=manifest.optString("captureRootHash","").equalsIgnoreCase(c.hash)?"consistente com registro local (manifesto de mensagens)":"manifesto de mensagens requer referência pública";
+    }
+
+    private static void checkUnexpectedHtmlCaptureFiles(Capture c,int maxItemsAllowed)throws Exception{
+        List<Path> allFiles=listCaptureFiles(c.dir);
+        if(allFiles.size()>MAX_CAPTURE_FILES)throw new IOException("Captura excede o limite de "+MAX_CAPTURE_FILES+" arquivos: "+c.dir);
+        allFiles.sort(Comparator.comparing(p->c.dir.relativize(p).toString().replace('\\','/').toLowerCase(Locale.ROOT)));
+        List<Path> extras=new ArrayList<>();
+        for(Path f:allFiles){
+            String rel=c.dir.relativize(f).toString().replace('\\','/');
+            if(!c.allowedFiles.contains(rel))extras.add(f);
+        }
+        if(extras.isEmpty())return;
+        if((long)c.items.size()+extras.size()>maxItemsAllowed)throw new IOException("O limite global de itens selecionados foi excedido antes de montar os resultados.");
+        for(Path f:extras){
+            String rel=c.dir.relativize(f).toString().replace('\\','/');
+            long size=Files.size(f);
+            String sha=hash(f);
+            Item x=new Item();
+            x.path=rel;
+            x.actual=sha;
+            x.bytes=size;
+            x.state="extra";
+            c.items.add(x);
+            c.fileCount++;
+            c.bytes+=size;
+        }
+        if(c.fileCount>MAX_CAPTURE_FILES||c.bytes>MAX_HTML_CAPTURE_BYTES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
+        c.items.sort(Comparator.comparing(i->i.path));
+        c.historyStatus="arquivos extras na captura: "+extras.size();
     }
 
     private static void validateRenderedCaptureHtml(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,int presentationVersion)throws Exception{
