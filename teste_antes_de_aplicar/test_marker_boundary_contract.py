@@ -36,10 +36,12 @@ require("if (!isDate) menu.getItems().add(end);" in source,
         "date context menu must omit the end-marker action")
 require("CaptureBoundaryResolver.Role.END" in source and "end_date_not_supported" in resolver,
         "date end must be rejected by the shared boundary resolver")
-require("if (!viewer.validateCaptureStart(destination)) return;" in panel,
+require("viewer.startChatCaptureFromUi(" in panel,
+        "start capture UI click must route off-EDT through startChatCaptureFromUi")
+require("if (!validateCaptureStart(outputFolder)) return;" in source,
         "invalid boundaries must stop before verifier installation")
-require(panel.index("if (!viewer.validateCaptureStart(destination)) return;")
-        < panel.index("VerifierIntegrity.installVerifierFiles(destination.toPath());"),
+require(source.index("if (!validateCaptureStart(outputFolder)) return;")
+        < source.index("VerifierIntegrity.installVerifierFiles(outputPath);"),
         "boundary validation must run before verifier installation")
 require(".__capture_staging_" in source and "promoteCaptureDirectory(captureDir, finalCaptureDir)" in source,
         "normal capture must be staged and promoted only after completion")

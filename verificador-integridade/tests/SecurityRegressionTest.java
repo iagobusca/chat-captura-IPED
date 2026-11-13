@@ -378,7 +378,7 @@ public final class SecurityRegressionTest {
                 .put("captureFormat", "html-message-v1")
                 .put("presentationVersion", 2)
                 .put("ipedVersion", "4.3.1")
-                .put("pluginVersion", "2.6.1-beta")
+                .put("pluginVersion", "2.6.2-beta")
                 .put("status", "completed")
                 .put("state", "complete")
                 .put("messagesFile", "messages.json")

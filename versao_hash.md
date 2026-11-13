@@ -1,11 +1,13 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.3.6 acompanha a release `v2.6.1-beta`. Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.3.7 acompanha a release `v2.6.2-beta`. Compare o hash do arquivo antes de executá-lo.
 
 ## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.3.7 (release v2.6.2-beta) | `integridade-verifier.jar` | `7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE` | Build com JDK 8; bytecode 52; 139.632 bytes; pastas auxiliares de recaptura ignoradas em `discover` e hardening fase 2 |
+| 1.3.7 (release v2.6.2-beta) | `integridade-verifier.exe` | `D102E17D02F39E5D6E85249E9B9585BC26C3D005E7DBFF2296C22FB2E18E926A` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0; 77.850.180 bytes |
 | 1.3.6 (release v2.6.1-beta) | `integridade-verifier.jar` | `F7990400A98445B8FA718626DA08145CD974866487650BD443E95427DD015FAC` | Build com JDK 8; bytecode 52; 137.188 bytes; correções de segurança (arquivos extras, junções NTFS, allowlist HTML, sanitização de histórico) |
 | 1.3.6 (release v2.6.1-beta) | `integridade-verifier.exe` | `24E84B1B014D9677E238A94FD9EBFFB5CD2E8CF5CCA244AF8D47D1ED48C704D4` | Build Windows x64 autocontido; `--self-test` código 0; 77.843.012 bytes |
 | 1.3.5 (release v2.6.0-beta) | `integridade-verifier.jar` | `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9` | Build com JDK 8; bytecode 52; 133.282 bytes; histórico completo público anonimizado (`CAPTURA\|*-YYYYMMDD-HHMMSS`) e verificação dual |
@@ -45,4 +47,4 @@ Os arquivos preservados para as versões 1.2.1 e 1.2.2 são pacotes de código-f
 | 1.2.2 | `src-integridade-verifier-1.2.2.zip` (código-fonte) | `8C5413C833093136DDAA2A080B8339FE464CCF19E3F4A7DCF98BAC9ED80529BA` |
 | 1.2.3 | `src-integridade-verifier-1.2.3.zip` (código-fonte) | `83CD34A66C46C1ED0EF6D34C0E6A5B1E54EB3376B500D60F56F0668569D674EF` |
 
-A versão atual é 1.3.6; o JAR foi compilado para Java 8. Os hashes das versões anteriores são mantidos para consulta histórica.
+A versão atual é 1.3.7; o JAR foi compilado para Java 8. Os hashes das versões anteriores são mantidos para consulta histórica.

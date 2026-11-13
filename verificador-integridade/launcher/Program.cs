@@ -1,4 +1,4 @@
-// Versão 1.3.6 — endurecimento de segurança (allowlist HTML quote-safe, proteção contra junções NTFS, arquivos extras em html-message-v1 e sanitização de histórico).
+// Versão 1.3.7 — compatibilidade de descoberta com pastas auxiliares de recaptura do plugin e hardening de segurança fase 2.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

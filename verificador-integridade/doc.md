@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.3.6
+# Verificador de Integridade 1.3.7
 
-**Versão:** 1.3.6 | Data: 13/11/2026.
+**Versão:** 1.3.7 | Data: 13/11/2026.
 
 ## Índice
 

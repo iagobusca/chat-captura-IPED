@@ -4,6 +4,14 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.3.7] - 2026-11-13
+
+### Segurança e Compatibilidade
+
+- `discover()` passa a ignorar pastas auxiliares de recaptura do plugin (`_backup_chat_capture_*`, `_backup_integridade_*`, `vinculado`, `.iped-reextract-trash*`, `.__capture_staging_*`, `.__old_*`, `.__reextract_tmp_*`, `.__reextract_failed_*`, `.__migration_html_backup*`).
+- Endurecimento fase 2 na validação/sanitização de relatórios, manifestos e histórico (`--verify-only` mantendo compatibilidade total com capturas existentes).
+- `build-single-exe.ps1`: `jlink` enxugado para os módulos `java.base,java.datatransfer,java.desktop,java.xml`.
+
 ## [1.3.6] - 2026-11-13
 
 ### Segurança

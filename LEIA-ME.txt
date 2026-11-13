@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.1-beta - Verificador de Integridade 1.3.6
+Pacote Chat Captura IPED 2.6.2-beta - Verificador de Integridade 1.3.7
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,18 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.3.6 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.3.7 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.6.1-beta / Verificador 1.3.6) - correções de segurança:
+Novidades desta versão (2.6.2-beta / Verificador 1.3.7) - correções de segurança (fase 2):
+- Plugin: allowlist rígida no importador de anotações legadas (`LinkedChatRef`/`ChatAnnotation`) e validação de caminho relativo com rejeição de `..`, prefixo de drive e caracteres de controle;
+- Plugin: bloqueio de HTML/Swing (`JEditorPane`/`JLabel`) no diálogo de anotações e pré-checagens contra conteúdo HTML não confiável;
+- Plugin: parser JSON estrutural (`org.json`) e scanner depth-1 substituindo extração por regex em anotações, recaptura e manifesto;
+- Plugin: pré-validação em Java puro (assinatura mágica PNG/JPEG/BMP/GIF/WebP, dimensões <= 8192 px, <= 33,5 MP e <= 32 MiB) e decodificação via Java `ImageIO` (`CV_8UC1`) antes do OpenCV (`Imgcodecs.imread` removido);
+- Plugin/UI: execução fora da Swing EDT para captura, notas e busca, proteção contra `outputFolder` vazio e saneamento de pastas auxiliares de recaptura;
+- Verificador 1.3.7: ignora pastas auxiliares de recaptura durante a descoberta (`discover`) e reduz módulos do runtime para `java.base,java.datatransfer,java.desktop,java.xml`.
+
+Novidades da 2.6.1-beta / Verificador 1.3.6 - correções de segurança:
 - Verificador: detecta arquivos extras em capturas html-message-v1, bloqueia junções NTFS/links, valida o HTML por allowlist de tags e atributos e neutraliza injeção de linhas no histórico.
 - Plugin: anotações não são mais corrompidas ao recarregar; OpenCV só é carregado de caminhos do IPED com SHA-256 conferido; nomes de arquivos exportados são sanitizados e gravados sem sobrescrever.
 - Instalador: não grava mais na raiz do drive, confere o SHA-256 do plugin e do verificador, não interpola caminhos no PowerShell e faz rollback em qualquer falha.
@@ -47,9 +55,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.3.6:
-JAR F7990400A98445B8FA718626DA08145CD974866487650BD443E95427DD015FAC
-EXE 24E84B1B014D9677E238A94FD9EBFFB5CD2E8CF5CCA244AF8D47D1ED48C704D4
+SHA-256 do Verificador 1.3.7:
+JAR 7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE
+EXE D102E17D02F39E5D6E85249E9B9585BC26C3D005E7DBFF2296C22FB2E18E926A
 
-SHA-256 do plugin 2.6.1-beta:
-JAR 406238754C5951AA8BA2EAC2E3E0E44D96C7C29F9AF6C4A83AC34F18F6AC9F4B
+SHA-256 do plugin 2.6.2-beta:
+JAR 5576E9E5CE0BCB6D3C65ECF560403CC0098F0D4A1F8FE18DBC6597238DB9C8AC

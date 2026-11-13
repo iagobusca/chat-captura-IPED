@@ -4,6 +4,20 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.2-beta] - 2026-11-13
+
+### Segurança
+
+- Importador legado (`ChatAnnotationStore`): remoção de fallback genérico por reflexão/SerialKiller, restringindo desserialização à allowlist estrita de tipos esperados e protegendo contra anotações/links inválidos.
+- Validação de caminho relativo em capturas e anotações (`CaptureIntegrity` / `HtmlLinkViewer`): contenção estrita e rejeição de `..`, prefixos de drive e caracteres de controle.
+- `ChatAnnotationActionDialog`, `ChatCapturePanel` e demais painéis Swing: desabilitação explícita de renderização HTML (`html.disable=true`) e neutralização contra injeção HTML/CSV em notas, pré-checagens e exportações.
+- Parsing estrutural (`org.json`) e scanner JSON ciente de profundidade (`ChatAnnotationStore` / `HtmlLinkViewer`): substituição de extrações por regex em anotações, manifestos, coordenadas e jobs de recaptura.
+- Decodificação segura de imagens sensíveis (`SensitiveImageMatcher`): pré-validação em Java puro (assinatura mágica PNG/JPEG/BMP/GIF/WebP, dimensões <= 8192 px, <= 33,5 MP e <= 32 MiB) e conversão via Java `ImageIO` (`TYPE_BYTE_GRAY` -> `CV_8UC1`), removendo `Imgcodecs.imread` e restringindo `Imgcodecs.imdecode` a WebP pré-validado.
+- UI e pastas auxiliares: execução assíncrona fora da Swing EDT em captura, notas e busca, bloqueio de `outputFolder` vazio, sincronização das pastas auxiliares ignoradas e redução dos módulos no runtime do Verificador 1.3.7.
+- `VerifierIntegrity`: allowlist atualizada exclusivamente para o Verificador 1.3.7 (`7A137AE3...` / `D102E17D...`).
+
+---
+
 ## [2.6.1-beta] - 2026-11-13
 
 ### Segurança

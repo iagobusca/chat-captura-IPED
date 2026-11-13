@@ -30,7 +30,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.3.6";
+    private static final String VERIFIER_VERSION = "1.3.7";
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
     private static final Pattern HTML_META_TAG_PATTERN = Pattern.compile("(?is)<meta\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
