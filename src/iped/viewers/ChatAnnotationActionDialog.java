@@ -5,6 +5,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.Window;
+import java.util.function.Predicate;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -31,12 +32,25 @@ class ChatAnnotationActionDialog extends JDialog {
     private static final int MIN_HEIGHT = 640;
 
     private final ChatAnnotation annotation;
+    private final Predicate<String> confirmPrompt;
     private boolean noteRemoved;
     private boolean linksRemoved;
+    JButton noteViewButton;
+    JButton noteRemoveButton;
+    JTextArea noteArea;
+    JButton linksViewButton;
+    JButton linksRemoveButton;
+    JTextArea linksArea;
 
     ChatAnnotationActionDialog(Window owner, ChatAnnotation annotation, String messagePreview) {
+        this(owner, annotation, messagePreview, null);
+    }
+
+    ChatAnnotationActionDialog(Window owner, ChatAnnotation annotation, String messagePreview,
+            Predicate<String> confirmPrompt) {
         super(owner, Messages.getString("ChatAnnotationActions.Title"), ModalityType.APPLICATION_MODAL);
         this.annotation = annotation;
+        this.confirmPrompt = confirmPrompt;
         setLayout(new BorderLayout(8, 8));
         ((javax.swing.JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
@@ -78,15 +92,16 @@ class ChatAnnotationActionDialog extends JDialog {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         JButton view = new JButton(Messages.getString("ChatAnnotationActions.View")); //$NON-NLS-1$
         JButton remove = new JButton(Messages.getString("ChatAnnotationActions.Delete")); //$NON-NLS-1$
+        this.noteArea = area;
+        this.noteViewButton = view;
+        this.noteRemoveButton = remove;
         view.setEnabled(annotation.hasNote());
         remove.setEnabled(annotation.hasNote());
         view.addActionListener(e -> showNote(area.getText()));
         remove.addActionListener(e -> {
-            confirmedDelete("ChatAnnotationActions.ConfirmDeleteNote"); //$NON-NLS-1$
-            noteRemoved = true;
-            view.setEnabled(false);
-            remove.setEnabled(false);
-            area.setText(""); //$NON-NLS-1$
+            if (confirmAndClear("ChatAnnotationActions.ConfirmDeleteNote", view, remove, area)) { //$NON-NLS-1$
+                noteRemoved = true;
+            }
         });
         actions.add(view);
         actions.add(remove);
@@ -115,16 +130,17 @@ class ChatAnnotationActionDialog extends JDialog {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
         JButton view = new JButton(Messages.getString("ChatAnnotationActions.View")); //$NON-NLS-1$
         JButton remove = new JButton(Messages.getString("ChatAnnotationActions.Delete")); //$NON-NLS-1$
+        this.linksArea = area;
+        this.linksViewButton = view;
+        this.linksRemoveButton = remove;
         boolean hasLinks = annotation.hasLinks();
         view.setEnabled(hasLinks);
         remove.setEnabled(hasLinks);
         view.addActionListener(e -> showLinkedChats());
         remove.addActionListener(e -> {
-            confirmedDelete("ChatAnnotationActions.ConfirmDeleteChats"); //$NON-NLS-1$
-            linksRemoved = true;
-            view.setEnabled(false);
-            remove.setEnabled(false);
-            area.setText(""); //$NON-NLS-1$
+            if (confirmAndClear("ChatAnnotationActions.ConfirmDeleteChats", view, remove, area)) { //$NON-NLS-1$
+                linksRemoved = true;
+            }
         });
         actions.add(view);
         actions.add(remove);
@@ -132,7 +148,20 @@ class ChatAnnotationActionDialog extends JDialog {
         return panel;
     }
 
+    private boolean confirmAndClear(String confirmKey, JButton view, JButton remove, JTextArea area) {
+        if (!confirmedDelete(confirmKey)) {
+            return false;
+        }
+        view.setEnabled(false);
+        remove.setEnabled(false);
+        area.setText(""); //$NON-NLS-1$
+        return true;
+    }
+
     private boolean confirmedDelete(String confirmKey) {
+        if (confirmPrompt != null) {
+            return confirmPrompt.test(confirmKey);
+        }
         return javax.swing.JOptionPane.showConfirmDialog(this, Messages.getString(confirmKey),
                 Messages.getString("ChatAnnotationActions.Delete"), //$NON-NLS-1$
                 javax.swing.JOptionPane.YES_NO_OPTION) == javax.swing.JOptionPane.YES_OPTION;
