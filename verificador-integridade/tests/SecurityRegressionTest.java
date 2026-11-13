@@ -27,6 +27,7 @@ public final class SecurityRegressionTest {
             batchFailurePreservesPreviousReports();
             extraFileInHtmlMessageCaptureIsFlagged(root);
             craftedHistoryReportInjectionIsRejectedAndEscaped(root);
+            junctionInsideCaptureAndOutputAreRejected(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -357,6 +358,86 @@ public final class SecurityRegressionTest {
         manifest.put("captureRootHash", rootHash);
 
         Files.write(captureDir.resolve("manifest.json"), manifest.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void junctionInsideCaptureAndOutputAreRejected(Path root) throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path work = Files.createDirectories(root.resolve("junction-test"));
+        Path outside = Files.createDirectories(work.resolve("outside-secret"));
+        Files.write(outside.resolve("secret.txt"), "top-secret".getBytes(StandardCharsets.UTF_8));
+
+        Path suiteRoot = Files.createDirectories(work.resolve("captures-root"));
+        Path cap = Files.createDirectories(suiteRoot.resolve("cap-junction"));
+        createValidHtmlMessageCapture(cap, "Normal");
+        Path junction = cap.resolve("linkdir");
+        createWindowsJunction(junction, outside);
+        try {
+            if (IntegrityVerifier.resolve(cap, "linkdir/secret.txt") != null) {
+                throw new AssertionError("resolve() must return null for paths crossing an NTFS junction");
+            }
+            boolean walked = false;
+            try {
+                IntegrityVerifier.listCaptureFiles(cap);
+                walked = true;
+            } catch (IOException expected) {
+                // expected
+            }
+            if (walked) {
+                throw new AssertionError("listCaptureFiles() must fail when capture contains an NTFS junction");
+            }
+            boolean verified = false;
+            try {
+                IntegrityVerifier.main(new String[]{"--verify-only", suiteRoot.toString()});
+                verified = true;
+            } catch (IOException expected) {
+                // expected
+            }
+            if (verified) {
+                throw new AssertionError("--verify-only must reject a capture containing an NTFS junction");
+            }
+        } finally {
+            Files.deleteIfExists(junction);
+        }
+
+        Path exportRoot = Files.createDirectories(work.resolve("export-root"));
+        Path exportCap = Files.createDirectories(exportRoot.resolve("cap-ok"));
+        createValidHtmlMessageCapture(exportCap, "Clean");
+        Path outJunction = exportRoot.resolve("integridade");
+        createWindowsJunction(outJunction, outside);
+        try {
+            boolean exported = false;
+            try {
+                IntegrityVerifier.main(new String[]{"--export-history", exportRoot.toString()});
+                exported = true;
+            } catch (IOException expected) {
+                // expected
+            }
+            if (exported || Files.exists(outside.resolve("historico-capturas.txt"))) {
+                throw new AssertionError("--export-history must reject an NTFS junction at output/integridade");
+            }
+        } finally {
+            Files.deleteIfExists(outJunction);
+        }
+    }
+
+    private static void createWindowsJunction(Path link, Path target) throws Exception {
+        Process p = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                link.toAbsolutePath().toString(), target.toAbsolutePath().toString())
+                .redirectErrorStream(true).start();
+        String output;
+        try (java.io.InputStream in = p.getInputStream()) {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[1024];
+            int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            output = new String(buf.toByteArray(), StandardCharsets.UTF_8);
+        }
+        int code = p.waitFor();
+        if (code != 0) {
+            throw new IOException("mklink /J failed (" + code + "): " + output);
+        }
     }
 
     private static String sha256Utf8(String value) throws Exception {

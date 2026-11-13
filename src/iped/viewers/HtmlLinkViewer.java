@@ -2075,12 +2075,8 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         if (!computedRoot.equalsIgnoreCase(manifest.optString("captureRootHash"))) {
             throw new IOException("O hash raiz da candidata não confere com as mensagens e o HTML."); //$NON-NLS-1$
         }
-        try (Stream<Path> paths = Files.walk(candidate)) {
-            for (Path path : paths.collect(java.util.stream.Collectors.toList())) {
-                if (Files.isSymbolicLink(path)) throw new IOException("A candidata contém link simbólico: " + path); //$NON-NLS-1$
-                if (path.equals(candidate) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
-                CaptureIntegrity.resolveContained(candidate, candidate.relativize(path).toString());
-            }
+        for (Path path : CaptureIntegrity.listRegularFilesSafe(candidate, 25000)) {
+            CaptureIntegrity.resolveContained(candidate, candidate.relativize(path).toString());
         }
         JSONArray inventory = CaptureIntegrity.artifactInventory(candidate);
         if (inventory.length() == 0 || inventory.length() > 25000) {
@@ -3356,28 +3352,24 @@ createReportThumbnails(captureDir, exported);
         for (String directory : new String[] {"anexos", "attachments"}) { //$NON-NLS-1$ //$NON-NLS-2$
             Path base = root.resolve(directory);
             if (!Files.exists(base, LinkOption.NOFOLLOW_LINKS)) continue;
-            if (Files.isSymbolicLink(base) || !Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) {
+            if (CaptureIntegrity.isLinkOrReparse(base) || !Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("A pasta de anexos legados não é um diretório seguro: " + base); //$NON-NLS-1$
             }
-            try (Stream<Path> paths = Files.walk(base)) {
-                for (Path path : paths.collect(java.util.stream.Collectors.toList())) {
-                    if (Files.isSymbolicLink(path)) throw new IOException("Link simbólico não pode ser indexado para reuso: " + path); //$NON-NLS-1$
-                    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
-                    String relative = root.relativize(path).toString().replace('\\', '/');
-                    if (relative.length() > CaptureIntegrity.MAX_RELATIVE_PATH_CHARS) {
-                        throw new IOException("Caminho de anexo legado excede o limite seguro."); //$NON-NLS-1$
-                    }
-                    CaptureIntegrity.resolveContained(root, relative);
-                    long size = Files.size(path);
-                    if (size < 1 || size > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) continue;
-                    if (++files > 25000) throw new IOException("A captura legada excede o limite de anexos para reuso."); //$NON-NLS-1$
-                    totalBytes += size;
-                    if (totalBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) {
-                        throw new IOException("O total de anexos legados excede o orçamento seguro de reuso."); //$NON-NLS-1$
-                    }
-                    ReusableAttachment entry = new ReusableAttachment(path, CaptureIntegrity.sha256(path), size);
-                    indexed.computeIfAbsent(reusableAttachmentKey(entry.sha256, entry.size), key -> new ArrayList<>()).add(entry);
+            for (Path path : CaptureIntegrity.listRegularFilesSafe(base, 25000)) {
+                String relative = root.relativize(path).toString().replace('\\', '/');
+                if (relative.length() > CaptureIntegrity.MAX_RELATIVE_PATH_CHARS) {
+                    throw new IOException("Caminho de anexo legado excede o limite seguro."); //$NON-NLS-1$
                 }
+                CaptureIntegrity.resolveContained(root, relative);
+                long size = Files.size(path);
+                if (size < 1 || size > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) continue;
+                if (++files > 25000) throw new IOException("A captura legada excede o limite de anexos para reuso."); //$NON-NLS-1$
+                totalBytes += size;
+                if (totalBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) {
+                    throw new IOException("O total de anexos legados excede o orçamento seguro de reuso."); //$NON-NLS-1$
+                }
+                ReusableAttachment entry = new ReusableAttachment(path, CaptureIntegrity.sha256(path), size);
+                indexed.computeIfAbsent(reusableAttachmentKey(entry.sha256, entry.size), key -> new ArrayList<>()).add(entry);
             }
         }
         return indexed;
@@ -3758,7 +3750,7 @@ createReportThumbnails(captureDir, exported);
         Path reportsDir = outputRoot.resolve("integridade"); //$NON-NLS-1$
         try {
             if (Files.exists(reportsDir, LinkOption.NOFOLLOW_LINKS)) {
-                if (Files.isSymbolicLink(reportsDir)) {
+                if (CaptureIntegrity.isLinkOrReparse(reportsDir)) {
                     Files.deleteIfExists(reportsDir);
                 } else if (Files.isDirectory(reportsDir, LinkOption.NOFOLLOW_LINKS)) {
                     deleteDirectoryIfExists(reportsDir);
@@ -4044,19 +4036,46 @@ private boolean isCaptureFolder(Path captureDir) {
     }
 
     private void deleteDirectoryTreeOnce(Path path) throws IOException {
-        try (Stream<Path> stream = Files.walk(path)) {
-            List<Path> paths = new ArrayList<>();
-            stream.forEach(paths::add);
-            paths.sort(Comparator.reverseOrder());
-            for (Path item : paths) {
-                try {
-                    item.toFile().setWritable(true);
-                } catch (Exception e) {
-                    LOGGER.debug("Unable to mark file writable before delete {}", item, e); //$NON-NLS-1$
-                }
-                Files.deleteIfExists(item);
-            }
+        Path root = path.toAbsolutePath().normalize();
+        if (CaptureIntegrity.isLinkOrReparse(root)) {
+            Files.deleteIfExists(root);
+            return;
         }
+        Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (!dir.equals(root) && (attrs.isSymbolicLink() || attrs.isOther() || CaptureIntegrity.isLinkOrReparse(dir))) {
+                    Files.deleteIfExists(dir);
+                    return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                }
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                try {
+                    file.toFile().setWritable(true);
+                } catch (Exception e) {
+                    LOGGER.debug("Unable to mark file writable before delete {}", file, e); //$NON-NLS-1$
+                }
+                Files.deleteIfExists(file);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                if (exc != null) throw exc;
+                try {
+                    dir.toFile().setWritable(true);
+                } catch (Exception e) {
+                    LOGGER.debug("Unable to mark directory writable before delete {}", dir, e); //$NON-NLS-1$
+                }
+                Files.deleteIfExists(dir);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void sleepQuietly(long millis) {
@@ -4068,19 +4087,7 @@ private boolean isCaptureFolder(Path captureDir) {
     }
 
     private FolderHash calculateFolderHash(Path folder) throws IOException {
-        List<Path> files = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(folder)) {
-            java.util.Iterator<Path> iterator = stream.iterator();
-            while (iterator.hasNext()) {
-                Path path = iterator.next();
-                if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-                    if (files.size() >= CaptureIntegrity.MAX_INVENTORY_FILES) {
-                        throw new IOException("A captura excede o limite de " + CaptureIntegrity.MAX_INVENTORY_FILES + " arquivos.");
-                    }
-                    files.add(path);
-                }
-            }
-        }
+        List<Path> files = CaptureIntegrity.listRegularFilesSafe(folder, CaptureIntegrity.MAX_INVENTORY_FILES);
         files.sort(Comparator.comparing(path -> folder.relativize(path).toString().replace('\\', '/').toLowerCase()));
         FolderHash result = new FolderHash();
         MessageDigest canonical;

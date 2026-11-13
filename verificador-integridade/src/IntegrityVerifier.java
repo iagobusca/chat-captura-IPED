@@ -7,6 +7,7 @@ import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -94,7 +95,7 @@ public final class IntegrityVerifier {
             if(!ok) throw new IOException("Uma ou mais capturas divergiram do registro local.");
             return;
         }
-        if(exportHistory){verifyAllBounded(captures);enforceReportBudget(captures);String collectionHash=setHash(captures);String report=historyReport(captures,collectionHash);String publicReport=publicHistoryReport(captures,collectionHash);Path out=root.resolve("integridade");Files.createDirectories(out);atomic(out.resolve("historico-capturas.txt"),report);System.out.println(out.resolve("historico-capturas.txt"));System.out.println("SHA-256_PUBLICO="+hashText(normalizePublicRecord(report)));System.out.println("SHA-256_HISTORICO_PUBLICO="+hashText(normalizePublicRecord(publicReport)));return;}
+        if(exportHistory){verifyAllBounded(captures);enforceReportBudget(captures);String collectionHash=setHash(captures);String report=historyReport(captures,collectionHash);String publicReport=publicHistoryReport(captures,collectionHash);Path out=root.resolve("integridade");rejectLinks(root,out);Files.createDirectories(out);atomic(root,out.resolve("historico-capturas.txt"),report);System.out.println(out.resolve("historico-capturas.txt"));System.out.println("SHA-256_PUBLICO="+hashText(normalizePublicRecord(report)));System.out.println("SHA-256_HISTORICO_PUBLICO="+hashText(normalizePublicRecord(publicReport)));return;}
         int mode=chooseMode();
         if(mode<0){System.exit(0);return;}
         List<Capture> selected = chooseCaptures(captures);
@@ -349,7 +350,7 @@ public final class IntegrityVerifier {
     private static List<Capture> discover(Path root) throws IOException {return discover(root,null);}
     private static List<Capture> discover(Path root,IntConsumer progress) throws IOException {
         List<Capture> out=new ArrayList<>();
-        try(java.util.stream.Stream<Path> s=Files.list(root)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS))continue;String n=p.getFileName().toString();if(n.startsWith("_backup_chat_capture_")||n.equals("vinculado")||n.equals(".iped-reextract-trash")||n.contains(".__old_")||n.contains(".__reextract_tmp_")||n.contains(".__reextract_failed_"))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
+        try(java.util.stream.Stream<Path> s=Files.list(root)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(p))continue;String n=p.getFileName().toString();if(n.startsWith("_backup_chat_capture_")||n.equals("vinculado")||n.equals(".iped-reextract-trash")||n.contains(".__old_")||n.contains(".__reextract_tmp_")||n.contains(".__reextract_failed_"))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
         out.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT))); return out;
     }
     private static List<Capture> chooseCaptures(List<Capture> captures) throws Exception {
@@ -370,14 +371,18 @@ public final class IntegrityVerifier {
     }
     private static void verify(Capture c) throws Exception {verify(c,MAX_CAPTURE_FILES);}
     private static void verify(Capture c,int maxItemsAllowed) throws Exception {
-        Path formatManifest=c.dir.resolve("manifest.json");
+        Path rawManifest=c.dir.resolve("manifest.json");
+        if(Files.exists(rawManifest,LinkOption.NOFOLLOW_LINKS)&&isLinkOrReparse(rawManifest))throw new IOException("Junção ou link não permitido na captura: "+rawManifest);
+        Path formatManifest=resolve(c.dir,"manifest.json");
         JSONObject format=null;
-        if(Files.isRegularFile(formatManifest,LinkOption.NOFOLLOW_LINKS)){
+        if(formatManifest!=null&&Files.isRegularFile(formatManifest,LinkOption.NOFOLLOW_LINKS)){
             format=parseBoundedJson(readUtf8Limited(formatManifest),formatManifest);
         }
-        Path integrityPath=c.dir.resolve("integridade.json");
+        Path rawIntegrity=c.dir.resolve("integridade.json");
+        if(Files.exists(rawIntegrity,LinkOption.NOFOLLOW_LINKS)&&isLinkOrReparse(rawIntegrity))throw new IOException("Junção ou link não permitido na captura: "+rawIntegrity);
+        Path integrityPath=resolve(c.dir,"integridade.json");
         JSONObject integrity=null;
-        if(Files.isRegularFile(integrityPath, LinkOption.NOFOLLOW_LINKS)) {
+        if(integrityPath!=null&&Files.isRegularFile(integrityPath, LinkOption.NOFOLLOW_LINKS)) {
             c.integrityFileHash=hash(integrityPath);
             try { integrity=parseBoundedJson(readUtf8Limited(integrityPath),integrityPath); }
             catch(RuntimeException invalid) { c.historyStatus="registro inválido"; }
@@ -554,7 +559,7 @@ public final class IntegrityVerifier {
         if(messages.length()==0||!anchors.optString("start","").equals(messages.getJSONObject(0).optString("domId"))||!anchors.optString("end","").equals(messages.getJSONObject(messages.length()-1).optString("domId")))throw new IOException("Âncoras do manifesto não correspondem aos limites da captura.");
         if((long)messages.length()+attachmentPaths.size()>MAX_SELECTED_ITEMS)throw new IOException("Mensagens e anexos excedem o limite global de itens.");
         JSONArray publicHashes=manifest.optJSONArray("messageHashes");if(publicHashes==null||publicHashes.length()!=messages.length())throw new IOException("Resumo público de hashes por mensagem ausente ou divergente.");for(int i=0;i<messages.length();i++){JSONObject summary=publicHashes.optJSONObject(i),message=messages.getJSONObject(i);if(summary==null||!summary.optString("domId","").equals(message.optString("domId"))||!summary.optString("key","").equals(message.optString("key"))||!summary.optString("messageHash","").equalsIgnoreCase(message.optString("messageHash")))throw new IOException("Resumo público de hash diverge da mensagem "+message.optString("domId"));}
-        Path htmlPath=c.dir.resolve("whatsapp.html");if(!Files.isRegularFile(htmlPath,LinkOption.NOFOLLOW_LINKS))throw new IOException("HTML da captura não encontrado.");
+        Path htmlPath=resolve(c.dir,"whatsapp.html");if(htmlPath==null||!Files.isRegularFile(htmlPath,LinkOption.NOFOLLOW_LINKS))throw new IOException("HTML da captura não encontrado.");
         if(Files.size(htmlPath)>MAX_METADATA_BYTES*4L)throw new IOException("HTML da captura excede o limite de leitura segura.");
         String html=readUtf8Limited(htmlPath);String htmlSha=manifest.optString("htmlSha256","");if(!htmlSha.matches("(?i)[0-9a-f]{64}")||!hash(htmlPath).equalsIgnoreCase(htmlSha))throw new IOException("Hash do HTML ausente ou divergente.");
         validateRenderedCaptureHtml(html,attachmentPaths,attachmentMimeByPath,keys,manifest.optInt("presentationVersion",0));
@@ -795,13 +800,62 @@ public final class IntegrityVerifier {
         StringBuilder current=new StringBuilder();for(JSONObject item:sorted){String path=item.optString("path","");Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)){c.historyStatus="arquivo ausente: "+path;return;}String actual=hash(file);if(!actual.equalsIgnoreCase(item.optString("sha256",""))||Files.size(file)!=item.optLong("size",-1)){c.historyStatus="arquivo divergente: "+path;return;}current.append(path).append('|').append(Files.size(file)).append('|').append(actual).append('\n');}
         c.historyStatus=hashText(current.toString()).equalsIgnoreCase(declaredRoot)?"consistente com registro local":"conteúdo diverge do registro local";
     }
-    private static Path resolve(Path root,String rel){try{if(rel==null||rel.isEmpty()||rel.length()>MAX_RELATIVE_PATH_CHARS||rel.indexOf('\0')>=0||rel.indexOf(':')>=0)return null;Path normalizedRoot=root.toAbsolutePath().normalize();Path r=normalizedRoot.getFileSystem().getPath(rel.replace('\\','/'));if(r.isAbsolute()||r.getNameCount()==0)return null;for(Path p:r)if(p.toString().equals("..")||p.toString().equals("."))return null;Path f=normalizedRoot.resolve(r).normalize();if(!f.startsWith(normalizedRoot)||f.equals(normalizedRoot))return null;Path q=normalizedRoot;for(Path p:normalizedRoot.relativize(f)){q=q.resolve(p);if(Files.isSymbolicLink(q))return null;}return f;}catch(Exception e){return null;}}
+    static boolean isLinkOrReparse(Path p)throws IOException{
+        if(Files.isSymbolicLink(p))return true;
+        if(!Files.exists(p,LinkOption.NOFOLLOW_LINKS))return false;
+        return Files.readAttributes(p,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS).isOther();
+    }
+    static Path resolve(Path root,String rel){
+        try{
+            if(rel==null||rel.isEmpty()||rel.length()>MAX_RELATIVE_PATH_CHARS||rel.indexOf('\0')>=0||rel.indexOf(':')>=0)return null;
+            Path normalizedRoot=root.toAbsolutePath().normalize();
+            Path r=normalizedRoot.getFileSystem().getPath(rel.replace('\\','/'));
+            if(r.isAbsolute()||r.getNameCount()==0)return null;
+            for(Path p:r)if(p.toString().equals("..")||p.toString().equals("."))return null;
+            Path f=normalizedRoot.resolve(r).normalize();
+            if(!f.startsWith(normalizedRoot)||f.equals(normalizedRoot))return null;
+            Path q=normalizedRoot;
+            for(Path p:normalizedRoot.relativize(f)){
+                q=q.resolve(p);
+                if(isLinkOrReparse(q))return null;
+            }
+            if(Files.exists(f,LinkOption.NOFOLLOW_LINKS)){
+                Path realRoot=normalizedRoot.toRealPath();
+                Path realFile=f.toRealPath();
+                if(!realFile.startsWith(realRoot)||realFile.equals(realRoot))return null;
+            }
+            return f;
+        }catch(Exception e){return null;}
+    }
     private static String field(String s,String name){Matcher m=Pattern.compile("\\\""+Pattern.quote(name)+"\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"").matcher(s);return m.find()?m.group(1).replace("\\/","/").replace("\\\"","\"").replace("\\\\","\\"):null;}
     private static long number(String s,String n){Matcher m=Pattern.compile("\\\""+n+"\\\"\\s*:\\s*(\\d+)").matcher(s);return m.find()?Long.parseLong(m.group(1)): -1;}
     private static String hash(Path p)throws Exception{MessageDigest d=MessageDigest.getInstance(ALG);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS)){byte[]b=new byte[32768];int n;while((n=in.read(b))>0)d.update(b,0,n);}return hex(d.digest());}
     private static String readUtf8Limited(Path p)throws IOException{long size=Files.size(p);if(size>MAX_METADATA_BYTES)throw new IOException("Arquivo de metadados excede o limite de "+MAX_METADATA_BYTES+" bytes: "+p);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS);ByteArrayOutputStream out=new ByteArrayOutputStream((int)size)){byte[]buffer=new byte[8192];int n;int total=0;while((n=in.read(buffer))!=-1){total+=n;if(total>MAX_METADATA_BYTES)throw new IOException("Arquivo de metadados excede o limite de "+MAX_METADATA_BYTES+" bytes: "+p);out.write(buffer,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
     private static JSONObject parseBoundedJson(String json,Path source)throws IOException{int depth=0;boolean quoted=false,escaped=false;for(int i=0;i<json.length();i++){char ch=json.charAt(i);if(quoted){if(escaped)escaped=false;else if(ch=='\\')escaped=true;else if(ch=='"')quoted=false;continue;}if(ch=='"'){quoted=true;continue;}if(ch=='{'||ch=='['){if(++depth>MAX_JSON_DEPTH)throw new IOException("JSON excede a profundidade máxima de "+MAX_JSON_DEPTH+" níveis: "+source);}else if(ch=='}'||ch==']'){if(--depth<0)throw new IOException("JSON malformado: "+source);}}if(quoted||depth!=0)throw new IOException("JSON incompleto: "+source);try{return new JSONObject(json);}catch(RuntimeException invalid){throw new IOException("JSON inválido: "+source,invalid);}}
-    private static List<Path> listCaptureFiles(Path root)throws IOException{List<Path> files=new ArrayList<>();try(java.util.stream.Stream<Path> stream=Files.walk(root)){java.util.Iterator<Path> iterator=stream.iterator();while(iterator.hasNext()){Path p=iterator.next();if(Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)){if(files.size()>=MAX_CAPTURE_FILES)throw new IOException("Captura excede o limite de "+MAX_CAPTURE_FILES+" arquivos: "+root);files.add(p);}}}return files;}
+    static List<Path> listCaptureFiles(Path root)throws IOException{
+        Path normalizedRoot=root.toAbsolutePath().normalize();
+        Path realRoot=normalizedRoot.toRealPath();
+        List<Path> files=new ArrayList<>();
+        Files.walkFileTree(normalizedRoot,new SimpleFileVisitor<Path>(){
+            @Override public FileVisitResult preVisitDirectory(Path dir,BasicFileAttributes attrs)throws IOException{
+                if(!dir.equals(normalizedRoot)){
+                    if(attrs.isSymbolicLink()||attrs.isOther()||isLinkOrReparse(dir))throw new IOException("Junção ou link não permitido na captura: "+dir);
+                    if(!dir.toRealPath().startsWith(realRoot))throw new IOException("Diretório fora da raiz da captura: "+dir);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path file,BasicFileAttributes attrs)throws IOException{
+                if(attrs.isSymbolicLink()||attrs.isOther()||isLinkOrReparse(file))throw new IOException("Junção ou link não permitido na captura: "+file);
+                if(attrs.isRegularFile()){
+                    if(!file.toRealPath().startsWith(realRoot))throw new IOException("Arquivo fora da raiz da captura: "+file);
+                    if(files.size()>=MAX_CAPTURE_FILES)throw new IOException("Captura excede o limite de "+MAX_CAPTURE_FILES+" arquivos: "+root);
+                    files.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return files;
+    }
     private static String quietHash(Path p){try{return hash(p);}catch(Exception e){return null;}}
     private static long quietSize(Path p){try{return Files.size(p);}catch(Exception e){return 0;}}
     private static String hashText(String s)throws Exception{return hex(MessageDigest.getInstance(ALG).digest(s.getBytes(StandardCharsets.UTF_8)));}
@@ -833,22 +887,34 @@ public final class IntegrityVerifier {
             txt.append(recordField(c.name)).append(" | ").append(c.hash).append("\n");
             if(!first)json.append(',');first=false;json.append("{\"name\":\"").append(jsonEsc(c.name)).append("\",\"hash\":\"").append(c.hash).append("\",\"files\":[");boolean f=true;for(Item i:c.items){if(!f)json.append(',');f=false;json.append("{\"path\":\"").append(jsonEsc(i.path)).append("\",\"status\":\"").append(jsonEsc(i.state)).append("\",\"expected\":\"").append(jsonEsc(i.expected==null?"":i.expected)).append("\",\"actual\":\"").append(jsonEsc(i.actual==null?"":i.actual)).append("\"}");}json.append("]}");
         }
-        html.append("</table><h2>Arquivos</h2>");for(Capture c:cs){html.append("<h3>").append(esc(c.name)).append("</h3><table><tr><th>Arquivo</th><th>Estado</th><th>Esperado</th><th>Encontrado</th></tr>");for(Item i:c.items)html.append("<tr><td>").append(esc(i.path)).append("</td><td class=\"").append("integro".equals(i.state)?"ok":"bad").append("\">").append(esc(i.state)).append("</td><td><code>").append(esc(i.expected)).append("</code></td><td><code>").append(esc(i.actual)).append("</code></td></tr>");html.append("</table>");}html.append("<p>Este relatório é um retrato desta execução. O hash é um código de comparação, não uma assinatura digital.</p><p>Arquivos: <a href=\"integridade/hashes-capturas.txt\">lista de hashes</a> · <a href=\"integridade/verificacao-integridade.txt\">resumo TXT</a> · <a href=\"integridade/verificacao-integridade.json\">detalhes JSON</a></p><script>function show(el,text,ok){el.className=ok?'match':'diverge';el.textContent=text;}function compareHash(){var v=document.getElementById('publicHash').value.trim().toLowerCase(),r=document.getElementById('comparison'),ok=v==='" ).append(rootHash).append("';if(!v){r.className='';r.textContent='Informe um hash público.';return;}show(r,ok?'Confere com o hash geral calculado.':'Diverge do hash geral calculado.',ok);}function compareCapture(b){var p=b.parentNode,i=p.querySelector('input'),v=i.value.trim().toLowerCase(),ok=v===i.getAttribute('data-expected').toLowerCase(),r=p.querySelector('.cmp');if(!v){r.className='cmp';r.textContent='Informe um hash público.';return;}show(r,ok?'Confere com o hash da captura calculado.':'Diverge do hash da captura calculado.',ok);}function compareList(){var map={},lines=document.getElementById('hashList').value.split('\\n');lines.forEach(function(line){line=line.replace('\\r','').trim();var n=line.indexOf('|');if(n>0)map[line.substring(0,n).trim().toLowerCase()]=line.substring(n+1).trim().toLowerCase();});var root=map['todas_as_capturas']||map['root'];var rr=document.getElementById('listResult');if(root){var ok=root==='" ).append(rootHash).append("';show(rr,ok?'Hash geral confere.':'Diverge do hash geral calculado.',ok);document.getElementById('publicHash').value=root;}else{rr.className='';rr.textContent='A lista não contém a linha TODAS_AS_CAPTURAS|hash.';}document.querySelectorAll('.capture-row').forEach(function(row){var name=row.getAttribute('data-capture').toLowerCase(),expected=row.querySelector('.capture-hash').getAttribute('data-expected').toLowerCase(),given=map[name],out=row.querySelector('.cmp');if(!given){out.className='cmp';out.textContent='Sem hash desta captura na lista.';}else{var match=given===expected;row.querySelector('.capture-hash').value=given;show(out,match?'Hash da captura confere.':'Diverge do hash calculado para esta captura.',match);}});}function copyValue(b){var t=document.createElement('textarea');t.value=b.getAttribute('data-value');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();}</script></html>");json.append("]}");Path reportDir=root.resolve("integridade");Files.createDirectories(reportDir);Map<Path,String> outputs=new LinkedHashMap<>();outputs.put(root.resolve("integridade.html"),html.toString());outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt.toString());outputs.put(reportDir.resolve("verificacao-integridade.json"),json.toString());outputs.put(reportDir.resolve("hashes-capturas.txt"),publicHashList(cs,rootHash));outputs.put(reportDir.resolve("historico-capturas.txt"),history);atomicBatch(outputs);
+        html.append("</table><h2>Arquivos</h2>");for(Capture c:cs){html.append("<h3>").append(esc(c.name)).append("</h3><table><tr><th>Arquivo</th><th>Estado</th><th>Esperado</th><th>Encontrado</th></tr>");for(Item i:c.items)html.append("<tr><td>").append(esc(i.path)).append("</td><td class=\"").append("integro".equals(i.state)?"ok":"bad").append("\">").append(esc(i.state)).append("</td><td><code>").append(esc(i.expected)).append("</code></td><td><code>").append(esc(i.actual)).append("</code></td></tr>");html.append("</table>");}html.append("<p>Este relatório é um retrato desta execução. O hash é um código de comparação, não uma assinatura digital.</p><p>Arquivos: <a href=\"integridade/hashes-capturas.txt\">lista de hashes</a> · <a href=\"integridade/verificacao-integridade.txt\">resumo TXT</a> · <a href=\"integridade/verificacao-integridade.json\">detalhes JSON</a></p><script>function show(el,text,ok){el.className=ok?'match':'diverge';el.textContent=text;}function compareHash(){var v=document.getElementById('publicHash').value.trim().toLowerCase(),r=document.getElementById('comparison'),ok=v==='" ).append(rootHash).append("';if(!v){r.className='';r.textContent='Informe um hash público.';return;}show(r,ok?'Confere com o hash geral calculado.':'Diverge do hash geral calculado.',ok);}function compareCapture(b){var p=b.parentNode,i=p.querySelector('input'),v=i.value.trim().toLowerCase(),ok=v===i.getAttribute('data-expected').toLowerCase(),r=p.querySelector('.cmp');if(!v){r.className='cmp';r.textContent='Informe um hash público.';return;}show(r,ok?'Confere com o hash da captura calculado.':'Diverge do hash da captura calculado.',ok);}function compareList(){var map={},lines=document.getElementById('hashList').value.split('\\n');lines.forEach(function(line){line=line.replace('\\r','').trim();var n=line.indexOf('|');if(n>0)map[line.substring(0,n).trim().toLowerCase()]=line.substring(n+1).trim().toLowerCase();});var root=map['todas_as_capturas']||map['root'];var rr=document.getElementById('listResult');if(root){var ok=root==='" ).append(rootHash).append("';show(rr,ok?'Hash geral confere.':'Diverge do hash geral calculado.',ok);document.getElementById('publicHash').value=root;}else{rr.className='';rr.textContent='A lista não contém a linha TODAS_AS_CAPTURAS|hash.';}document.querySelectorAll('.capture-row').forEach(function(row){var name=row.getAttribute('data-capture').toLowerCase(),expected=row.querySelector('.capture-hash').getAttribute('data-expected').toLowerCase(),given=map[name],out=row.querySelector('.cmp');if(!given){out.className='cmp';out.textContent='Sem hash desta captura na lista.';}else{var match=given===expected;row.querySelector('.capture-hash').value=given;show(out,match?'Hash da captura confere.':'Diverge do hash calculado para esta captura.',match);}});}function copyValue(b){var t=document.createElement('textarea');t.value=b.getAttribute('data-value');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();}</script></html>");json.append("]}");Path reportDir=root.resolve("integridade");rejectLinks(root,reportDir);Files.createDirectories(reportDir);Map<Path,String> outputs=new LinkedHashMap<>();outputs.put(root.resolve("integridade.html"),html.toString());outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt.toString());outputs.put(reportDir.resolve("verificacao-integridade.json"),json.toString());outputs.put(reportDir.resolve("hashes-capturas.txt"),publicHashList(cs,rootHash));outputs.put(reportDir.resolve("historico-capturas.txt"),history);atomicBatch(root,outputs);
     }
-    private static void atomic(Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);if(data.length>MAX_METADATA_BYTES)throw new IOException("Relatório excede o limite de "+MAX_METADATA_BYTES+" bytes; o arquivo anterior foi preservado.");Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);Files.createDirectories(parent);rejectLinks(parent);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}try{Files.move(t,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(t,target,StandardCopyOption.REPLACE_EXISTING);}}finally{Files.deleteIfExists(t);}}
+    private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);if(data.length>MAX_METADATA_BYTES)throw new IOException("Relatório excede o limite de "+MAX_METADATA_BYTES+" bytes; o arquivo anterior foi preservado.");Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);rejectLinks(root,parent);Files.createDirectories(parent);rejectLinks(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}try{Files.move(t,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(t,target,StandardCopyOption.REPLACE_EXISTING);}}finally{Files.deleteIfExists(t);}}
     private static void atomicBatch(Map<Path,String> outputs)throws IOException{
+        if(outputs.isEmpty())return;
+        Path common=null;
+        for(Path p:outputs.keySet()){
+            Path parent=p.toAbsolutePath().normalize().getParent();
+            if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);
+            if(common==null)common=parent;
+            else while(common!=null&&!parent.startsWith(common))common=common.getParent();
+        }
+        if(common==null)throw new IOException("Caminhos de relatório sem raiz comum.");
+        atomicBatch(common,outputs);
+    }
+    private static void atomicBatch(Path root,Map<Path,String> outputs)throws IOException{
         Map<Path,Path> staged=new LinkedHashMap<>(),backups=new LinkedHashMap<>();List<Path> promoted=new ArrayList<>();
         try{
             for(Map.Entry<Path,String> entry:outputs.entrySet()){
                 Path target=entry.getKey().toAbsolutePath().normalize(),parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+target);
                 byte[] data=entry.getValue().getBytes(StandardCharsets.UTF_8);if(data.length>MAX_METADATA_BYTES)throw new IOException("Relatório excede o limite de "+MAX_METADATA_BYTES+" bytes; relatórios anteriores foram preservados.");
-                Files.createDirectories(parent);rejectLinks(parent);if(Files.isSymbolicLink(target))throw new IOException("O destino do relatório é um link simbólico: "+target);
+                rejectLinks(root,parent);Files.createDirectories(parent);rejectLinks(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
                 Path temp=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");staged.put(target,temp);
                 try(OutputStream out=Files.newOutputStream(temp,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}
                 if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)){if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path backup=Files.createTempFile(parent,"."+target.getFileName()+".",".bak");Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING);backups.put(target,backup);}
             }
             for(Map.Entry<Path,Path> entry:staged.entrySet()){
-                if(Files.isSymbolicLink(entry.getKey()))throw new IOException("O destino do relatório mudou para link simbólico: "+entry.getKey());
+                if(isLinkOrReparse(entry.getKey()))throw new IOException("O destino do relatório mudou para link ou junção: "+entry.getKey());
                 moveReplace(entry.getValue(),entry.getKey());promoted.add(entry.getKey());
             }
         }catch(IOException failure){
@@ -860,7 +926,29 @@ public final class IntegrityVerifier {
         }
     }
     private static void moveReplace(Path source,Path target)throws IOException{try{Files.move(source,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(source,target,StandardCopyOption.REPLACE_EXISTING);}}
-    private static void rejectLinks(Path directory)throws IOException{Path current=directory.getRoot();for(Path part:directory){current=current.resolve(part);if(Files.isSymbolicLink(current))throw new IOException("Diretórios de saída com link simbólico não são permitidos: "+current);}}
+    private static void rejectLinks(Path root,Path directory)throws IOException{
+        Path normalizedRoot=root.toAbsolutePath().normalize(),normalizedDir=directory.toAbsolutePath().normalize();
+        if(!normalizedDir.startsWith(normalizedRoot))throw new IOException("Diretório de saída fora da raiz permitida: "+normalizedDir);
+        Path fsRoot=normalizedRoot.getRoot();
+        if(fsRoot!=null&&!normalizedRoot.equals(fsRoot)){
+            Path current=fsRoot;
+            for(Path part:fsRoot.relativize(normalizedRoot)){
+                current=current.resolve(part);
+                if(Files.isSymbolicLink(current))throw new IOException("Diretórios de saída com link simbólico não são permitidos: "+current);
+            }
+        }
+        if(!normalizedDir.equals(normalizedRoot)){
+            Path current=normalizedRoot;
+            for(Path part:normalizedRoot.relativize(normalizedDir)){
+                current=current.resolve(part);
+                if(isLinkOrReparse(current))throw new IOException("Diretórios de saída com link ou junção não são permitidos: "+current);
+            }
+        }
+        if(Files.exists(normalizedDir,LinkOption.NOFOLLOW_LINKS)){
+            Path realRoot=normalizedRoot.toRealPath();
+            if(!normalizedDir.toRealPath().startsWith(realRoot))throw new IOException("Diretório de saída escapa da raiz permitida: "+normalizedDir);
+        }
+    }
     private static String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;");}
     private static String jsonEsc(String value){if(value==null)return "";StringBuilder out=new StringBuilder(value.length()+16);for(int i=0;i<value.length();i++){char c=value.charAt(i);switch(c){case '"':out.append("\\\"");break;case '\\':out.append("\\\\");break;case '\b':out.append("\\b");break;case '\f':out.append("\\f");break;case '\n':out.append("\\n");break;case '\r':out.append("\\r");break;case '\t':out.append("\\t");break;default:if(c<0x20)out.append(String.format("\\u%04x",(int)c));else out.append(c);}}return out.toString();}
 }

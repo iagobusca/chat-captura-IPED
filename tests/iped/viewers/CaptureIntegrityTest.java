@@ -21,6 +21,7 @@ public final class CaptureIntegrityTest {
         oversizedMetadataPreservesPreviousFile();
         frameSignaturesTrackSequenceAndCompleteness();
         auditLogIsExcludedFromArtifactInventory();
+        junctionsAndReparsePointsInsideCaptureAreRejected();
         System.out.println("CaptureIntegrityTest: PASS");
     }
 
@@ -183,6 +184,53 @@ public final class CaptureIntegrityTest {
                     "rejected metadata must preserve the previous file");
         } finally {
             deleteTree(root);
+        }
+    }
+
+    private static void junctionsAndReparsePointsInsideCaptureAreRejected() throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path work = Files.createTempDirectory("capture-junction-test");
+        Path outside = Files.createDirectories(work.resolve("outside"));
+        Files.write(outside.resolve("secret.txt"), "secret".getBytes(StandardCharsets.UTF_8));
+        Path cap = Files.createDirectories(work.resolve("cap"));
+        Files.write(cap.resolve("manifest.json"), "{}".getBytes(StandardCharsets.UTF_8));
+        Path junction = cap.resolve("linkdir");
+        Process p = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                junction.toAbsolutePath().toString(), outside.toAbsolutePath().toString())
+                .redirectErrorStream(true).start();
+        if (p.waitFor() != 0) {
+            throw new AssertionError("mklink /J failed in CaptureIntegrityTest");
+        }
+        try {
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(cap, cap);
+            boolean rejectedResolve = false;
+            try {
+                CaptureIntegrity.resolveContained(cap, "linkdir/secret.txt");
+            } catch (java.io.IOException expected) {
+                rejectedResolve = true;
+            }
+            check(rejectedResolve, "resolveContained must reject paths traversing an NTFS junction");
+
+            boolean rejectedList = false;
+            try {
+                CaptureIntegrity.listRegularFilesSafe(cap, 100);
+            } catch (java.io.IOException expected) {
+                rejectedList = true;
+            }
+            check(rejectedList, "listRegularFilesSafe must reject an NTFS junction inside capture root");
+
+            boolean rejectedOut = false;
+            try {
+                CaptureIntegrity.ensureNoSymbolicLinkComponents(cap, junction);
+            } catch (java.io.IOException expected) {
+                rejectedOut = true;
+            }
+            check(rejectedOut, "ensureNoSymbolicLinkComponents must reject junctions below root");
+        } finally {
+            Files.deleteIfExists(junction);
+            deleteTree(work);
         }
     }
 
