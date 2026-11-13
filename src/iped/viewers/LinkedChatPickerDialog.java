@@ -64,7 +64,7 @@ class LinkedChatPickerDialog extends JDialog {
     private final JTextField manualField = new JTextField();
     private final JButton openChatButton = new JButton(Messages.getString("ChatCaptureLink.OpenChat")); //$NON-NLS-1$
     private final JButton loadCaseButton = new JButton(Messages.getString("ChatCaptureLink.LoadCase")); //$NON-NLS-1$
-    private final JLabel caseStatus = new JLabel(" ");
+    private final JLabel caseStatus = plainLabel(" ");
 private final List<LinkedChatRef> allAvailable = new ArrayList<>();
     private final Supplier<List<LinkedChatRef>> caseChatLoader;
     private boolean confirmed;
@@ -86,9 +86,9 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
 
         JPanel left = new JPanel(new BorderLayout(4, 4));
         JPanel leftTop = new JPanel(new GridLayout(3, 1, 4, 4));
-        leftTop.add(new JLabel(Messages.getString("ChatCaptureLink.Available"))); //$NON-NLS-1$
+        leftTop.add(plainLabel(Messages.getString("ChatCaptureLink.Available"))); //$NON-NLS-1$
         JPanel searchRow = new JPanel(new BorderLayout(4, 4));
-        searchRow.add(new JLabel(Messages.getString("ChatCaptureLink.Search")), BorderLayout.WEST); //$NON-NLS-1$
+        searchRow.add(plainLabel(Messages.getString("ChatCaptureLink.Search")), BorderLayout.WEST); //$NON-NLS-1$
         searchRow.add(searchField, BorderLayout.CENTER);
         leftTop.add(searchRow);
         JPanel caseRow = new JPanel(new BorderLayout(4, 4));
@@ -117,11 +117,11 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
         manualRow.add(manualAdd, BorderLayout.EAST);
         JPanel manualPanel = new JPanel(new BorderLayout(4, 4));
         manualPanel.add(manualRow, BorderLayout.CENTER);
-        manualPanel.add(new JLabel(Messages.getString("ChatCaptureLink.ManualTip")), BorderLayout.SOUTH); //$NON-NLS-1$
+        manualPanel.add(plainLabel(Messages.getString("ChatCaptureLink.ManualTip")), BorderLayout.SOUTH); //$NON-NLS-1$
         left.add(manualPanel, BorderLayout.SOUTH);
 
         JPanel right = new JPanel(new BorderLayout(4, 4));
-        right.add(new JLabel(Messages.getString("ChatCaptureLink.Selected")), BorderLayout.NORTH); //$NON-NLS-1$
+        right.add(plainLabel(Messages.getString("ChatCaptureLink.Selected")), BorderLayout.NORTH); //$NON-NLS-1$
         selectedList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         selectedList.setCellRenderer(new ChatRenderer());
         selectedList.addListSelectionListener(e -> openChatButton.setEnabled(selectedModel.size() == 1));
@@ -373,6 +373,10 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
         private static final long serialVersionUID = 1L;
         private final JCheckBox box = new JCheckBox();
 
+        CheckBoxRenderer() {
+            box.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        }
+
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected,
                 boolean focused) {
@@ -384,6 +388,7 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
                 box.setText(mainText(row.chat));
                 box.setSelected(isLinked(row.chat));
             }
+            box.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
             box.setOpaque(true);
             box.setBackground(selected ? list.getSelectionBackground() : list.getBackground());
             box.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
@@ -400,9 +405,7 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
                 boolean focused) {
             Row row = value instanceof Row ? (Row) value : null;
             String text = row == null ? "" : chatDetailHtml(row.chat); //$NON-NLS-1$
-            if (row != null && ChatAnnotationStore.ORIGIN_MANUAL.equals(row.chat.origin)) {
-                text = text + "<br><i>" + Messages.getString("ChatCaptureLink.FromManual") + "</i>"; //$NON-NLS-1$ //$NON-NLS-2$
-            }
+            putClientProperty("html.disable", text.startsWith("<html>") ? Boolean.FALSE : Boolean.TRUE); //$NON-NLS-1$
             if (text.startsWith("<html>")) {
                 setText(text);
             } else {
@@ -435,6 +438,9 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
             out.append(escapeHtml(chat.sourceName));
             out.append("</span>"); //$NON-NLS-1$
         }
+        if (ChatAnnotationStore.ORIGIN_MANUAL.equals(chat.origin)) {
+            out.append("<br><i>").append(escapeHtml(Messages.getString("ChatCaptureLink.FromManual"))).append("</i>"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
         out.append("</html>"); //$NON-NLS-1$
         return out.toString();
     }
@@ -447,10 +453,20 @@ private final List<LinkedChatRef> allAvailable = new ArrayList<>();
         return chat.title + "   (" + chat.participants + ")"; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
-    private static String escapeHtml(String value) {
+    private static JLabel plainLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        return label;
+    }
+
+    static String escapeHtml(String value) {
         if (value == null) {
             return ""; //$NON-NLS-1$
         }
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+        return value.replace("&", "&amp;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("<", "&lt;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace(">", "&gt;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("\"", "&quot;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("'", "&#39;"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 }

@@ -31,11 +31,13 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -3237,29 +3239,267 @@ createReportThumbnails(captureDir, exported);
         catch (Exception invalid) { throw new IOException("SVG CSS inválido.", invalid); } //$NON-NLS-1$
     }
 
+    private static final Set<String> ALLOWED_HEADER_HTML_TAGS = new HashSet<>(Arrays.asList(
+            "div", "span", "img", "p", "b", "strong", "i", "em", "u", "small", "br", "hr", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$ //$NON-NLS-12$
+            "h1", "h2", "h3", "h4", "h5", "h6", "table", "tbody", "tr", "td", "th")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$
+    private static final Set<String> ALLOWED_SEPARATOR_HTML_TAGS = new HashSet<>(Arrays.asList(
+            "div", "span", "p", "b", "strong", "i", "em", "u", "small", "br", "hr")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$
+    private static final Set<String> VOID_HTML_TAGS = new HashSet<>(Arrays.asList("img", "br", "hr")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    private static final Set<String> ALLOWED_HEADER_ATTRS = new HashSet<>(Arrays.asList(
+            "class", "title", "alt", "width", "height", "dir", "lang", "colspan", "rowspan")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
+    private static final Set<String> ALLOWED_SEPARATOR_ATTRS = new HashSet<>(Arrays.asList(
+            "class", "title", "dir", "lang")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+
     private static String validateCaptureHeaderHtml(String header) throws IOException {
-        if (header == null || header.length() > 256 * 1024 || !header.matches("(?is)^<div\\s+id=\\\"capture-topbar\\\"(?:\\s[^>]*)?>.*</div>$")) throw new IOException("Cabeçalho da conversa ausente ou inválido."); //$NON-NLS-1$
-        if (Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|style|svg|math)\\b|\\son[a-z]+\\s*=|(?:https?:|file:|javascript:)").matcher(header).find()) throw new IOException("Cabeçalho contém elemento ativo ou referência externa."); //$NON-NLS-1$
-        Matcher srcs = Pattern.compile("(?is)(\\bsrc\\s*=\\s*)([\\\"])(.*?)\\2").matcher(header);
-        StringBuffer normalized = new StringBuffer();
-        while (srcs.find()) {
-            try {
-                DecodedHtmlAttachment image = decodeHtmlAttachment(srcs.group(3));
-                if (!image.mime.startsWith("image/")) throw new IOException("Imagem inválida no cabeçalho."); //$NON-NLS-1$
-                String normalizedUri = "data:" + image.mime + ";base64," + Base64.getEncoder().encodeToString(image.bytes); //$NON-NLS-1$ //$NON-NLS-2$
-                String replacement = srcs.group(1) + srcs.group(2) + normalizedUri + srcs.group(2);
-                srcs.appendReplacement(normalized, Matcher.quoteReplacement(replacement));
-            }
-            catch (IOException invalid) { throw new IOException("Cabeçalho contém imagem não validada.", invalid); } //$NON-NLS-1$
+        if (header == null || header.length() > 256 * 1024) {
+            throw new IOException("Cabeçalho da conversa ausente ou inválido."); //$NON-NLS-1$
         }
-        srcs.appendTail(normalized);
-        return normalized.toString();
+        String trimmed = header.trim();
+        if (trimmed.isEmpty()) {
+            throw new IOException("Cabeçalho da conversa ausente ou inválido."); //$NON-NLS-1$
+        }
+        return validateAllowedHtmlFragment(trimmed, ALLOWED_HEADER_HTML_TAGS, true,
+                "Cabeçalho da conversa ausente ou inválido."); //$NON-NLS-1$
     }
 
-    private String validateCaptureSeparatorHtml(String separator) throws IOException {
-        if (separator == null || separator.isEmpty()) return ""; //$NON-NLS-1$
-        if (separator.length() > 64 * 1024 || Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|style|svg|math)\\b|\\son[a-z]+\\s*=|\\bid\\s*=|\\b(?:src|href|style|srcdoc)\\s*=").matcher(separator).find()) throw new IOException("Separador de data contém marcação não permitida."); //$NON-NLS-1$
-        return separator;
+    static String validateCaptureSeparatorHtml(String separator) throws IOException {
+        if (separator == null || separator.isEmpty()) {
+            return ""; //$NON-NLS-1$
+        }
+        if (separator.length() > 64 * 1024) {
+            throw new IOException("Separador de data contém marcação não permitida."); //$NON-NLS-1$
+        }
+        return validateAllowedHtmlFragment(separator, ALLOWED_SEPARATOR_HTML_TAGS, false,
+                "Separador de data contém marcação não permitida."); //$NON-NLS-1$
+    }
+
+    private static String validateAllowedHtmlFragment(String input, Set<String> allowedTags, boolean headerMode,
+            String errorMessage) throws IOException {
+        StringBuilder out = new StringBuilder(input.length());
+        Deque<String> openTags = new ArrayDeque<>();
+        int i = 0;
+        int len = input.length();
+        int elementCount = 0;
+        boolean rootClosed = false;
+        boolean foundRootTopbarId = false;
+        while (i < len) {
+            int lt = input.indexOf('<', i);
+            if (lt < 0) {
+                String tail = input.substring(i);
+                if (headerMode && rootClosed && !tail.trim().isEmpty()) {
+                    throw new IOException(errorMessage);
+                }
+                out.append(tail);
+                break;
+            }
+            if (lt > i) {
+                String text = input.substring(i, lt);
+                if (headerMode && (elementCount == 0 || rootClosed) && !text.trim().isEmpty()) {
+                    throw new IOException(errorMessage);
+                }
+                out.append(text);
+            }
+            if (lt + 1 >= len) {
+                throw new IOException(errorMessage);
+            }
+            char next = input.charAt(lt + 1);
+            if (next == '!' || next == '?') {
+                throw new IOException(errorMessage);
+            }
+            int tagEnd = findHtmlTagEndQuoteSafe(input, lt + 1);
+            if (tagEnd < 0) {
+                throw new IOException(errorMessage);
+            }
+            String inside = input.substring(lt + 1, tagEnd);
+            if (headerMode && rootClosed) {
+                throw new IOException(errorMessage);
+            }
+            if (next == '/') {
+                String closing = inside.substring(1).trim().toLowerCase(Locale.ROOT);
+                if (!closing.matches("[a-z][a-z0-9]{0,15}") || !allowedTags.contains(closing) //$NON-NLS-1$
+                        || VOID_HTML_TAGS.contains(closing) || openTags.isEmpty() || !closing.equals(openTags.pop())) {
+                    throw new IOException(errorMessage);
+                }
+                out.append("</").append(closing).append('>'); //$NON-NLS-1$
+                if (headerMode && openTags.isEmpty()) {
+                    rootClosed = true;
+                }
+            } else {
+                elementCount++;
+                boolean selfClosing = inside.endsWith("/"); //$NON-NLS-1$
+                String tokenBody = selfClosing ? inside.substring(0, inside.length() - 1) : inside;
+                int pos = 0;
+                while (pos < tokenBody.length() && Character.isLetterOrDigit(tokenBody.charAt(pos))) {
+                    pos++;
+                }
+                String tag = tokenBody.substring(0, pos).toLowerCase(Locale.ROOT);
+                if (pos == 0 || !allowedTags.contains(tag)) {
+                    throw new IOException(errorMessage);
+                }
+                if (selfClosing && !VOID_HTML_TAGS.contains(tag)) {
+                    throw new IOException(errorMessage);
+                }
+                if (headerMode && elementCount == 1 && !"div".equals(tag)) { //$NON-NLS-1$
+                    throw new IOException(errorMessage);
+                }
+                String attrsPart = tokenBody.substring(pos);
+                if (!attrsPart.isEmpty() && !Character.isWhitespace(attrsPart.charAt(0))) {
+                    throw new IOException(errorMessage);
+                }
+                boolean isRootDiv = headerMode && elementCount == 1;
+                StringBuilder renderedAttrs = new StringBuilder();
+                boolean sawRootTopbarId = sanitizeAllowedHtmlAttributes(attrsPart, tag, headerMode, isRootDiv,
+                        renderedAttrs, errorMessage);
+                if (isRootDiv) {
+                    if (!sawRootTopbarId) {
+                        throw new IOException(errorMessage);
+                    }
+                    foundRootTopbarId = true;
+                }
+                out.append('<').append(tag).append(renderedAttrs).append('>');
+                if (!VOID_HTML_TAGS.contains(tag)) {
+                    openTags.push(tag);
+                }
+            }
+            i = tagEnd + 1;
+        }
+        if (!openTags.isEmpty() || (headerMode && (!foundRootTopbarId || !rootClosed))) {
+            throw new IOException(errorMessage);
+        }
+        return out.toString();
+    }
+
+    private static int findHtmlTagEndQuoteSafe(String html, int fromIndex) {
+        char quote = 0;
+        for (int i = fromIndex; i < html.length(); i++) {
+            char c = html.charAt(i);
+            if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '<') {
+                return -1;
+            } else if (c == '>') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean sanitizeAllowedHtmlAttributes(String attrsPart, String tagName, boolean headerMode,
+            boolean isRootHeaderDiv, StringBuilder renderedAttrs, String errorMessage) throws IOException {
+        Set<String> seen = new HashSet<>();
+        boolean sawTopbarId = false;
+        int i = 0;
+        int len = attrsPart.length();
+        while (i < len) {
+            while (i < len && Character.isWhitespace(attrsPart.charAt(i))) {
+                i++;
+            }
+            if (i >= len) {
+                break;
+            }
+            int nameStart = i;
+            while (i < len) {
+                char ch = attrsPart.charAt(i);
+                if (Character.isLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == ':') {
+                    i++;
+                } else {
+                    break;
+                }
+            }
+            String attr = attrsPart.substring(nameStart, i).toLowerCase(Locale.ROOT);
+            if (attr.isEmpty() || !seen.add(attr) || attr.startsWith("on")) { //$NON-NLS-1$
+                throw new IOException(errorMessage);
+            }
+            while (i < len && Character.isWhitespace(attrsPart.charAt(i))) {
+                i++;
+            }
+            if (i >= len || attrsPart.charAt(i) != '=') {
+                throw new IOException(errorMessage);
+            }
+            i++;
+            while (i < len && Character.isWhitespace(attrsPart.charAt(i))) {
+                i++;
+            }
+            if (i >= len || (attrsPart.charAt(i) != '"' && attrsPart.charAt(i) != '\'')) {
+                throw new IOException(errorMessage);
+            }
+            char quote = attrsPart.charAt(i++);
+            int valStart = i;
+            while (i < len && attrsPart.charAt(i) != quote) {
+                char ch = attrsPart.charAt(i);
+                if (ch < 0x20 && ch != '\t' && ch != '\n' && ch != '\r') {
+                    throw new IOException(errorMessage);
+                }
+                i++;
+            }
+            if (i >= len) {
+                throw new IOException(errorMessage);
+            }
+            String rawValue = attrsPart.substring(valStart, i);
+            i++; // consume closing quote
+            if (i < len && !Character.isWhitespace(attrsPart.charAt(i))) {
+                throw new IOException(errorMessage);
+            }
+            String decoded = unescapeBasicHtmlEntities(rawValue);
+            String emittedValue;
+            if (headerMode && "id".equals(attr)) { //$NON-NLS-1$
+                if (!isRootHeaderDiv || !"capture-topbar".equals(decoded)) { //$NON-NLS-1$
+                    throw new IOException(errorMessage);
+                }
+                sawTopbarId = true;
+                emittedValue = "capture-topbar"; //$NON-NLS-1$
+            } else if (headerMode && "src".equals(attr)) { //$NON-NLS-1$
+                if (!"img".equals(tagName)) { //$NON-NLS-1$
+                    throw new IOException(errorMessage);
+                }
+                try {
+                    DecodedHtmlAttachment image = decodeHtmlAttachment(decoded);
+                    if (!image.mime.startsWith("image/")) { //$NON-NLS-1$
+                        throw new IOException(errorMessage);
+                    }
+                    emittedValue = "data:" + image.mime + ";base64," //$NON-NLS-1$ //$NON-NLS-2$
+                            + Base64.getEncoder().encodeToString(image.bytes);
+                } catch (IOException invalid) {
+                    throw new IOException("Cabeçalho contém imagem não validada.", invalid); //$NON-NLS-1$
+                }
+            } else if (headerMode && ("width".equals(attr) || "height".equals(attr) //$NON-NLS-1$ //$NON-NLS-2$
+                    || "colspan".equals(attr) || "rowspan".equals(attr))) { //$NON-NLS-1$ //$NON-NLS-2$
+                if (!decoded.matches("\\d{1,5}")) { //$NON-NLS-1$
+                    throw new IOException(errorMessage);
+                }
+                emittedValue = decoded;
+            } else {
+                Set<String> allowedAttrs = headerMode ? ALLOWED_HEADER_ATTRS : ALLOWED_SEPARATOR_ATTRS;
+                boolean isSafeDataAttr = attr.matches("data-[a-z0-9_-]{1,64}"); //$NON-NLS-1$
+                if (!allowedAttrs.contains(attr) && !isSafeDataAttr) {
+                    throw new IOException(errorMessage);
+                }
+                emittedValue = decoded;
+            }
+            renderedAttrs.append(' ').append(attr).append("=\"").append(escapeHtmlAttr(emittedValue)).append('"'); //$NON-NLS-1$
+        }
+        return sawTopbarId;
+    }
+
+    private static String unescapeBasicHtmlEntities(String value) {
+        return value.replace("&quot;", "\"") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("&#39;", "'") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("&apos;", "'") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("&lt;", "<") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("&gt;", ">") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("&amp;", "&"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static String escapeHtmlAttr(String value) {
+        return value.replace("&", "&amp;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("<", "&lt;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace(">", "&gt;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("\"", "&quot;") //$NON-NLS-1$ //$NON-NLS-2$
+                .replace("'", "&#39;"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     private String captureViewerCss() {

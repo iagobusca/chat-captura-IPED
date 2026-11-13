@@ -63,7 +63,9 @@ class ChatAnnotationActionDialog extends JDialog {
         bottom.add(close);
         add(center, BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
-        add(new JLabel(messagePreview == null ? " " : shortText(messagePreview)), BorderLayout.NORTH); //$NON-NLS-1$ //$NON-NLS-2$
+        JLabel previewLabel = new JLabel(messagePreview == null ? " " : shortText(messagePreview)); //$NON-NLS-1$ //$NON-NLS-2$
+        previewLabel.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        add(previewLabel, BorderLayout.NORTH);
 
         getRootPane().setDefaultButton(close);
         close.addActionListener(e -> dispose());
@@ -85,8 +87,10 @@ class ChatAnnotationActionDialog extends JDialog {
         panel.add(new JScrollPane(area), BorderLayout.CENTER);
         if (annotation.hasNote()) {
             JPanel meta = new JPanel(new BorderLayout(4, 4));
-            meta.add(new JLabel(Messages.getString("ChatAnnotationActions.Author") + " " //$NON-NLS-1$
-                    + (annotation.noteAuthor.isEmpty() ? "-" : annotation.noteAuthor)), BorderLayout.WEST); //$NON-NLS-1$
+            JLabel authorLabel = new JLabel(Messages.getString("ChatAnnotationActions.Author") + " " //$NON-NLS-1$
+                    + (annotation.noteAuthor.isEmpty() ? "-" : annotation.noteAuthor)); //$NON-NLS-1$
+            authorLabel.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+            meta.add(authorLabel, BorderLayout.WEST);
             panel.add(meta, BorderLayout.NORTH);
         }
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));

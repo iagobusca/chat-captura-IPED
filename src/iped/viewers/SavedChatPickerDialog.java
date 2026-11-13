@@ -38,9 +38,21 @@ class SavedChatPickerDialog extends JDialog {
         ((javax.swing.JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
         JLabel hint = new JLabel("Selecione um chat salvo para anotar:");
+        hint.putClientProperty("html.disable", Boolean.TRUE);
         add(hint, BorderLayout.NORTH);
 
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setCellRenderer(new javax.swing.DefaultListCellRenderer() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                putClientProperty("html.disable", Boolean.TRUE);
+                return this;
+            }
+        });
         add(new JScrollPane(list), BorderLayout.CENTER);
 
         JButton ok = new JButton("Abrir para anotar");

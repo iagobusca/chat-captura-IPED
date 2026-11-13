@@ -25,7 +25,34 @@ public final class CaptureHeaderEmbeddedImageMimeTest {
         check((Boolean) verifierCheck.invoke(null, expectedUri), "verifier must accept the normalized embedded PNG");
 
         assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><img src=\"https://example.invalid/a.png\"></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><img src='https://example.invalid/a.png'></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><img src=https://example.invalid/a.png></div>");
         assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><img src=\"data:text/plain;base64," + pngBase64 + "\"></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><div title=\">\"><script>alert(1)</script></div></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><img title='a' onclick='alert(1)' src=\"" + ipedUri + "\"></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><svg onload=\"alert(1)\"></svg></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><!--comment--></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"><div id=\"inner\"></div></div>");
+        assertHeaderRejected(normalize, "<div id=\"capture-topbar\"></div><div>extra</div>");
+
+        String complexHeader = "<div id=\"capture-topbar\"><div><img src='" + ipedUri
+                + "' width='72' height=\"72\" alt=\"Avatar &quot;A&quot;\"></div><div><span class=\"left\">Chat</span></div></div>";
+        String normalizedComplex = (String) normalize.invoke(null, complexHeader);
+        check(normalizedComplex.contains("src=\"" + expectedUri + "\""),
+                "single-quoted image src must be normalized to double-quoted PNG URI");
+
+        Method validateSep = HtmlLinkViewer.class.getDeclaredMethod("validateCaptureSeparatorHtml", String.class);
+        validateSep.setAccessible(true);
+        String validSep = "<div class=\"linha\"><div class=\"date\" data-iped-capture-date=\"true\">2026-09-01</div></div>";
+        check(validSep.equals(validateSep.invoke(null, validSep)), "valid date separator must pass");
+        check("".equals(validateSep.invoke(null, "")), "empty separator must pass");
+        assertHeaderRejected(validateSep, "<div class=\"date\" onclick=\"alert(1)\">2026-09-01</div>");
+        assertHeaderRejected(validateSep, "<div id=\"sep-id\">2026-09-01</div>");
+        assertHeaderRejected(validateSep, "<div class=\"date\"><img src=\"data:image/png;base64," + pngBase64 + "\"></div>");
+        assertHeaderRejected(validateSep, "<div class=\"date\"><a href=\"https://evil.invalid\">click</a></div>");
+        assertHeaderRejected(validateSep, "<svg onload=\"alert(1)\"></svg>");
+        assertHeaderRejected(validateSep, "<div title=\">\"><script>alert(1)</script></div>");
+
         System.out.println("CaptureHeaderEmbeddedImageMimeTest: PASS");
     }
 
