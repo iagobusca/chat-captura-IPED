@@ -15,6 +15,8 @@ A versão 2.6.0-beta atualiza a allowlist oficial e o pacote de distribuição p
 
 ## Getting Started
 
+Antes de extrair e executar o instalador, confira o SHA-256 do arquivo ZIP com o valor publicado em [CHECKSUMS.md](CHECKSUMS.md) por canal separado e confiável: o hash fixado dentro do `instalar_captura_chat_zap.bat` detecta corrupção ou troca parcial de arquivos, mas não protege se o pacote ZIP inteiro tiver sido adulterado.
+
 Feche o IPED, extraia o ZIP do instalador e execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat`. Reabra o IPED e abra uma conversa WhatsApp no viewer HTML.
 
 ## Usage

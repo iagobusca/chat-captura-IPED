@@ -1,7 +1,13 @@
-param([Parameter(Mandatory=$true)][string]$Jar)
+param([Parameter(Mandatory=$true)][string]$Jar,[string]$ExpectedSha256='')
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+if(![string]::IsNullOrWhiteSpace($ExpectedSha256)){
+ $actualSha256=(Get-FileHash -LiteralPath $Jar -Algorithm SHA256).Hash
+ if([string]::IsNullOrWhiteSpace($actualSha256) -or ($actualSha256.ToUpperInvariant() -ne $ExpectedSha256.Trim().ToUpperInvariant())){
+  throw "SHA-256 do JAR diverge do esperado ($ExpectedSha256): $actualSha256"
+ }
+}
 $z=[IO.Compression.ZipFile]::OpenRead($Jar)
 try{
  $required=@('iped/viewers/HtmlLinkViewer.class','iped/viewers/CaptureCensorship.class','iped/viewers/CaptureBoundaryResolver.class','iped/viewers/CaptureIntegrity.class','iped/viewers/ChatCapturePanel.class','iped/viewers/ChatAnnotationStore.class','iped/viewers/AnnotationPreflight.class','iped/viewers/localization/Messages.class','iped-viewer-messages.properties','iped-viewer-messages_pt_BR.properties')

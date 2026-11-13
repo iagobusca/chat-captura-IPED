@@ -7,6 +7,7 @@ set "SCRIPT_ROOT=%SCRIPT_DIR:~0,-1%"
 REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
 if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar"
+set "EXPECTED_PLUGIN_SHA256=DFC47C2F050837A7A334E06615D731252E75FDF674F80CEF9AD5EFDD28F24936"
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_SOURCE=%SCRIPT_DIR%dependencies\opencv-4120.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
@@ -70,7 +71,13 @@ if not exist "%JSON_SOURCE%" (
     exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%validate-plugin-jar.ps1" -Jar "%PLUGIN_JAR%"
+if "%EXPECTED_PLUGIN_SHA256%"=="" (
+    echo ERRO: hash esperado do plugin nao configurado no instalador.
+    pause
+    exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%validate-plugin-jar.ps1" -Jar "%PLUGIN_JAR%" -ExpectedSha256 "%EXPECTED_PLUGIN_SHA256%"
 if errorlevel 1 (
     echo ERRO: pacote incompleto ou invalido. Nenhum arquivo foi alterado.
     pause
@@ -169,9 +176,26 @@ if exist "%OPENCV_SOURCE%" (
         set "OPENCV_JAR_WRITTEN=1"
     ) else (
         REM Atualiza apenas se o hash diferir.
-        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_SOURCE%' -Algorithm SHA256).Hash"') do set "OPENCV_SRC_HASH=%%i"
-        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%OPENCV_TARGET%' -Algorithm SHA256).Hash"') do set "OPENCV_DST_HASH=%%i"
-        if not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" (
+        set "OPENCV_SRC_HASH="
+        set "OPENCV_DST_HASH="
+        set "PS_HASH_PATH=%OPENCV_SOURCE%"
+        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "OPENCV_SRC_HASH=%%i"
+        set "PS_HASH_PATH=%OPENCV_TARGET%"
+        for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "OPENCV_DST_HASH=%%i"
+        set "PS_HASH_PATH="
+        if "!OPENCV_SRC_HASH!"=="" (
+            echo ERRO: nao foi possivel calcular o SHA-256 de opencv-4120.jar. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
+        if "!OPENCV_DST_HASH!"=="" (
+            echo ERRO: nao foi possivel calcular o SHA-256 de opencv-4120.jar instalado. Restaurando backup.
+            call :ROLLBACK
+            pause
+            exit /b 1
+        )
+        if /I not "!OPENCV_SRC_HASH!"=="!OPENCV_DST_HASH!" (
             copy /Y "%OPENCV_TARGET%" "%BACKUP_OPENCV_JAR%" >nul
             if errorlevel 1 (
                 echo ERRO: nao foi possivel criar backup do opencv-4120.jar. Restaurando backup.
@@ -248,24 +272,51 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-REM Confere se o JAR instalado tem o mesmo hash do pacote.
+REM Confere se o JAR instalado tem o hash esperado do release e coincide com o pacote.
 set "SRC_HASH="
 set "DST_HASH="
-for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%PLUGIN_JAR%' -Algorithm SHA256).Hash"') do set "SRC_HASH=%%i"
-for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath '%TARGET_JAR%' -Algorithm SHA256).Hash"') do set "DST_HASH=%%i"
+set "PS_HASH_PATH=%PLUGIN_JAR%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "SRC_HASH=%%i"
+set "PS_HASH_PATH=%TARGET_JAR%"
+for /f %%i in ('powershell -NoProfile -Command "(Get-FileHash -LiteralPath $env:PS_HASH_PATH -Algorithm SHA256).Hash"') do set "DST_HASH=%%i"
+set "PS_HASH_PATH="
+
+if "%SRC_HASH%"=="" (
+    echo ERRO: nao foi possivel calcular o SHA-256 do JAR do pacote. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if "%DST_HASH%"=="" (
+    echo ERRO: nao foi possivel calcular o SHA-256 do JAR instalado. Restaurando backup.
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if /I not "%SRC_HASH%"=="%EXPECTED_PLUGIN_SHA256%" (
+    echo ERRO: o hash do JAR do pacote diverge do esperado. Restaurando backup.
+    echo   esperado:  %EXPECTED_PLUGIN_SHA256%
+    echo   pacote:    %SRC_HASH%
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
+if /I not "%DST_HASH%"=="%EXPECTED_PLUGIN_SHA256%" (
+    echo ERRO: os hashes nao conferem. Restaurando backup.
+    echo   esperado:  %EXPECTED_PLUGIN_SHA256%
+    echo   pacote:    %SRC_HASH%
+    echo   instalado: %DST_HASH%
+    call :ROLLBACK
+    pause
+    exit /b 1
+)
 
 echo.
 echo Instalacao concluida com sucesso.
 echo Backup criado em:
 echo "%BACKUP_JAR%"
 echo.
-if "%SRC_HASH%"=="%DST_HASH%" (
-    echo SHA-256 conferido: %DST_HASH%
-) else (
-    echo AVISO: os hashes nao conferem.
-    echo   pacote:    %SRC_HASH%
-    echo   instalado: %DST_HASH%
-)
+echo SHA-256 conferido: %DST_HASH%
 echo.
 echo Feche e abra novamente o IPED para carregar o plugin.
 echo.

@@ -1,9 +1,10 @@
 Pacote Chat Captura IPED 2.6.0-beta - Verificador de Integridade 1.3.5
 
 Instalação:
-1. Feche o IPED 4.3.1.
-2. Execute instalar_captura_chat_zap\instalar_captura_chat_zap.bat.
-3. Reabra o IPED.
+1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
+2. Feche o IPED 4.3.1.
+3. Execute instalar_captura_chat_zap\instalar_captura_chat_zap.bat.
+4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
 opencv_java4120.dll e o Verificador de Integridade 1.3.5 em JAR e EXE.
