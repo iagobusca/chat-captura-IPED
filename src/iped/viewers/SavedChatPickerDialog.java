@@ -69,13 +69,35 @@ class SavedChatPickerDialog extends JDialog {
     }
 
     private void loadFolders(java.io.File outputRoot) {
-        if (outputRoot == null || !outputRoot.isDirectory()) {
-            return;
+        for (String[] item : scanSafeCaptureEntries(outputRoot)) {
+            folders.add(item[0]);
+            model.addElement(item[1]);
         }
-        try (java.util.stream.Stream<Path> stream = Files.list(outputRoot.toPath())) {
-            stream.filter(Files::isDirectory).forEach(path -> {
-                Path manifest = path.resolve("manifest.json");
-                if (!Files.isRegularFile(manifest)) {
+        SwingUtilities.invokeLater(() -> {
+            if (model.getSize() > 0) {
+                list.setSelectedIndex(0);
+            }
+        });
+    }
+
+    static List<String[]> scanSafeCaptureEntries(java.io.File outputRoot) {
+        List<String[]> result = new ArrayList<>();
+        if (outputRoot == null) {
+            return result;
+        }
+        Path rootPath = outputRoot.toPath();
+        if (!CaptureIntegrity.isSafeDirectory(rootPath)) {
+            return result;
+        }
+        try (java.util.stream.Stream<Path> stream = Files.list(rootPath)) {
+            stream.filter(CaptureIntegrity::isSafeDirectory).forEach(path -> {
+                Path manifest;
+                try {
+                    manifest = CaptureIntegrity.resolveContained(path, "manifest.json");
+                } catch (Exception e) {
+                    return;
+                }
+                if (!CaptureIntegrity.isSafeRegularFile(manifest)) {
                     return;
                 }
                 String title = "";
@@ -99,24 +121,20 @@ class SavedChatPickerDialog extends JDialog {
                 } catch (Exception e) {
                     // ignora pasta invalida
                 }
-                String label = path.getFileName().toString();
+                String folderName = path.getFileName().toString();
+                String label = folderName;
                 if (!title.isEmpty()) {
                     label = label + " - " + title;
                 }
                 if (!sourceName.isEmpty()) {
                     label = label + " (" + sourceName + ")";
                 }
-                folders.add(path.getFileName().toString());
-                model.addElement(label);
+                result.add(new String[] { folderName, label });
             });
         } catch (Exception e) {
             // ignora erros de leitura
         }
-        SwingUtilities.invokeLater(() -> {
-            if (model.getSize() > 0) {
-                list.setSelectedIndex(0);
-            }
-        });
+        return result;
     }
 
     boolean isConfirmed() {

@@ -583,6 +583,22 @@ final class CaptureIntegrity {
         return value == null ? "" : value.trim();
     }
 
+    static boolean isSafeDirectory(Path path) {
+        try {
+            return path != null && !isLinkOrReparse(path) && Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    static boolean isSafeRegularFile(Path path) {
+        try {
+            return path != null && !isLinkOrReparse(path) && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     private static String toHex(byte[] bytes) {
         StringBuilder out = new StringBuilder(bytes.length * 2);
         for (byte value : bytes) {

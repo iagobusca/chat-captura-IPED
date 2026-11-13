@@ -1403,15 +1403,15 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             }
             Path manifest = folderPath.resolve("manifest.json"); //$NON-NLS-1$
             job.folderPath = folderPath;
-            if (!Files.isDirectory(folderPath, LinkOption.NOFOLLOW_LINKS)
-                    || !Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)) {
+            if (!CaptureIntegrity.isSafeDirectory(folderPath)
+                    || !CaptureIntegrity.isSafeRegularFile(manifest)) {
                 job.invalidReason = "manifest.json nao encontrado"; //$NON-NLS-1$
                 jobs.add(job);
                 continue;
             }
             pageMetadataBytes += Files.size(manifest);
             Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-            if (Files.isRegularFile(coordinates, LinkOption.NOFOLLOW_LINKS)) pageMetadataBytes += Files.size(coordinates);
+            if (CaptureIntegrity.isSafeRegularFile(coordinates)) pageMetadataBytes += Files.size(coordinates);
             if (pageMetadataBytes > 16L * 1024L * 1024L) {
                 throw new IOException("Os metadados desta página excedem o orçamento seguro de 16 MiB; selecione uma página menor.");
             }
@@ -1591,11 +1591,11 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
         List<String> folders = new ArrayList<>();
         Set<String> seen = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Path normalizedRoot = outputRoot.toAbsolutePath().normalize();
-        if (!Files.isDirectory(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
+        if (!CaptureIntegrity.isSafeDirectory(normalizedRoot)) {
             throw new IOException("A pasta de capturas não existe ou não é um diretório válido: " + normalizedRoot);
         }
-        Path index = outputRoot.resolve("capturas-index.json"); //$NON-NLS-1$
-        if (Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) {
+        Path index = CaptureIntegrity.resolveContained(normalizedRoot, "capturas-index.json"); //$NON-NLS-1$
+        if (CaptureIntegrity.isSafeRegularFile(index)) {
             String content = CaptureIntegrity.readJsonUtf8Limited(index);
             JSONArray indexedCaptures;
             try { indexedCaptures = new JSONObject(content).optJSONArray("captures"); }
@@ -1614,8 +1614,8 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 } catch (IOException unsafe) {
                     continue;
                 }
-                if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)
-                        || !Files.isRegularFile(resolved.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+                if (!CaptureIntegrity.isSafeDirectory(resolved)
+                        || !CaptureIntegrity.isSafeRegularFile(resolved.resolve("manifest.json"))) { //$NON-NLS-1$
                     continue;
                 }
                 if (folders.size() >= MAX_RECAPTURE_CANDIDATES) {
@@ -1625,16 +1625,16 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
                 if (progress != null && folders.size() % 100 == 0) progress.accept(folders.size());
             }
         }
-        if (folders.isEmpty() && Files.isDirectory(normalizedRoot, LinkOption.NOFOLLOW_LINKS)) {
-            try (Stream<Path> stream = Files.list(outputRoot)) {
+        if (folders.isEmpty() && CaptureIntegrity.isSafeDirectory(normalizedRoot)) {
+            try (Stream<Path> stream = Files.list(normalizedRoot)) {
                 List<Path> candidates = new ArrayList<>();
                 java.util.Iterator<Path> iterator = stream.iterator();
                 while (iterator.hasNext()) {
                     if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Busca cancelada");
                     Path path = iterator.next();
-                    if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) || isRecaptureAuxiliaryFolder(path)
+                    if (!CaptureIntegrity.isSafeDirectory(path) || isRecaptureAuxiliaryFolder(path)
                             || isLinkedCaptureFolder(path)
-                            || !Files.isRegularFile(path.resolve("manifest.json"), LinkOption.NOFOLLOW_LINKS)) continue; //$NON-NLS-1$
+                            || !CaptureIntegrity.isSafeRegularFile(path.resolve("manifest.json"))) continue; //$NON-NLS-1$
                     if (candidates.size() >= MAX_RECAPTURE_CANDIDATES) {
                         throw new IOException("O diretório excede o limite de " + MAX_RECAPTURE_CANDIDATES + " capturas candidatas.");
                     }
@@ -1884,7 +1884,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
             } catch (IOException e) {
                 continue;
             }
-            if (!Files.isRegularFile(restored)) {
+            if (!CaptureIntegrity.isSafeRegularFile(restored)) {
                 continue;
             }
             String restoredHash = CaptureIntegrity.sha256(restored);
@@ -2221,7 +2221,7 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
 
     private boolean regenerateWhatsAppHtmlFromSavedCoordinates(RecaptureJob job) throws IOException {
         Path coordinates = job.folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-        if (!Files.isRegularFile(coordinates)) {
+        if (!CaptureIntegrity.isSafeRegularFile(coordinates)) {
             return false;
         }
         String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
@@ -2713,14 +2713,14 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
     }
 
     private Path uniqueSibling(Path path) throws IOException {
-        if (!Files.exists(path)) {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return path;
         }
         String name = path.getFileName().toString();
         Path parent = path.getParent();
         for (int i = 1; ; i++) {
             Path candidate = parent.resolve(name + "_" + i); //$NON-NLS-1$
-            if (!Files.exists(candidate)) {
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
                 return candidate;
             }
         }
@@ -2730,7 +2730,7 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         boolean captureCommitted = false;
         try {
             CaptureRunResult result = runChatCaptureInternal(outputRoot, customFolderName, null);
-            captureCommitted = result != null && result.captureDir != null && Files.isDirectory(result.captureDir);
+            captureCommitted = result != null && CaptureIntegrity.isSafeDirectory(result.captureDir);
             chatCapturePanel.setStatus("completed".equals(result.status) ? "ChatCapturePanel.Completed" : "ChatCapturePanel.Stopped"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         } catch (Exception e) {
             LOGGER.error("Error capturing chat interval", e); //$NON-NLS-1$
@@ -3824,12 +3824,12 @@ createReportThumbnails(captureDir, exported);
     }
 
     private void rebuildCaptureRootIndex(Path outputRoot) throws IOException {
-        if (outputRoot == null || !Files.isDirectory(outputRoot)) {
+        if (!CaptureIntegrity.isSafeDirectory(outputRoot)) {
             return;
         }
         List<CaptureRootEntry> captures = new ArrayList<>();
         try (Stream<Path> children = Files.list(outputRoot)) {
-            children.filter(Files::isDirectory)
+            children.filter(CaptureIntegrity::isSafeDirectory)
                     .filter(path -> !path.getFileName().toString().startsWith("_backup_chat_capture_")) //$NON-NLS-1$
 .filter(path -> !isRecaptureAuxiliaryFolder(path))
                     .filter(path -> !isLinkedCaptureFolder(path))
@@ -3864,7 +3864,7 @@ createReportThumbnails(captureDir, exported);
         Path manifest = captureDir.resolve("manifest.json"); //$NON-NLS-1$
         String chronologicalStart = ""; //$NON-NLS-1$
         String chronologicalEnd = ""; //$NON-NLS-1$
-if (Files.isRegularFile(manifest)) {
+        if (CaptureIntegrity.isSafeRegularFile(manifest)) {
             String content = CaptureIntegrity.readJsonUtf8Limited(manifest);
 
             // Capturas html-message-v1 usam um esquema de anotações próprio; o campo "version"
@@ -3889,21 +3889,21 @@ if (Files.isRegularFile(manifest)) {
         }
 
         Path coordinates = captureDir.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-        if ((entry.title == null || entry.title.isBlank()) && Files.isRegularFile(coordinates)) {
+        if ((entry.title == null || entry.title.isBlank()) && CaptureIntegrity.isSafeRegularFile(coordinates)) {
             String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             String source = jsonObjectField(content, "sourceMetadata"); //$NON-NLS-1$
             entry.title = firstNonBlank(jsonField(source, "nome"), jsonField(source, "name"), jsonField(source, "title")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             entry.chatId = inferChatId(entry.title);
             entry.status = nonBlank(jsonField(content, "status"), entry.status); //$NON-NLS-1$
         }
-        if ((chronologicalStart.isBlank() || chronologicalEnd.isBlank()) && Files.isRegularFile(coordinates)) {
+        if ((chronologicalStart.isBlank() || chronologicalEnd.isBlank()) && CaptureIntegrity.isSafeRegularFile(coordinates)) {
             String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             chronologicalStart = nonBlank(chronologicalStart, readAnchor(content, "startAnchor").date); //$NON-NLS-1$
             chronologicalEnd = nonBlank(chronologicalEnd, readAnchor(content, "endAnchor").date); //$NON-NLS-1$
         }
 
         Path text = captureDir.resolve("texto.txt"); //$NON-NLS-1$
-        if (Files.isRegularFile(text)) {
+        if (CaptureIntegrity.isSafeRegularFile(text)) {
             CaptureTextHeader header = readCaptureTextHeader(text);
             entry.chatId = nonBlank(entry.chatId, header.chatId);
             entry.title = nonBlank(entry.title, header.title);
@@ -3912,7 +3912,7 @@ if (Files.isRegularFile(manifest)) {
         entry.title = nonBlank(entry.title, entry.folder);
         entry.chatId = nonBlank(entry.chatId, inferChatId(entry.title));
         fillChronologicalFields(entry, chronologicalStart, chronologicalEnd);
-        entry.frameCount = countRegularFiles(captureDir.resolve("screenshots")); //$NON-NLS-1$
+        entry.frameCount = countRegularFiles(CaptureIntegrity.resolveContained(captureDir, "screenshots")); //$NON-NLS-1$
         entry.attachmentCount = countRegularFiles(captureDir.resolve("anexos")); //$NON-NLS-1$
         FolderHash folderHash = calculateFolderHash(captureDir);
         entry.folderHash = folderHash.hash;
@@ -4001,15 +4001,15 @@ if (Files.isRegularFile(manifest)) {
         return folder != null && LINKED_FOLDER.equals(folder.getFileName().toString());
     }
 
-private boolean isCaptureFolder(Path captureDir) {
+    private boolean isCaptureFolder(Path captureDir) {
         // a pasta vinculado e um container de capturas, nunca uma captura
-        if (isLinkedCaptureFolder(captureDir)) {
+        if (!CaptureIntegrity.isSafeDirectory(captureDir) || isLinkedCaptureFolder(captureDir)) {
             return false;
         }
-        return Files.isRegularFile(captureDir.resolve("manifest.json")) //$NON-NLS-1$
-                || Files.isRegularFile(captureDir.resolve("whatsapp.html")) //$NON-NLS-1$
-                || Files.isRegularFile(captureDir.resolve("relatorio.htm")) //$NON-NLS-1$
-                || Files.isRegularFile(captureDir.resolve("texto.txt")); //$NON-NLS-1$
+        return CaptureIntegrity.isSafeRegularFile(captureDir.resolve("manifest.json")) //$NON-NLS-1$
+                || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("whatsapp.html")) //$NON-NLS-1$
+                || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("relatorio.htm")) //$NON-NLS-1$
+                || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("texto.txt")); //$NON-NLS-1$
     }
 
     private boolean isRecaptureAuxiliaryFolder(Path path) {
@@ -4023,11 +4023,11 @@ private boolean isCaptureFolder(Path captureDir) {
     }
 
     private void cleanupRecaptureAuxiliaryFolders(Path outputRoot) {
-        if (outputRoot == null || !Files.isDirectory(outputRoot)) {
+        if (!CaptureIntegrity.isSafeDirectory(outputRoot)) {
             return;
         }
         try (Stream<Path> children = Files.list(outputRoot)) {
-            children.filter(Files::isDirectory).filter(this::isRecaptureAuxiliaryFolder).forEach(path -> {
+            children.filter(CaptureIntegrity::isSafeDirectory).filter(this::isRecaptureAuxiliaryFolder).forEach(path -> {
                 try {
                     deleteDirectoryIfExists(path);
                 } catch (IOException e) {
@@ -4041,7 +4041,7 @@ private boolean isCaptureFolder(Path captureDir) {
 
     private void disposeOldRecaptureFolder(Path oldFolder, Path outputRoot, String batchStamp, IOException originalError) {
         LOGGER.warn("Unable to delete old re-extract folder {}. Moving it to hidden trash.", oldFolder, originalError); //$NON-NLS-1$
-        if (oldFolder == null || outputRoot == null || !Files.exists(oldFolder)) {
+        if (oldFolder == null || outputRoot == null || !Files.exists(oldFolder, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         Path trashRoot = outputRoot.resolve(RECAPTURE_TRASH_FOLDER);
@@ -4077,11 +4077,11 @@ private boolean isCaptureFolder(Path captureDir) {
     }
 
     private void deleteDirectoryIfExists(Path path) throws IOException {
-        if (path == null || !Files.exists(path)) {
+        if (path == null || !Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         IOException lastError = null;
-        for (int attempt = 1; attempt <= 3 && Files.exists(path); attempt++) {
+        for (int attempt = 1; attempt <= 3 && Files.exists(path, LinkOption.NOFOLLOW_LINKS); attempt++) {
             try {
                 deleteDirectoryTreeOnce(path);
                 return;
@@ -4188,18 +4188,19 @@ private boolean isCaptureFolder(Path captureDir) {
         }
     }
 
-    private int countRegularFiles(Path folder) throws IOException {
-        if (!Files.isDirectory(folder)) {
+    static int countRegularFiles(Path folder) throws IOException {
+        if (folder == null || !Files.exists(folder, LinkOption.NOFOLLOW_LINKS)) {
             return 0;
         }
-        try (Stream<Path> stream = Files.walk(folder)) {
-            return (int) stream.filter(Files::isRegularFile).count();
+        if (!CaptureIntegrity.isSafeDirectory(folder)) {
+            throw new IOException("Symbolic links or junctions are not allowed in capture directories: " + folder); //$NON-NLS-1$
         }
+        return CaptureIntegrity.listRegularFilesSafe(folder, CaptureIntegrity.MAX_INVENTORY_FILES).size();
     }
 
     private String readDirectoryCreationDate(Path folder) {
         try {
-            BasicFileAttributes attrs = Files.readAttributes(folder, BasicFileAttributes.class);
+            BasicFileAttributes attrs = Files.readAttributes(folder, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             return formatUtcDate(Date.from(attrs.creationTime().toInstant()));
         } catch (IOException e) {
             return extractTimestampDate(folder.getFileName().toString());
@@ -4219,7 +4220,11 @@ private boolean isCaptureFolder(Path captureDir) {
 
     private CaptureTextHeader readCaptureTextHeader(Path textPath) {
         CaptureTextHeader header = new CaptureTextHeader();
-        try (BufferedReader reader = Files.newBufferedReader(textPath)) {
+        if (!CaptureIntegrity.isSafeRegularFile(textPath)) {
+            return header;
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new java.io.InputStreamReader(Files.newInputStream(textPath, LinkOption.NOFOLLOW_LINKS), StandardCharsets.UTF_8))) {
             String line;
             int useful = 0;
             while ((line = reader.readLine()) != null && useful < 4) {
@@ -4714,7 +4719,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
     }
 
     private Path uniquePath(Path path) {
-        if (!Files.exists(path)) {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
             return path;
         }
         String fileName = path.getFileName().toString();
@@ -4727,7 +4732,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
         }
         for (int i = 1; ; i++) {
             Path candidate = path.resolveSibling(base + "_" + i + ext); //$NON-NLS-1$
-            if (!Files.exists(candidate)) {
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
                 return candidate;
             }
         }
@@ -4761,7 +4766,10 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
             }
         }
         try {
-            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+            if (!CaptureIntegrity.isSafeRegularFile(path)) {
+                throw new IOException("Symbolic links or junctions are not allowed: " + path); //$NON-NLS-1$
+            }
+            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             if (file.creationDate == null || file.creationDate.isBlank()) {
                 file.creationDate = formatUtcDate(Date.from(attrs.creationTime().toInstant()));
             }
@@ -4777,9 +4785,13 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
     }
 
     private String digest(Path path, String algorithm) throws IOException {
+        if (!CaptureIntegrity.isSafeRegularFile(path)) {
+            throw new IOException("Symbolic links or junctions are not allowed: " + path); //$NON-NLS-1$
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance(algorithm);
-            try (InputStream in = Files.newInputStream(path); DigestInputStream din = new DigestInputStream(in, digest)) {
+            try (InputStream in = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS);
+                    DigestInputStream din = new DigestInputStream(in, digest)) {
                 byte[] buffer = new byte[8192];
                 while (din.read(buffer) != -1) {
                 }
@@ -5128,7 +5140,7 @@ out.println("{"); //$NON-NLS-1$
     private void appendIntegrityHistory(Path newCapture, Path previousCapture, String action) throws IOException {
         Path oldPath = previousCapture.resolve("integridade.json"); //$NON-NLS-1$
         JSONObject previous = null;
-        if (Files.isRegularFile(oldPath)) {
+        if (CaptureIntegrity.isSafeRegularFile(oldPath)) {
             try {
                 previous = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(oldPath));
             } catch (RuntimeException e) {
@@ -5546,11 +5558,11 @@ out.append("{\n"); //$NON-NLS-1$
     private List<CaptureRootEntry> listCaptureEntries() {
         List<CaptureRootEntry> entries = new ArrayList<>();
         Path outputRoot = currentCaptureOutputRoot;
-        if (outputRoot == null || !Files.isDirectory(outputRoot)) {
+        if (!CaptureIntegrity.isSafeDirectory(outputRoot)) {
             return entries;
         }
         try (Stream<Path> children = Files.list(outputRoot)) {
-            List<Path> roots = children.filter(Files::isDirectory).filter(path -> !isRecaptureAuxiliaryFolder(path))
+            List<Path> roots = children.filter(CaptureIntegrity::isSafeDirectory).filter(path -> !isRecaptureAuxiliaryFolder(path))
                     .sorted().collect(java.util.stream.Collectors.toList());
             for (Path folder : roots) {
                 CaptureRootEntry entry = readCaptureRootEntry(outputRoot, folder);
@@ -5558,11 +5570,12 @@ out.append("{\n"); //$NON-NLS-1$
                     entries.add(entry);
                 }
                 // capturas vinculadas moram um nivel abaixo
-                if (isLinkedCaptureFolder(folder) || !Files.isDirectory(folder.resolve(LINKED_FOLDER))) {
+                Path linkedDir = CaptureIntegrity.resolveContained(folder, LINKED_FOLDER);
+                if (isLinkedCaptureFolder(folder) || !CaptureIntegrity.isSafeDirectory(linkedDir)) {
                     continue;
                 }
-                try (Stream<Path> linked = Files.list(folder.resolve(LINKED_FOLDER))) {
-                    List<Path> linkedFolders = linked.filter(Files::isDirectory).sorted()
+                try (Stream<Path> linked = Files.list(linkedDir)) {
+                    List<Path> linkedFolders = linked.filter(CaptureIntegrity::isSafeDirectory).sorted()
                             .collect(java.util.stream.Collectors.toList());
                     for (Path linkedFolder : linkedFolders) {
                         CaptureRootEntry linkedEntry = readCaptureRootEntry(outputRoot, linkedFolder);
@@ -5683,27 +5696,45 @@ out.append("{\n"); //$NON-NLS-1$
         if (!link.hasCapture()) {
             return "[]"; //$NON-NLS-1$
         }
-        Path folder = currentCaptureOutputRoot == null ? null : currentCaptureOutputRoot.resolve(link.captureFolder);
-        if (folder == null || !Files.isDirectory(folder)) {
-            return "[]"; //$NON-NLS-1$
-        }
-        Path screenshots = folder.resolve("screenshots"); //$NON-NLS-1$
-        if (!Files.isDirectory(screenshots)) {
-            return "[]"; //$NON-NLS-1$
-        }
         List<String> frames = new ArrayList<>();
+        for (String relativeFrame : safeLinkedFramePaths(currentCaptureOutputRoot, link.captureFolder)) {
+            frames.add(json(relativeFrame));
+        }
+        return "[" + String.join(", ", frames) + "]"; //$NON-NLS-1$
+    }
+
+    static List<String> safeLinkedFramePaths(Path outputRoot, String captureFolder) {
+        List<String> frames = new ArrayList<>();
+        if (outputRoot == null || captureFolder == null || captureFolder.isBlank()
+                || !CaptureIntegrity.isSafeDirectory(outputRoot)) {
+            return frames;
+        }
+        Path folder;
+        Path screenshots;
+        try {
+            folder = CaptureIntegrity.resolveContained(outputRoot, captureFolder);
+            if (!CaptureIntegrity.isSafeDirectory(folder)) {
+                return frames;
+            }
+            screenshots = CaptureIntegrity.resolveContained(folder, "screenshots"); //$NON-NLS-1$
+            if (!CaptureIntegrity.isSafeDirectory(screenshots)) {
+                return frames;
+            }
+        } catch (IOException unsafe) {
+            return frames;
+        }
         try (Stream<Path> stream = Files.list(screenshots)) {
-            stream.filter(path -> {
+            stream.filter(CaptureIntegrity::isSafeRegularFile).filter(path -> {
                 String name = path.getFileName().toString().toLowerCase();
                 return name.endsWith(".png") || name.endsWith(".jpg"); //$NON-NLS-1$ //$NON-NLS-2$
             }).sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     // o JS monta "../<captureFolder>/" + frame, entao o caminho precisa
                     // incluir o "screenshots/" que existe dentro da pasta da captura
-                    .forEach(path -> frames.add(json("screenshots/" + path.getFileName().toString()))); //$NON-NLS-1$ //$NON-NLS-2$
+                    .forEach(path -> frames.add("screenshots/" + path.getFileName().toString())); //$NON-NLS-1$
         } catch (IOException e) {
-            return "[]"; //$NON-NLS-1$
+            return new ArrayList<>();
         }
-        return "[" + String.join(", ", frames) + "]"; //$NON-NLS-1$
+        return frames;
     }
 
     private CaptureAnchor anchorForMessages(String messageId) {
@@ -6156,7 +6187,7 @@ private void setCaptureInteractionEnabled(boolean enabled) {
     private void prepareSensitiveImageMatcher() {
         sensitiveBlurHashes.clear();
         sensitiveImageMatcher = null;
-        if (sensitiveImagesFolder == null || !Files.isDirectory(sensitiveImagesFolder)) {
+        if (!CaptureIntegrity.isSafeDirectory(sensitiveImagesFolder)) {
             return;
         }
         try {
@@ -6300,15 +6331,16 @@ private void setCaptureInteractionEnabled(boolean enabled) {
 
     private boolean matchesSensitiveImageFromPreviousCapture(String hash, SensitiveImageMatcher matcher) {
         RecaptureJob job = activeRecaptureJob;
-        if (job == null || job.folderPath == null || hash == null || hash.isBlank() || matcher == null) {
-            return false;
-        }
-        Path coordinates = job.folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-        if (!Files.isRegularFile(coordinates)) {
+        if (job == null || !CaptureIntegrity.isSafeDirectory(job.folderPath) || hash == null || hash.isBlank()
+                || matcher == null) {
             return false;
         }
         String wanted = hash.trim().toUpperCase();
         try {
+            Path coordinates = CaptureIntegrity.resolveContained(job.folderPath, "whatsapp-coordinates.json"); //$NON-NLS-1$
+            if (!CaptureIntegrity.isSafeRegularFile(coordinates)) {
+                return false;
+            }
             String content = CaptureIntegrity.readJsonUtf8Limited(coordinates);
             Matcher blockMatcher = Pattern.compile("\\{\\\"id\\\"\\s*:\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|null).*?\\}", Pattern.DOTALL) //$NON-NLS-1$
                     .matcher(content);
@@ -6322,8 +6354,14 @@ private void setCaptureInteractionEnabled(boolean enabled) {
                 if (file == null || file.isBlank() || "null".equals(file)) { //$NON-NLS-1$
                     continue;
                 }
-                Path candidate = job.folderPath.resolve(file.replace('/', File.separatorChar)).normalize();
-                if (Files.isRegularFile(candidate) && matcher.matches(candidate.toFile())) {
+                Path candidate;
+                try {
+                    candidate = CaptureIntegrity.resolveContained(job.folderPath, file);
+                } catch (IOException unsafe) {
+                    LOGGER.warn("Ignoring unsafe previous capture frame path {}: {}", file, unsafe.getMessage()); //$NON-NLS-1$
+                    continue;
+                }
+                if (CaptureIntegrity.isSafeRegularFile(candidate) && matcher.matches(candidate.toFile())) {
                     LOGGER.info("Sensitive blur matched previous capture file {} for hash {}", candidate, wanted); //$NON-NLS-1$
                     return true;
                 }
@@ -7390,12 +7428,15 @@ String invalidReason;
         private int referenceImageCount;
 
         SensitiveImageMatcher(Path folder, int similarityPercent) throws IOException {
+            if (!CaptureIntegrity.isSafeDirectory(folder)) {
+                throw new IOException("Sensitive images folder is missing or is a symbolic link/junction: " + folder); //$NON-NLS-1$
+            }
             loadOpenCv();
             minSimilarityRatio = Math.max(0.50d, Math.min(0.90d, similarityPercent / 100.0d));
             orb = ORB.create(3000);
             matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
             try (Stream<Path> stream = Files.list(folder)) {
-                stream.filter(Files::isRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
+                stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
                     addReferenceFileHash(path.toFile());
                     referenceImageCount++;
                     Mat descriptors = descriptors(path.toFile());
@@ -7488,7 +7529,8 @@ String invalidReason;
         }
 
         private boolean matchesReferenceFileHash(File candidate) {
-            if (candidate == null || !candidate.isFile() || referenceFileHashes.isEmpty()) {
+            if (candidate == null || referenceFileHashes.isEmpty()
+                    || !CaptureIntegrity.isSafeRegularFile(candidate.toPath())) {
                 return false;
             }
             try {
@@ -7505,12 +7547,12 @@ String invalidReason;
         }
 
         private static String digestFile(File file, String algorithm) throws IOException {
-            if (file == null || !file.isFile()) {
+            if (file == null || !CaptureIntegrity.isSafeRegularFile(file.toPath())) {
                 return ""; //$NON-NLS-1$
             }
             try {
                 MessageDigest digest = MessageDigest.getInstance(algorithm);
-                try (InputStream in = Files.newInputStream(file.toPath());
+                try (InputStream in = Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS);
                         DigestInputStream dis = new DigestInputStream(in, digest)) {
                     byte[] buffer = new byte[8192];
                     while (dis.read(buffer) != -1) {
