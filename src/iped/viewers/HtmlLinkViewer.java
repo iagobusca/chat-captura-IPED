@@ -7446,33 +7446,75 @@ String invalidReason;
             if (opencvLoaded) {
                 return;
             }
-            List<Path> candidates = Arrays.asList(
-                    Path.of(System.getProperty("user.dir", "."), "../plugins/opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
-                    Path.of(System.getProperty("user.dir", "."), "plugins/opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
-                    Path.of(System.getProperty("user.dir", "."), "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$
-                    Path.of(System.getProperty("user.dir", "."), "lib", "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                    Path.of("..", "plugins", "opencv_java4120.dll"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                    Path.of("..", "opencv_java4120.dll")); //$NON-NLS-1$ //$NON-NLS-2$
-            for (Path candidate : candidates) {
-                Path absolute = candidate.toAbsolutePath().normalize();
-                if (Files.isRegularFile(absolute)) {
-                    System.load(absolute.toString());
-                    opencvLoaded = true;
-                    LOGGER.info("OpenCV loaded for sensitive image blur: {}", Core.VERSION); //$NON-NLS-1$
-                    return;
-                }
-            }
-            // Fallback: try loading from system library path.
-            try {
-                System.loadLibrary("opencv_java4120"); //$NON-NLS-1$
-                opencvLoaded = true;
-                LOGGER.info("OpenCV loaded via System.loadLibrary: {}", Core.VERSION); //$NON-NLS-1$
-                return;
-            } catch (UnsatisfiedLinkError e) {
-                LOGGER.warn("System.loadLibrary(opencv_java4120) failed: {}", e.getMessage()); //$NON-NLS-1$
-            }
-            throw new IOException("opencv_java4120.dll nao encontrada na pasta plugins"); //$NON-NLS-1$
+            Path verifiedDll = resolveVerifiedOpenCvDll(viewerCodeSourcePath());
+            System.load(verifiedDll.toString());
+            opencvLoaded = true;
+            LOGGER.info("OpenCV loaded for sensitive image blur (verified SHA-256): {}", Core.VERSION); //$NON-NLS-1$
         }
+    }
+
+    private static final String OPENCV_DLL_NAME = "opencv_java4120.dll"; //$NON-NLS-1$
+    static final String OPENCV_DLL_SHA256 = "ACA5D9A9BC8067434D793402269A18AA18A4E033C96D44707686D30FF162ABB9"; //$NON-NLS-1$
+
+    private static Path viewerCodeSourcePath() {
+        try {
+            java.security.CodeSource cs = HtmlLinkViewer.class.getProtectionDomain().getCodeSource();
+            if (cs == null || cs.getLocation() == null) {
+                return null;
+            }
+            return Path.of(cs.getLocation().toURI()).toAbsolutePath().normalize();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static List<Path> openCvCandidatePaths(Path codeSourceLocation) {
+        if (codeSourceLocation == null) {
+            return Arrays.asList();
+        }
+        Path normalized = codeSourceLocation.toAbsolutePath().normalize();
+        Path baseDir = Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS) ? normalized.getParent() : normalized;
+        if (baseDir == null) {
+            return Arrays.asList();
+        }
+        String baseName = baseDir.getFileName() == null ? "" : baseDir.getFileName().toString(); //$NON-NLS-1$
+        Path ipedRoot = (baseDir.getParent() != null
+                && ("lib".equalsIgnoreCase(baseName) || "plugins".equalsIgnoreCase(baseName))) //$NON-NLS-1$ //$NON-NLS-2$
+                        ? baseDir.getParent()
+                        : baseDir;
+        return Arrays.asList(
+                ipedRoot.resolve("plugins").resolve(OPENCV_DLL_NAME), //$NON-NLS-1$
+                ipedRoot.resolve(OPENCV_DLL_NAME)); //$NON-NLS-1$
+    }
+
+    static Path resolveVerifiedOpenCvDll(Path codeSourceLocation) throws IOException {
+        List<Path> candidates = openCvCandidatePaths(codeSourceLocation);
+        if (candidates.isEmpty()) {
+            throw new IOException("Localizacao do plugin indisponivel para carregar " + OPENCV_DLL_NAME); //$NON-NLS-1$
+        }
+        Path ipedRoot = candidates.get(1).getParent();
+        for (Path candidate : candidates) {
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                continue;
+            }
+            BasicFileAttributes attrs = Files.readAttributes(candidate, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            if (!attrs.isRegularFile() || attrs.isSymbolicLink() || attrs.isOther()) {
+                throw new IOException("opencv_java4120.dll invalida ou link simbolico bloqueado: " + candidate); //$NON-NLS-1$
+            }
+            CaptureIntegrity.ensureNoSymbolicLinkComponents(ipedRoot, candidate);
+            Path realCandidate = candidate.toRealPath();
+            Path realRoot = ipedRoot.toRealPath();
+            if (!realCandidate.startsWith(realRoot)) {
+                throw new IOException("opencv_java4120.dll resolve fora da pasta do IPED: " + candidate); //$NON-NLS-1$
+            }
+            String actualHash = CaptureIntegrity.sha256(realCandidate);
+            if (!OPENCV_DLL_SHA256.equalsIgnoreCase(actualHash)) {
+                throw new IOException("Falha na verificacao SHA-256 de " + OPENCV_DLL_NAME + ": " + candidate); //$NON-NLS-1$
+            }
+            return realCandidate;
+        }
+        throw new IOException("opencv_java4120.dll nao encontrada na pasta do IPED ou plugins"); //$NON-NLS-1$
     }
 
     @Override
