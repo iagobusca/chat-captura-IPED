@@ -219,10 +219,8 @@ public class ChatCapturePanel extends JPanel {
                 }
                 return;
             }
-            VerifierIntegrity.installVerifierFiles(destination.toPath());
-            VerifierIntegrity.showAlertIfNeeded(this, destination.toPath());
             if (viewer != null) {
-                viewer.showRecaptureDialog(destination, getSensitiveImagesFolder(),
+                viewer.startRecaptureFlowFromUi(this, destination, getSensitiveImagesFolder(),
                         getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
             }
         });

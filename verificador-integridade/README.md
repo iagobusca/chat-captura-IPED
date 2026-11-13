@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.3.7
+# Verificador de Integridade 1.3.8
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.3.5 adiciona a exportação **Copiar histórico completo público** com anonimização do nome da pasta (`CAPTURA|*-YYYYMMDD-HHMMSS`) e **SHA-256 do histórico completo público** no resumo, além de verificação dual no modo **Integridade Público** para aceitar tanto o histórico completo original quanto o histórico público anonimizado (e o hash SHA-256 de ambos). Mantém a validação da cadeia local de integridade em capturas `html-message-v1` (com vínculo de `migration.json` e `legacy-annotations.json`), suporte a registros de chamada (`_call:<hex>`) e carved/removidos (`-?<id>_<id>`), script fixo de preview e compatibilidade legada `data:image/jpg` com assinatura PNG. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.3.8 endurece a validação estrutural de JSON malformado (`"registro inválido"` em `integridade.json`), HTML legado e normalização CSS/SVG (bloqueando comentários/escapes CSS e elementos SVG `<style>`, `<animate*>`, `<set>`, `<mpath>`), além de verificar `recordHash` canônico (`canonical-v1`) mantendo compatibilidade somente-leitura para capturas legadas existentes; no launcher Windows `.exe`, corrige a limpeza de diretórios temporários e a extração de arquivos vazios (0 bytes). O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
 
 ## Getting Started
 
@@ -15,7 +15,7 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.3.7: JAR `7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE`; EXE `D102E17D02F39E5D6E85249E9B9585BC26C3D005E7DBFF2296C22FB2E18E926A`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.3.8: JAR `556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6`; EXE `B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 

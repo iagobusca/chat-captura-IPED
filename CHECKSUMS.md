@@ -1,5 +1,15 @@
 # Checksums
 
+## Build 2.6.3-beta / Verificador 1.3.8 (correções de segurança e integridade — Pacotes A–E; allowlist exclusiva 1.3.8)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.3-beta.jar` | 1.509.222 | `CED5CCFE4C5F1C8A15C52D32E891468B9836F620BB3E3FFBC47198FE41C3AC60` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 1.509.222 | `CED5CCFE4C5F1C8A15C52D32E891468B9836F620BB3E3FFBC47198FE41C3AC60` |
+| `instalador-chat-captura-IPED-2.6.3-beta-verificador-1.3.8.zip` | 94.635.426 | `F17137E71F5972556A2953A771FB724BDECAB28BFBE63BD75F7DD73E3639444E` |
+| `verificador-integridade/integridade-verifier.jar` | 142.154 | `556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6` |
+| `verificador-integridade/integridade-verifier.exe` | 77.852.740 | `B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2` |
+
 ## Build 2.6.2-beta / Verificador 1.3.7 (correções de segurança fase 2 — P1–P11)
 
 | Arquivo | Bytes | SHA-256 |

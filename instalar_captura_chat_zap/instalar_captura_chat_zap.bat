@@ -7,16 +7,16 @@ set "SCRIPT_ROOT=%SCRIPT_DIR:~0,-1%"
 REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
 if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar"
-set "EXPECTED_PLUGIN_SHA256=5576E9E5CE0BCB6D3C65ECF560403CC0098F0D4A1F8FE18DBC6597238DB9C8AC"
+set "EXPECTED_PLUGIN_SHA256=CED5CCFE4C5F1C8A15C52D32E891468B9836F620BB3E3FFBC47198FE41C3AC60"
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_SOURCE=%SCRIPT_DIR%dependencies\opencv-4120.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
 set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%integridade-verifier.jar"
 if not exist "%VERIFIER_JAR_SOURCE%" set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.jar"
-set "EXPECTED_VERIFIER_JAR_SHA256=7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE"
+set "EXPECTED_VERIFIER_JAR_SHA256=556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6"
 set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%integridade-verifier.exe"
 if not exist "%VERIFIER_EXE_SOURCE%" set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.exe"
-set "EXPECTED_VERIFIER_EXE_SHA256=D102E17D02F39E5D6E85249E9B9585BC26C3D005E7DBFF2296C22FB2E18E926A"
+set "EXPECTED_VERIFIER_EXE_SHA256=B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2"
 
 REM Sobe ate a pasta raiz do IPED, procurando o iped.exe.
 set "IPED_ROOT="
@@ -51,8 +51,8 @@ set "VERIFIER_EXE_TARGET=%VERIFIER_TARGET_DIR%\integridade-verifier.exe"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.6.2-beta
-echo Verificador de integridade: 1.3.7
+echo Versao do plugin: 2.6.3-beta
+echo Verificador de integridade: 1.3.8
 echo ------------------------------------------------
 echo.
 
@@ -158,6 +158,10 @@ set "BACKUP_OPENCV_DLL=%OPENCV_DLL_TARGET%.bak-%STAMP%"
 set "BACKUP_OPENCV_PLUGINS_DLL=%OPENCV_PLUGINS_DLL_TARGET%.bak-%STAMP%"
 set "BACKUP_VERIFIER_JAR=%VERIFIER_JAR_TARGET%.bak-%STAMP%"
 set "BACKUP_VERIFIER_EXE=%VERIFIER_EXE_TARGET%.bak-%STAMP%"
+set "LOCALE_BASE_TARGET=%IPED_ROOT%\localization\iped-viewer-messages.properties"
+set "LOCALE_PT_TARGET=%IPED_ROOT%\localization\iped-viewer-messages_pt_BR.properties"
+set "BACKUP_LOCALE_BASE=%LOCALE_BASE_TARGET%.bak-%STAMP%"
+set "BACKUP_LOCALE_PT=%LOCALE_PT_TARGET%.bak-%STAMP%"
 set "OPENCV_JAR_WRITTEN=0"
 set "OPENCV_DLL_WRITTEN=0"
 set "OPENCV_PLUGINS_DLL_WRITTEN=0"
@@ -415,7 +419,7 @@ if /I not "%DST_VEXE_HASH%"=="%EXPECTED_VERIFIER_EXE_SHA256%" (
 )
 
 REM Injeta os bundles de idioma do plugin no JAR instalado.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-localization.ps1" -Jar "%TARGET_JAR%" -ResourceDir "%SCRIPT_ROOT%" -LocaleDir "%IPED_ROOT%\localization"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-localization.ps1" -Jar "%TARGET_JAR%" -ResourceDir "%SCRIPT_ROOT%" -LocaleDir "%IPED_ROOT%\localization" -BackupStamp "%STAMP%"
 if errorlevel 1 (
     echo ERRO: falha ao instalar os arquivos de idioma. Restaurando backup.
     call :ROLLBACK
@@ -517,6 +521,8 @@ if "%OPENCV_JAR_WRITTEN%"=="1" (
         del /Q "%OPENCV_TARGET%" >nul 2>&1
     )
 )
+if exist "%BACKUP_LOCALE_BASE%" move /Y "%BACKUP_LOCALE_BASE%" "%LOCALE_BASE_TARGET%" >nul
+if exist "%BACKUP_LOCALE_PT%" move /Y "%BACKUP_LOCALE_PT%" "%LOCALE_PT_TARGET%" >nul
 if exist "%JSON_TARGET%" del /Q "%JSON_TARGET%" >nul 2>&1
 if exist "%JSON_OLD%" if not exist "%BACKUP_JSON%" del /Q "%JSON_OLD%" >nul 2>&1
 if exist "%BACKUP_JSON%" move /Y "%BACKUP_JSON%" "%JSON_OLD%" >nul

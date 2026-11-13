@@ -336,41 +336,47 @@ class ChatAnnotationStore {
      * Grava as anotacoes em disco. Chamado apenas na captura, porque e ela que
      * consolida o trabalho da sessao no resultado final.
      */
-    void persist() {
-        if (storeFile == null) {
-            return;
-        }
+    boolean persist() {
         try {
-            Path root = outputRoot != null ? outputRoot : storeFile.getParent();
-            if (root == null) {
-                return;
-            }
-            java.io.StringWriter buffer = new java.io.StringWriter(4096);
-            try (PrintWriter out = new PrintWriter(buffer)) {
-                out.println("{"); //$NON-NLS-1$
-                out.println("  \"version\": " + SCHEMA_VERSION + ","); //$NON-NLS-1$
-                out.println("  \"updatedAt\": \"" + Instant.now() + "\","); //$NON-NLS-1$
-                out.println("  \"chats\": {"); //$NON-NLS-1$
-                int chatIndex = 0;
-                for (Map.Entry<String, List<ChatAnnotation>> entry : byChatKey.entrySet()) {
-                    if (chatIndex++ > 0) {
-                        out.println(","); //$NON-NLS-1$
-                    }
-                    out.print("    \"" + escape(entry.getKey()) + "\": "); //$NON-NLS-1$ //$NON-NLS-2$
-                    out.print("{\"items\": "); //$NON-NLS-1$
-                    writeItems(out, entry.getValue());
-                    out.print("}"); //$NON-NLS-1$
-                }
-                out.println(); //$NON-NLS-1$
-                out.println("  }"); //$NON-NLS-1$
-                out.println("}"); //$NON-NLS-1$
-            }
-            CaptureIntegrity.writeAtomically(root, storeFile, buffer.toString(), MAX_STORE_BYTES);
-            dirty = false;
-            loadedStamp = lastModifiedOf(storeFile);
+            persistOrThrow();
+            return true;
         } catch (Exception e) {
             LOGGER.warn("Unable to write {}", storeFile, e); //$NON-NLS-1$
+            return false;
         }
+    }
+
+    void persistOrThrow() throws IOException {
+        if (storeFile == null) {
+            throw new IOException("Nenhuma pasta de anotacoes vinculada."); //$NON-NLS-1$
+        }
+        Path root = outputRoot != null ? outputRoot : storeFile.getParent();
+        if (root == null) {
+            throw new IOException("Diretorio raiz de anotacoes ausente."); //$NON-NLS-1$
+        }
+        java.io.StringWriter buffer = new java.io.StringWriter(4096);
+        try (PrintWriter out = new PrintWriter(buffer)) {
+            out.println("{"); //$NON-NLS-1$
+            out.println("  \"version\": " + SCHEMA_VERSION + ","); //$NON-NLS-1$
+            out.println("  \"updatedAt\": \"" + Instant.now() + "\","); //$NON-NLS-1$
+            out.println("  \"chats\": {"); //$NON-NLS-1$
+            int chatIndex = 0;
+            for (Map.Entry<String, List<ChatAnnotation>> entry : byChatKey.entrySet()) {
+                if (chatIndex++ > 0) {
+                    out.println(","); //$NON-NLS-1$
+                }
+                out.print("    \"" + escape(entry.getKey()) + "\": "); //$NON-NLS-1$ //$NON-NLS-2$
+                out.print("{\"items\": "); //$NON-NLS-1$
+                writeItems(out, entry.getValue());
+                out.print("}"); //$NON-NLS-1$
+            }
+            out.println(); //$NON-NLS-1$
+            out.println("  }"); //$NON-NLS-1$
+            out.println("}"); //$NON-NLS-1$
+        }
+        CaptureIntegrity.writeAtomically(root, storeFile, buffer.toString(), MAX_STORE_BYTES);
+        dirty = false;
+        loadedStamp = lastModifiedOf(storeFile);
     }
 
     private void writeItems(PrintWriter out, List<ChatAnnotation> items) {
@@ -462,7 +468,7 @@ class ChatAnnotationStore {
             }
             return out.toString();
         } catch (Exception e) {
-            return Integer.toHexString(value.hashCode());
+            throw new IllegalStateException("SHA-1 unavailable", e); //$NON-NLS-1$
         }
     }
 
@@ -529,13 +535,9 @@ class ChatAnnotationStore {
                     out.append('\t');
                     break;
                 case 'u':
-                    if (i + 4 < value.length()) {
-                        try {
-                            out.append((char) Integer.parseInt(value.substring(i + 1, i + 5), 16));
-                            i += 4;
-                        } catch (NumberFormatException e) {
-                            out.append(next);
-                        }
+                    if (i + 4 < value.length() && isFourHexDigits(value, i + 1)) {
+                        out.append((char) Integer.parseInt(value.substring(i + 1, i + 5), 16));
+                        i += 4;
                     } else {
                         out.append(next);
                     }
@@ -545,6 +547,16 @@ class ChatAnnotationStore {
             }
         }
         return out.toString();
+    }
+
+    private static boolean isFourHexDigits(String value, int start) {
+        for (int idx = 0; idx < 4; idx++) {
+            char c = value.charAt(start + idx);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

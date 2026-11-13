@@ -17,6 +17,7 @@ public class JsonParsingRegressionTest {
             testLoadRecaptureJobsLegacyAnchorOrderingAndOrgJson();
             testCaptureRootMetadataNestedFakeKeysAndBraces();
             testCoordinateAnchorsAndPreviousSensitiveMatch(tempRoot);
+            testJsonControlAndScriptEscaping();
             System.out.println("JsonParsingRegressionTest: PASS");
         } finally {
             deleteRecursively(tempRoot);
@@ -224,6 +225,25 @@ public class JsonParsingRegressionTest {
         assertTrue(matched, "safe contained root/frame block match must succeed");
         assertTrue(matchedCandidates.size() == 1, "spoofed string hash and ../escape.png must never reach matcher");
         Files.deleteIfExists(outside);
+    }
+
+    private static void testJsonControlAndScriptEscaping() {
+        assertEqual("null", HtmlLinkViewer.json(null), "json(null) must return literal null");
+        String input = "\t\b\f\u0007</SCRIPT>\u2028\u2029";
+        String encoded = HtmlLinkViewer.json(input);
+        assertTrue(encoded.startsWith("\"") && encoded.endsWith("\""), "encoded JSON string must be quoted");
+        assertTrue(!encoded.contains("</") && !encoded.contains("<"), "encoded JSON must escape '<' to prevent </script> breakout");
+        assertTrue(encoded.contains("\\u003c/SCRIPT>") || encoded.contains("\\u003C/SCRIPT>"),
+                "encoded JSON must escape </SCRIPT> with \\u003c");
+        assertTrue(encoded.contains("\\t") && encoded.contains("\\b") && encoded.contains("\\f")
+                && encoded.contains("\\u0007") && encoded.contains("\\u2028") && encoded.contains("\\u2029"),
+                "encoded JSON must escape control chars and LS/PS separators");
+        for (int i = 0; i < encoded.length(); i++) {
+            char c = encoded.charAt(i);
+            assertTrue(c >= 0x20 && c != '\u2028' && c != '\u2029', "encoded JSON must not contain raw control chars or LS/PS");
+        }
+        Object decoded = new org.json.JSONTokener(encoded).nextValue();
+        assertEqual(input, decoded == null ? null : decoded.toString(), "JSONTokener round-trip must recover exact input");
     }
 
     private static void assertEqual(String expected, String actual, String msg) {

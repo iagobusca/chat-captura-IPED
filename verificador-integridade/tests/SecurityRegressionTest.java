@@ -31,6 +31,10 @@ public final class SecurityRegressionTest {
             disallowedHtmlAttributesAndQuoteTricksAreRejected(root);
             largeHtmlCaptureOver16MiBUpTo64MiBIsAccepted(root);
             auxiliaryCaptureFoldersAreIgnoredDuringDiscovery(root);
+            corruptedIntegridadeJsonMarksInvalidRecordWithoutThrowing(root);
+            legacyHtmlSlashEventAndBodyStyleAreRejected();
+            cssEscapesCommentsAndSvgActiveOrQuotedUrlsAreRejected();
+            canonicalRecordHashVerifiesRegardlessOfKeyOrderAndPreservesLegacy(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -710,6 +714,178 @@ public final class SecurityRegressionTest {
             if (!(cause instanceof IOException) || cause.getMessage() == null || !cause.getMessage().contains("excede o limite")) {
                 throw new AssertionError("Erro inesperado para manifest.json > 16 MiB: " + cause);
             }
+        }
+    }
+
+    private static void corruptedIntegridadeJsonMarksInvalidRecordWithoutThrowing(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+        Field integrityHashField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("integrityFileHash");
+        integrityHashField.setAccessible(true);
+
+        Path stdDir = Files.createDirectories(root.resolve("corrupt-integrity-std"));
+        byte[] imgBytes = "hello-artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(stdDir.resolve("a.txt"), imgBytes);
+        JSONArray art = new JSONArray().put(new JSONObject().put("path", "a.txt").put("size", imgBytes.length).put("sha256", sha256Bytes(imgBytes)));
+        Files.write(stdDir.resolve("manifest.json"), new JSONObject().put("artifacts", art).toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(stdDir.resolve("integridade.json"), "{corrupted-json".getBytes(StandardCharsets.UTF_8));
+        Object stdCap = newCapture(stdDir);
+        verifyMethod.invoke(null, stdCap);
+        String stdStatus = (String) statusField.get(stdCap);
+        if (!"registro inválido".equals(stdStatus)) {
+            throw new AssertionError("Expected 'registro inválido' for corrupt integridade.json, got: " + stdStatus);
+        }
+        String intHash = (String) integrityHashField.get(stdCap);
+        if (intHash == null || intHash.length() != 64) {
+            throw new AssertionError("Expected integrityFileHash to remain populated");
+        }
+
+        Path msgDir = Files.createDirectories(root.resolve("corrupt-integrity-msg"));
+        createValidHtmlMessageCapture(msgDir, "Teste");
+        Files.write(msgDir.resolve("integridade.json"), "[not-closed".getBytes(StandardCharsets.UTF_8));
+        Object msgCap = newCapture(msgDir);
+        verifyMethod.invoke(null, msgCap);
+        String msgStatus = (String) statusField.get(msgCap);
+        if (msgStatus == null || !msgStatus.startsWith("registro inválido")) {
+            throw new AssertionError("Expected 'registro inválido...' for corrupt html-message integridade.json, got: " + msgStatus);
+        }
+    }
+
+    private static void legacyHtmlSlashEventAndBodyStyleAreRejected() throws Exception {
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+        String msgKey = repeat('a', 64);
+        java.util.Set<String> keys = Collections.singleton(msgKey);
+        String base = "<!doctype html><div class=\"linha\" data-capture-message-key=\"" + msgKey + "\">Ola</div>";
+        String[] badLegacy = new String[] {
+                base + "<img/onerror=alert(1)>",
+                "<!doctype html><div class=\"linha\" data-capture-message-key=\"" + msgKey + "\" /onclick=\"alert(1)\">Ola</div>",
+                base + "<a href=\"vbscript:msgbox(1)\">x</a>",
+                base + "<template><script>alert(1)</script></template>",
+                base + "<style>body{color:red}</style>"
+        };
+        for (String payload : badLegacy) {
+            assertValidateHtmlRejected(validate, payload, keys, 0);
+        }
+    }
+
+    private static void cssEscapesCommentsAndSvgActiveOrQuotedUrlsAreRejected() throws Exception {
+        Method validateCss = IntegrityVerifier.class.getDeclaredMethod("validateCaptureCss", String.class);
+        validateCss.setAccessible(true);
+        String[] badCss = new String[] {
+                "@\\69mport url('https://evil.example/a.css');",
+                "/*comment*/@import 'https://evil.example/a.css';",
+                "body{background:/*x*/expression/*y*/(alert(1))}",
+                "body{background:\\75\\72\\6c(https://evil.example/a.png)}",
+                "body{behavior:vbscript:alert(1)}"
+        };
+        for (String css : badCss) {
+            boolean rejected = false;
+            try {
+                validateCss.invoke(null, css);
+            } catch (InvocationTargetException e) {
+                if (e.getCause() instanceof IOException) rejected = true;
+                else throw e;
+            }
+            if (!rejected) throw new AssertionError("Disallowed CSS accepted: " + css);
+        }
+
+        String[] badSvgs = new String[] {
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><style>@import 'https://evil.example/x.css';</style></svg>",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><animate attributeName=\"href\" to=\"javascript:alert(1)\"/></svg>",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"10\" height=\"10\" fill=\"url('https://evil.example/x')\"/></svg>",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><use href=\"https://evil.example/x.svg#i\"/></svg>",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect style=\"fill:url('https://evil.example/x')\"/></svg>"
+        };
+        for (String svg : badSvgs) {
+            String css = "body{background:url(\"data:image/svg+xml;base64,"
+                    + java.util.Base64.getEncoder().encodeToString(svg.getBytes(StandardCharsets.UTF_8)) + "\")}";
+            boolean rejected = false;
+            try {
+                validateCss.invoke(null, css);
+            } catch (InvocationTargetException e) {
+                if (e.getCause() instanceof IOException) rejected = true;
+                else throw e;
+            }
+            if (!rejected) throw new AssertionError("Disallowed SVG accepted: " + svg);
+        }
+
+        String validSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"g\"/></defs><rect width=\"10\" height=\"10\" fill=\"url('#g')\"/></svg>";
+        validateCss.invoke(null, "body{background:url(\"data:image/svg+xml;base64,"
+                + java.util.Base64.getEncoder().encodeToString(validSvg.getBytes(StandardCharsets.UTF_8)) + "\")}");
+    }
+
+    private static void canonicalRecordHashVerifiesRegardlessOfKeyOrderAndPreservesLegacy(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Method canonicalJsonMethod = IntegrityVerifier.class.getDeclaredMethod("canonicalJson", Object.class);
+        canonicalJsonMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+
+        Path dirCanonical = Files.createDirectories(root.resolve("canonical-record-hash"));
+        byte[] data = "sample-content".getBytes(StandardCharsets.UTF_8);
+        Files.write(dirCanonical.resolve("a.txt"), data);
+        String sha = sha256Bytes(data);
+        JSONArray art = new JSONArray().put(new JSONObject().put("path", "a.txt").put("size", data.length).put("sha256", sha));
+        String rootHash = sha256Utf8("a.txt|" + data.length + "|" + sha + "\n");
+
+        JSONObject payload = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-13T17:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootHash)
+                .put("recordHashFormat", "canonical-v1")
+                .put("changes", new JSONArray().put(new JSONObject().put("action", "added").put("path", "a.txt").put("sha256", sha)));
+        String canonicalHash = sha256Utf8((String) canonicalJsonMethod.invoke(null, payload));
+
+        // Reorder keys manually when writing JSON to simulate arbitrary JSON parser/serializer ordering
+        String reorderedEventJson = "{\"action\":\"capture_created\",\"recordHashFormat\":\"canonical-v1\",\"changes\":[{\"sha256\":\""
+                + sha + "\",\"path\":\"a.txt\",\"action\":\"added\"}],\"contentRootHash\":\"" + rootHash
+                + "\",\"previousRecordHash\":\"\",\"sequence\":1,\"timestampUtc\":\"2026-11-13T17:00:00Z\",\"recordHash\":\""
+                + canonicalHash + "\"}";
+        String integrityJson = "{\"schemaVersion\":2,\"contentRootHash\":\"" + rootHash + "\",\"artifacts\":" + art.toString()
+                + ",\"events\":[" + reorderedEventJson + "]}";
+        Files.write(dirCanonical.resolve("integridade.json"), integrityJson.getBytes(StandardCharsets.UTF_8));
+        Files.write(dirCanonical.resolve("manifest.json"), new JSONObject().put("artifacts", art).toString().getBytes(StandardCharsets.UTF_8));
+
+        Object capOk = newCapture(dirCanonical);
+        verifyMethod.invoke(null, capOk);
+        String okStatus = (String) statusField.get(capOk);
+        if (!"consistente com registro local".equals(okStatus)) {
+            throw new AssertionError("Canonical recordHash should verify regardless of key order, got: " + okStatus);
+        }
+
+        // Tampering canonical hash fails
+        Files.write(dirCanonical.resolve("integridade.json"), integrityJson.replace(canonicalHash, repeat('f', 64)).getBytes(StandardCharsets.UTF_8));
+        Object capBad = newCapture(dirCanonical);
+        verifyMethod.invoke(null, capBad);
+        if (!"hash de evento inválido".equals(statusField.get(capBad))) {
+            throw new AssertionError("Tampered canonical recordHash should fail, got: " + statusField.get(capBad));
+        }
+
+        // Legacy capture without recordHashFormat still verifies
+        Path dirLegacy = Files.createDirectories(root.resolve("legacy-record-hash"));
+        Files.write(dirLegacy.resolve("a.txt"), data);
+        JSONObject evLegacy = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-13T17:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootHash)
+                .put("changes", new JSONArray().put(new JSONObject().put("action", "added").put("path", "a.txt").put("sha256", sha)));
+        evLegacy.put("recordHash", sha256Utf8(evLegacy.toString()));
+        JSONObject recLegacy = new JSONObject().put("schemaVersion", 2).put("contentRootHash", rootHash).put("artifacts", art).put("events", new JSONArray().put(evLegacy));
+        Files.write(dirLegacy.resolve("integridade.json"), recLegacy.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(dirLegacy.resolve("manifest.json"), new JSONObject().put("artifacts", art).toString().getBytes(StandardCharsets.UTF_8));
+        Object capLegacy = newCapture(dirLegacy);
+        verifyMethod.invoke(null, capLegacy);
+        if (!"consistente com registro local".equals(statusField.get(capLegacy))) {
+            throw new AssertionError("Legacy recordHash without recordHashFormat should still verify, got: " + statusField.get(capLegacy));
         }
     }
 

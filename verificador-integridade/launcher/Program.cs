@@ -50,7 +50,7 @@ internal static class Program
                     string destination = Path.GetFullPath(Path.Combine(tempRoot, entry.FullName));
                     if (!destination.StartsWith(Path.GetFullPath(tempRoot) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException("O pacote contém um caminho inválido.");
-                    bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\") || entry.Length == 0;
+                    bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\");
                     string destPath = destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                     if (isDir)
                     {
@@ -242,7 +242,9 @@ internal static class Program
                 string lockPath = Path.Combine(full, LockFileName);
                 if (File.Exists(lockPath))
                 {
-                    using var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    using (var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    {
+                    }
                 }
                 Directory.Delete(full, true);
             }

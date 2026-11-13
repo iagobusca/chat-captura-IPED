@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.2-beta - Verificador de Integridade 1.3.7
+Pacote Chat Captura IPED 2.6.3-beta - Verificador de Integridade 1.3.8
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,17 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.3.7 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.3.8 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.6.2-beta / Verificador 1.3.7) - correções de segurança (fase 2):
+Novidades desta versão (2.6.3-beta / Verificador 1.3.8) - correções de segurança e consistência (fase 3):
+- Plugin & Verificador (política estrita): versões antigas do Verificador (<= 1.3.7) foram abandonadas; o plugin 2.6.3-beta aceita exclusivamente o Verificador 1.3.8;
+- Plugin/HTML & CSS/SVG: sanitizador estrutural de fragmentos (allowlist de tags/atributos, remoção de <template>/handlers/src externos e preservação de texto literal com tokens), paridade de normalização CSS/SVG com bloqueio de <style>/<animate*>/<set>/<mpath>, escaping estrito em json()/html()/esc() e rollback seguro de migração HTML;
+- Plugin/Relatórios & UI: decodificação limitada antes de alocar imagens nas miniaturas do relatório, remoção de MD5 decisório no matcher de imagens sensíveis, preparo do Re-Extrair fora da Swing EDT, persistência atômica/propagações de erro em notas, paths finais corretos em hashes.txt/CSV e CSS da busca no whatsapp.html;
+- Integridade v2: canonicalização determinística do recordHash ("canonical-v1") no plugin e verificação compatível com registros legados no Verificador 1.3.8, além de status "registro inválido" para integridade.json malformado;
+- Instalador & Launcher: restauração de arquivos .properties no :ROLLBACK, auditoria NuGet no build e correção de extração ZIP de arquivos vazios (0 bytes) e limpeza de temporários no launcher .exe.
+
+Novidades da 2.6.2-beta / Verificador 1.3.7 - correções de segurança (fase 2):
 - Plugin: allowlist rígida no importador de anotações legadas (`LinkedChatRef`/`ChatAnnotation`) e validação de caminho relativo com rejeição de `..`, prefixo de drive e caracteres de controle;
 - Plugin: bloqueio de HTML/Swing (`JEditorPane`/`JLabel`) no diálogo de anotações e pré-checagens contra conteúdo HTML não confiável;
 - Plugin: parser JSON estrutural (`org.json`) e scanner depth-1 substituindo extração por regex em anotações, recaptura e manifesto;
@@ -55,9 +62,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.3.7:
-JAR 7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE
-EXE D102E17D02F39E5D6E85249E9B9585BC26C3D005E7DBFF2296C22FB2E18E926A
+SHA-256 do Verificador 1.3.8:
+JAR 556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6
+EXE B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2
 
-SHA-256 do plugin 2.6.2-beta:
-JAR 5576E9E5CE0BCB6D3C65ECF560403CC0098F0D4A1F8FE18DBC6597238DB9C8AC
+SHA-256 do plugin 2.6.3-beta:
+JAR CED5CCFE4C5F1C8A15C52D32E891468B9836F620BB3E3FFBC47198FE41C3AC60

@@ -277,12 +277,92 @@ final class CaptureIntegrity {
         JSONObject event = new JSONObject().put("sequence", events.length() + 1)
                 .put("timestampUtc", Instant.now().toString()).put("action", action)
                 .put("contentRootHash", inventoryHash(current)).put("changes", changes)
-                .put("previousRecordHash", previousHash);
-        event.put("recordHash", sha256Text(event.toString()));
+                .put("previousRecordHash", previousHash)
+                .put("recordHashFormat", "canonical-v1");
+        event.put("recordHash", sha256Text(canonicalJson(event)));
         events.put(event);
         return new JSONObject().put("schemaVersion", 2).put("algorithm", HASH_ALGORITHM)
                 .put("pluginVersion", pluginVersion)
                 .put("contentRootHash", inventoryHash(current)).put("artifacts", current).put("events", events);
+    }
+
+    static String canonicalJson(Object value) {
+        if (value == null || value == JSONObject.NULL) {
+            return "null"; //$NON-NLS-1$
+        }
+        if (value instanceof JSONObject) {
+            JSONObject obj = (JSONObject) value;
+            java.util.TreeSet<String> keys = new java.util.TreeSet<>(obj.keySet());
+            StringBuilder out = new StringBuilder("{"); //$NON-NLS-1$
+            boolean first = true;
+            for (String key : keys) {
+                if (!first) {
+                    out.append(',');
+                }
+                first = false;
+                out.append(canonicalQuote(key)).append(':').append(canonicalJson(obj.opt(key)));
+            }
+            return out.append('}').toString();
+        }
+        if (value instanceof JSONArray) {
+            JSONArray arr = (JSONArray) value;
+            StringBuilder out = new StringBuilder("["); //$NON-NLS-1$
+            for (int i = 0; i < arr.length(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                out.append(canonicalJson(arr.opt(i)));
+            }
+            return out.append(']').toString();
+        }
+        if (value instanceof String) {
+            return canonicalQuote((String) value);
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return value.toString();
+        }
+        return canonicalQuote(value.toString());
+    }
+
+    private static String canonicalQuote(String s) {
+        if (s == null) {
+            return "null"; //$NON-NLS-1$
+        }
+        StringBuilder out = new StringBuilder(s.length() + 2);
+        out.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':
+                    out.append("\\\""); //$NON-NLS-1$
+                    break;
+                case '\\':
+                    out.append("\\\\"); //$NON-NLS-1$
+                    break;
+                case '\b':
+                    out.append("\\b"); //$NON-NLS-1$
+                    break;
+                case '\f':
+                    out.append("\\f"); //$NON-NLS-1$
+                    break;
+                case '\n':
+                    out.append("\\n"); //$NON-NLS-1$
+                    break;
+                case '\r':
+                    out.append("\\r"); //$NON-NLS-1$
+                    break;
+                case '\t':
+                    out.append("\\t"); //$NON-NLS-1$
+                    break;
+                default:
+                    if (c < 0x20) {
+                        out.append(String.format(java.util.Locale.ROOT, "\\u%04x", (int) c)); //$NON-NLS-1$
+                    } else {
+                        out.append(c);
+                    }
+            }
+        }
+        return out.append('"').toString();
     }
 
     private static Map<String, JSONObject> inventoryMap(JSONArray items) {

@@ -30,6 +30,7 @@ public final class CaptureCensorshipTest {
         cssContainsExpectedBlurAndNoActiveRules();
         presentationDigestIsCanonicalAndOrderIndependent();
         manifestRecordIsOrderedAndExcludesFolderPath();
+        sensitiveImageMatcherRejectsMd5OnlyAndMatchesSha256();
         System.out.println("CaptureCensorshipTest: PASS");
     }
 
@@ -148,6 +149,33 @@ public final class CaptureCensorshipTest {
         String serialized = record.toString();
         check(!serialized.toLowerCase().contains("c:\\") && !serialized.contains("folderPath"),
                 "manifest record must not leak local reference folder path");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void sensitiveImageMatcherRejectsMd5OnlyAndMatchesSha256() throws Exception {
+        byte[] target = "synthetic-sensitive-image-payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] other = "other-image-payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        java.security.MessageDigest md5Digest = java.security.MessageDigest.getInstance("MD5");
+        StringBuilder md5Hex = new StringBuilder();
+        for (byte b : md5Digest.digest(other)) {
+            md5Hex.append(String.format("%02X", b));
+        }
+
+        try (HtmlLinkViewer.SensitiveImageMatcher matcher = new HtmlLinkViewer.SensitiveImageMatcher()) {
+            matcher.addReferenceFileHash(target);
+            java.lang.reflect.Field hashesField = HtmlLinkViewer.SensitiveImageMatcher.class
+                    .getDeclaredField("referenceFileHashes");
+            hashesField.setAccessible(true);
+            Set<String> hashes = (Set<String>) hashesField.get(matcher);
+            equal(1, hashes.size(), "addReferenceFileHash must store only SHA-256 (not MD5)");
+            check(matcher.matchesReferenceFileHash(target), "exact SHA-256 payload must match");
+            check(!matcher.matchesReferenceFileHash(other), "different payload must not match");
+
+            hashes.add(md5Hex.toString());
+            check(!matcher.matchesReferenceFileHash(other),
+                    "matchesReferenceFileHash must ignore MD5-only match even if present");
+        }
     }
 
     private static void check(boolean condition, String message) {

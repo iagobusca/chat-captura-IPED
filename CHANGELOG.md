@@ -4,6 +4,17 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.3-beta] - 2026-11-13
+
+### Segurança e Correções
+
+- **Política estrita de versão do Verificador (`VerifierIntegrity` / instalador)**: removidos todos os hashes de versões anteriores (`<= 1.3.7`); o plugin `2.6.3-beta` aceita exclusivamente o Verificador `1.3.8` (`556B1A65...` / `B9D77A7F...`) e substitui automaticamente binários obsoletos durante a instalação/preparo da captura.
+- **Sanitização HTML/CSS/SVG no plugin (`HtmlLinkViewer`)**: parser estrutural em Java para fragmentos `row.html` com allowlist de tags/atributos (preservando textos literais com marcadores de token), remoção de `<template>`, handlers e atributos `src` externos não permitidos no DOM, paridade com o Verificador na normalização de comentários/escapes CSS e bloqueio de `<style>`, `<animate*>`, `<set>`, `<mpath>` e `url(...)` com aspas em SVGs; escaping estrito em `json()`, `js()`, `html()` e `writeWhatsAppHtml`.
+- **Verificador `1.3.8` (`IntegrityVerifier` e launcher C#)**: classificação `"registro inválido"` para `integridade.json` corrompido sem mascarar rejeição de junções NTFS, endurecimento da allowlist de atributos em HTML legado e normalização CSS/SVG, verificação canônica `recordHash` (`"canonical-v1"`) com retrocompatibilidade somente-leitura para eventos antigos, correção de limpeza de lock/temporários e extração ZIP de arquivos vazios (0 bytes) no launcher `.exe`, além de auditoria NuGet ativa no build padrão.
+- **Confiabilidade e UI (`HtmlLinkViewer`, `ChatAnnotationStore`, `CaptureIntegrity`, `instalar_captura_chat_zap`)**: preservação de `whatsapp.html` se a migração falhar antes do backup (`C1`), `absolutePath` final em `hashes.txt`/`Lista de Arquivos.csv` (`C2`), preflight respeitando `dialog.isConfirmed()` (`C3`), fechamento CSS da barra de busca no `whatsapp.html` com `HTML_GENERATOR_VERSION = 4` (`C4`), preparo do `Re-Extrair` fora da Swing EDT (`C5`), propagação real de falhas em `persist()`/`persistOrThrow()` e rejeição de `\u+041` (`C6`), decodificação limitada de imagens antes de alocar `BufferedImage` em `createReportThumbnails` (`D4`), remoção de MD5 decisório no `SensitiveImageMatcher` (`D5`) e restauração de `.properties` no `:ROLLBACK` do instalador (`E1`).
+
+---
+
 ## [2.6.2-beta] - 2026-11-13
 
 ### Segurança

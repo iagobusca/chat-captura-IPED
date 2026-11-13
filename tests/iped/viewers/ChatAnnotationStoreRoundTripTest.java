@@ -15,6 +15,7 @@ public final class ChatAnnotationStoreRoundTripTest {
         testNotesAndLinksRoundTrip();
         testFieldMetadataExtraction();
         testJunctionOutputIsRejected();
+        testPersistContractAndMalformedUnicodeEscape();
         System.out.println("ChatAnnotationStoreRoundTripTest: PASS");
     }
 
@@ -123,8 +124,15 @@ public final class ChatAnnotationStoreRoundTripTest {
                 check(reader.get("k", "m1") == null, "load() must ignore store inside NTFS junction outputRoot");
 
                 reader.setNote("k", "m2", "note", "perito");
-                reader.persist();
+                check(!reader.persist(), "persist() must return false on NTFS junction outputRoot");
                 check(reader.isDirty(), "persist() must fail cleanly and stay dirty on NTFS junction outputRoot");
+                boolean threw = false;
+                try {
+                    reader.persistOrThrow();
+                } catch (IOException expected) {
+                    threw = true;
+                }
+                check(threw, "persistOrThrow() must throw IOException on NTFS junction outputRoot");
                 String content = Files.readString(outside.resolve(ChatAnnotationStore.FILE_NAME));
                 check(!content.contains("m2"), "persist() must not overwrite store inside junction target");
             } finally {
@@ -133,6 +141,37 @@ public final class ChatAnnotationStoreRoundTripTest {
         } finally {
             deleteTree(work);
         }
+    }
+
+    private static void testPersistContractAndMalformedUnicodeEscape() throws Exception {
+        ChatAnnotationStore unbound = new ChatAnnotationStore();
+        unbound.setNote("k1", "m1", "nota", "perito");
+        check(!unbound.persist(), "persist() must return false when outputRoot is unbound");
+        boolean threwUnbound = false;
+        try {
+            unbound.persistOrThrow();
+        } catch (IOException expected) {
+            threwUnbound = true;
+        }
+        check(threwUnbound, "persistOrThrow() must throw IOException when outputRoot is unbound");
+
+        Path validRoot = Files.createTempDirectory("chat-annotation-persist-ok-");
+        try {
+            ChatAnnotationStore valid = new ChatAnnotationStore();
+            valid.bindOutputRoot(validRoot);
+            valid.setNote("k1", "m1", "nota ok", "perito");
+            check(valid.persist(), "persist() must return true on valid write");
+            check(!valid.isDirty(), "persist() must clear dirty flag after valid write");
+        } finally {
+            deleteTree(validRoot);
+        }
+
+        equal("u+041", ChatAnnotationStore.unescape("\\u+041"),
+                "signed/non-hex \\u+041 must not decode to 'A'");
+        equal("A", ChatAnnotationStore.unescape("\\u0041"),
+                "valid 4-hex \\u0041 must still decode to A");
+        equal("u12", ChatAnnotationStore.unescape("\\u12"),
+                "truncated \\u escape must not throw or mis-decode");
     }
 
     private static void equal(Object expected, Object actual, String message) {

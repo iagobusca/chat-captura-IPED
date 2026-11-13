@@ -1,7 +1,8 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$Jar,
     [Parameter(Mandatory = $true)][string]$ResourceDir,
-    [Parameter(Mandatory = $true)][string]$LocaleDir
+    [Parameter(Mandatory = $true)][string]$LocaleDir,
+    [string]$BackupStamp = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,10 +59,12 @@ foreach ($name in $required) {
         if ($current -notmatch ('(?m)^' + [regex]::Escape($key) + '=')) { $add.Add($line) }
     }
     if ($add.Count) {
-        $backup = "$target.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
+        $stamp = if ([string]::IsNullOrWhiteSpace($BackupStamp)) { Get-Date -Format yyyyMMdd-HHmmss } else { $BackupStamp.Trim() }
+        $backup = "$target.bak-$stamp"
         Copy-Item -LiteralPath $target -Destination $backup
         $updated = $current.TrimEnd() + [Environment]::NewLine + ($add -join [Environment]::NewLine) + [Environment]::NewLine
         [IO.File]::WriteAllText($target, $updated, [Text.UTF8Encoding]::new($false))
+        Write-Host "Localization atualizada com backup: $backup"
     }
 }
 

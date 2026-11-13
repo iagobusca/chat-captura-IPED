@@ -30,7 +30,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.3.7";
+    private static final String VERIFIER_VERSION = "1.3.8";
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
     private static final Pattern HTML_META_TAG_PATTERN = Pattern.compile("(?is)<meta\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
@@ -546,15 +546,21 @@ public final class IntegrityVerifier {
         if(Files.exists(rawIntegrity,LinkOption.NOFOLLOW_LINKS)&&isLinkOrReparse(rawIntegrity))throw new IOException("Junção ou link não permitido na captura: "+rawIntegrity);
         Path integrityPath=resolve(c.dir,"integridade.json");
         JSONObject integrity=null;
+        boolean integrityJsonInvalid=false;
         if(integrityPath!=null&&Files.isRegularFile(integrityPath, LinkOption.NOFOLLOW_LINKS)) {
             c.integrityFileHash=hash(integrityPath);
             try { integrity=parseBoundedJson(readUtf8Limited(integrityPath),integrityPath); }
-            catch(RuntimeException invalid) { c.historyStatus="registro inválido"; }
+            catch(InvalidJsonException invalid) { integrityJsonInvalid=true; c.historyStatus="registro inválido"; }
         }
         if(format!=null&&"html-message-v1".equals(format.optString("captureFormat"))){
             verifyMessageCapture(c,format);
             String messageManifestStatus=c.historyStatus;
-            if(integrity!=null&&integrity.optInt("schemaVersion",0)>=2){
+            if(integrityJsonInvalid){
+                if(format.has("migration"))
+                    throw new IOException("Uma captura migrada precisa de uma cadeia local de integridade para validar migration.json.");
+                c.allowedFiles.add("integridade.json");
+                c.historyStatus="registro inválido; "+messageManifestStatus;
+            }else if(integrity!=null&&integrity.optInt("schemaVersion",0)>=2){
                 c.allowedFiles.add("integridade.json");
                 verifyHistory(c,integrity);
                 validateMigrationIntegrity(c,format,integrity);
@@ -577,8 +583,16 @@ public final class IntegrityVerifier {
             return;
         }
         if(integrity!=null && integrity.optInt("schemaVersion",0)>=2) verifyHistory(c,integrity);
-        Path inventoryFile=Files.isRegularFile(c.dir.resolve("integridade.json"),LinkOption.NOFOLLOW_LINKS)?c.dir.resolve("integridade.json"):c.dir.resolve("manifest.json");
-        JSONObject inventory=integrity!=null?integrity:parseBoundedJson(readUtf8Limited(inventoryFile),inventoryFile);
+        JSONObject inventory=integrity;
+        if(inventory==null){
+            if(integrityJsonInvalid){
+                inventory=format;
+                if(inventory==null){ c.hash="";return; }
+            }else{
+                Path inventoryFile=Files.isRegularFile(c.dir.resolve("integridade.json"),LinkOption.NOFOLLOW_LINKS)?c.dir.resolve("integridade.json"):c.dir.resolve("manifest.json");
+                inventory=parseBoundedJson(readUtf8Limited(inventoryFile),inventoryFile);
+            }
+        }
         JSONArray artifacts=inventory.optJSONArray("artifacts");
         if(artifacts==null){ c.hash="";return; }
         if(artifacts.length()>MAX_CAPTURE_FILES)throw new IOException("Inventário excede o limite de "+MAX_CAPTURE_FILES+" arquivos.");
@@ -770,7 +784,9 @@ public final class IntegrityVerifier {
         }
         if(c.fileCount>MAX_CAPTURE_FILES||c.bytes>MAX_HTML_CAPTURE_BYTES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
         c.items.sort(Comparator.comparing(i->i.path));
-        c.historyStatus="arquivos extras na captura: "+extras.size();
+        c.historyStatus=(c.historyStatus!=null&&c.historyStatus.startsWith("registro inválido"))
+                ?("registro inválido; arquivos extras na captura: "+extras.size())
+                :("arquivos extras na captura: "+extras.size());
     }
 
     private static void validateRenderedCaptureHtml(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,int presentationVersion)throws Exception{
@@ -782,11 +798,26 @@ public final class IntegrityVerifier {
         Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;while(styles.find()){styleCount++;if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");validateCaptureCss(styles.group(2));}Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=2||styleOpenCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
     }
 
+    private static final Pattern CSS_FORBIDDEN_CONTENT_PATTERN = Pattern.compile("(?is)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:|vbscript\\s*:");
+    private static final Pattern CSS_HEX_ESCAPE_PATTERN = Pattern.compile("\\\\([0-9a-fA-F]{1,6})(?:\\r\\n|[ \\t\\r\\n\\f])?");
+    private static final Set<String> BLOCKED_SVG_ELEMENTS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "script", "foreignobject", "iframe", "object", "embed", "style", "animate", "animatemotion", "animatetransform", "set", "mpath"
+    )));
+
     private static void validateLegacyRenderedHtml(String html,Set<String> attachmentPaths,Set<String> messageKeys)throws Exception{
         validateCaptureMeta(html,false);
-        if(Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math)\\b|\\son[a-z0-9_-]+\\s*=|javascript:").matcher(html).find())throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
+        if(Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math|template|input|button|select|textarea)\\b|(?:[\\s/])on[a-z0-9_-]+\\s*=|javascript\\s*:|vbscript\\s*:").matcher(html).find())throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
         validateHtmlStructure(html,attachmentPaths,Collections.emptyMap(),messageKeys,false);
-        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;while(styles.find()){styleCount++;if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");validateCaptureCss(styles.group(2));}Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=styleOpenCount)throw new IOException("HTML contém elemento de estilo malformado.");
+        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;
+        int headStart=html.toLowerCase(Locale.ROOT).indexOf("<head");
+        int headEnd=html.toLowerCase(Locale.ROOT).indexOf("</head>");
+        while(styles.find()){
+            styleCount++;
+            if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");
+            if(headStart<0||headEnd<0||styles.start()<headStart||styles.end()>headEnd)throw new IOException("Elemento de estilo não é permitido no corpo do HTML legado.");
+            validateCaptureCss(styles.group(2));
+        }
+        Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=styleOpenCount)throw new IOException("HTML contém elemento de estilo malformado.");
     }
 
     private static String validateCaptureMeta(String html,boolean modern)throws IOException{
@@ -808,7 +839,7 @@ public final class IntegrityVerifier {
 
     private static Map<String,String> parseHtmlAttributes(String input)throws IOException{
         Map<String,String> attrs=new HashMap<>();Matcher matcher=Pattern.compile("(?is)([a-z_:][a-z0-9_:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>\"'`=]+)))?").matcher(input);int end=0;
-        while(matcher.find()){String gap=input.substring(end,matcher.start()).trim();if(!gap.isEmpty()&&!gap.matches("(?is)/?"))throw new IOException("Atributo HTML malformado.");String name=matcher.group(1).toLowerCase(Locale.ROOT);String value=matcher.group(2)!=null?matcher.group(2):matcher.group(3)!=null?matcher.group(3):matcher.group(4)!=null?matcher.group(4):"";if(attrs.put(name,value)!=null)throw new IOException("Atributo HTML duplicado.");end=matcher.end();}
+        while(matcher.find()){String gap=input.substring(end,matcher.start()).trim();if(!gap.isEmpty())throw new IOException("Atributo HTML malformado.");String name=matcher.group(1).toLowerCase(Locale.ROOT);String value=matcher.group(2)!=null?matcher.group(2):matcher.group(3)!=null?matcher.group(3):matcher.group(4)!=null?matcher.group(4):"";if(attrs.put(name,value)!=null)throw new IOException("Atributo HTML duplicado.");end=matcher.end();}
         String tail=input.substring(end).trim();if(!tail.isEmpty()&&!tail.matches("(?is)/?"))throw new IOException("Atributo HTML sem valor entre aspas.");return attrs;
     }
 
@@ -849,16 +880,53 @@ public final class IntegrityVerifier {
         Matcher m=Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp));base64,([a-z0-9+/=\\r\\n]+)$").matcher(uri);if(!m.matches())return false;byte[] bytes;try{bytes=Base64.getMimeDecoder().decode(m.group(2));}catch(IllegalArgumentException invalid){return false;}if(bytes.length==0||bytes.length>8*1024*1024)return false;String mime=m.group(1).toLowerCase(Locale.ROOT);if(captureRasterSignatureMatches(mime,bytes))return true;return "image/jpg".equals(mime)&&captureRasterSignatureMatches("image/png",bytes);
     }
 
+    private static String normalizeCssForSecurityCheck(String css)throws IOException{
+        if(css.indexOf('\0')>=0)throw new IOException("CSS contém byte nulo.");
+        String noComments=Pattern.compile("(?s)/\\*.*?\\*/").matcher(css).replaceAll(" ");
+        Matcher hex=CSS_HEX_ESCAPE_PATTERN.matcher(noComments);
+        StringBuffer decoded=new StringBuffer(noComments.length());
+        while(hex.find()){
+            int code=Integer.parseInt(hex.group(1),16);
+            if(code<=0||code>0x10FFFF||(code>=0xD800&&code<=0xDFFF))throw new IOException("Escape CSS inválido.");
+            hex.appendReplacement(decoded,Matcher.quoteReplacement(new String(Character.toChars(code))));
+        }
+        hex.appendTail(decoded);
+        StringBuilder out=new StringBuilder(decoded.length());
+        for(int i=0;i<decoded.length();i++){
+            char ch=decoded.charAt(i);
+            if(ch=='\\'){
+                if(i+1<decoded.length()){
+                    char next=decoded.charAt(++i);
+                    if(next=='\0')throw new IOException("Escape CSS inválido.");
+                    out.append(next);
+                }else{
+                    out.append(ch);
+                }
+            }else{
+                out.append(ch);
+            }
+        }
+        return out.toString();
+    }
+
     private static void validateCaptureCss(String css)throws Exception{
-        if(css.getBytes(StandardCharsets.UTF_8).length>2*1024*1024||Pattern.compile("(?i)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:").matcher(css).find())throw new IOException("CSS da captura contém regra ativa ou excede o limite.");
-        Pattern urlPattern=Pattern.compile("(?is)url\\(\\s*([\\\"']?)(.*?)\\1\\s*\\)");Matcher urls=urlPattern.matcher(css);String clean=urlPattern.matcher(css).replaceAll("");if(Pattern.compile("(?i)url\\s*\\(").matcher(clean).find())throw new IOException("URL CSS malformada.");long total=0;
+        if(css.getBytes(StandardCharsets.UTF_8).length>2*1024*1024)throw new IOException("CSS da captura contém regra ativa ou excede o limite.");
+        String normalized=normalizeCssForSecurityCheck(css);
+        if(CSS_FORBIDDEN_CONTENT_PATTERN.matcher(css).find()||CSS_FORBIDDEN_CONTENT_PATTERN.matcher(normalized).find())throw new IOException("CSS da captura contém regra ativa ou excede o limite.");
+        Pattern urlPattern=Pattern.compile("(?is)url\\(\\s*([\\\"']?)(.*?)\\1\\s*\\)");
+        String cleanRaw=urlPattern.matcher(css).replaceAll("");
+        String cleanNorm=urlPattern.matcher(normalized).replaceAll("");
+        if(Pattern.compile("(?i)url\\s*\\(").matcher(cleanRaw).find()||Pattern.compile("(?i)url\\s*\\(").matcher(cleanNorm).find())throw new IOException("URL CSS malformada.");
+        Matcher normUrls=urlPattern.matcher(normalized);
+        while(normUrls.find()){if(!Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp|svg\\+xml));base64,([a-z0-9+/=\\r\\n]+)$").matcher(normUrls.group(2).trim()).matches())throw new IOException("CSS contém dependência externa ou URL não permitida.");}
+        Matcher urls=urlPattern.matcher(css);long total=0;
         while(urls.find()){Matcher image=Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp|svg\\+xml));base64,([a-z0-9+/=\\r\\n]+)$").matcher(urls.group(2).trim());if(!image.matches())throw new IOException("CSS contém dependência externa ou URL não permitida.");byte[] bytes;try{bytes=Base64.getMimeDecoder().decode(image.group(2));}catch(IllegalArgumentException invalid){throw new IOException("Base64 inválido em recurso CSS.",invalid);}if(bytes.length==0||bytes.length>8*1024*1024)throw new IOException("Imagem CSS acima de 8 MiB.");total+=bytes.length;if(total>16*1024*1024)throw new IOException("Imagens CSS acima de 16 MiB no total.");String mime=image.group(1).toLowerCase(Locale.ROOT);if("image/svg+xml".equals(mime))validateCaptureSvg(bytes);else if(!captureRasterSignatureMatches(mime,bytes))throw new IOException("Assinatura/MIME divergente em imagem CSS.");}
     }
 
     private static boolean captureRasterSignatureMatches(String mime,byte[] b){if("image/jpg".equals(mime))mime="image/jpeg";if("image/png".equals(mime))return b.length>=8&&(b[0]&255)==0x89&&b[1]=='P'&&b[2]=='N'&&b[3]=='G'&&b[4]==13&&b[5]==10&&b[6]==26&&b[7]==10;if("image/jpeg".equals(mime))return b.length>=3&&(b[0]&255)==0xff&&(b[1]&255)==0xd8&&(b[2]&255)==0xff;if("image/gif".equals(mime))return b.length>=6&&("GIF87a".equals(new String(b,0,6,StandardCharsets.US_ASCII))||"GIF89a".equals(new String(b,0,6,StandardCharsets.US_ASCII)));return "image/webp".equals(mime)&&b.length>=12&&"RIFF".equals(new String(b,0,4,StandardCharsets.US_ASCII))&&"WEBP".equals(new String(b,8,4,StandardCharsets.US_ASCII));}
 
     private static void validateCaptureSvg(byte[] bytes)throws Exception{
-        if(bytes.length>512*1024)throw new IOException("SVG CSS acima de 512 KiB.");String xml=new String(bytes,StandardCharsets.UTF_8);if(Pattern.compile("(?i)<!\\s*(?:DOCTYPE|ENTITY)").matcher(xml).find())throw new IOException("SVG não pode conter DTD ou entidade.");DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true);f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD,"");f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");Document d=f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(xml)));Element root=d.getDocumentElement();if(root==null||!"svg".equalsIgnoreCase(root.getLocalName()==null?root.getTagName():root.getLocalName()))throw new IOException("Raiz SVG inválida.");NodeList all=d.getElementsByTagName("*");if(all.getLength()>4096)throw new IOException("SVG excede 4.096 elementos.");for(int i=0;i<all.getLength();i++){Element e=(Element)all.item(i);String name=e.getLocalName()==null?e.getTagName():e.getLocalName();if("script".equalsIgnoreCase(name)||"foreignObject".equalsIgnoreCase(name)||"iframe".equalsIgnoreCase(name)||"object".equalsIgnoreCase(name)||"embed".equalsIgnoreCase(name))throw new IOException("SVG contém elemento ativo.");NamedNodeMap attrs=e.getAttributes();for(int j=0;j<attrs.getLength();j++){Node a=attrs.item(j);String n=a.getNodeName().toLowerCase(Locale.ROOT),v=a.getNodeValue();if(n.startsWith("on")||(("href".equals(n)||n.endsWith(":href")||"src".equals(n))&&!v.startsWith("#"))||Pattern.compile("(?i)url\\s*\\(\\s*(?:https?:|file:|javascript:|//)").matcher(v).find())throw new IOException("SVG contém referência externa ou evento.");}}
+        if(bytes.length>512*1024)throw new IOException("SVG CSS acima de 512 KiB.");String xml=new String(bytes,StandardCharsets.UTF_8);if(Pattern.compile("(?i)<!\\s*(?:DOCTYPE|ENTITY)").matcher(xml).find())throw new IOException("SVG não pode conter DTD ou entidade.");DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setNamespaceAware(true);f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true);f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD,"");f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");Document d=f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(xml)));Element root=d.getDocumentElement();if(root==null||!"svg".equalsIgnoreCase(root.getLocalName()==null?root.getTagName():root.getLocalName()))throw new IOException("Raiz SVG inválida.");NodeList all=d.getElementsByTagName("*");if(all.getLength()>4096)throw new IOException("SVG excede 4.096 elementos.");Pattern unsafeSvgUrl=Pattern.compile("(?is)url\\s*\\((?>\\s*(?:['\"]\\s*)?)(?!#)");for(int i=0;i<all.getLength();i++){Element e=(Element)all.item(i);String name=e.getLocalName()==null?e.getTagName():e.getLocalName();if(BLOCKED_SVG_ELEMENTS.contains(name.toLowerCase(Locale.ROOT)))throw new IOException("SVG contém elemento ativo.");NamedNodeMap attrs=e.getAttributes();for(int j=0;j<attrs.getLength();j++){Node a=attrs.item(j);String n=a.getNodeName().toLowerCase(Locale.ROOT),v=a.getNodeValue();String trimmed=v==null?"":v.trim();if(n.startsWith("on")||(("href".equals(n)||n.endsWith(":href")||"src".equals(n))&&!trimmed.isEmpty()&&!trimmed.startsWith("#"))||unsafeSvgUrl.matcher(trimmed).find())throw new IOException("SVG contém referência externa ou evento.");if("style".equals(n)){String normStyle=normalizeCssForSecurityCheck(trimmed);if(CSS_FORBIDDEN_CONTENT_PATTERN.matcher(trimmed).find()||CSS_FORBIDDEN_CONTENT_PATTERN.matcher(normStyle).find()||unsafeSvgUrl.matcher(normStyle).find())throw new IOException("SVG contém estilo externo ou ativo.");}}}
     }
 
     private static String htmlMessageHash(JSONObject message)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-message\n");appendHtmlField(canonical,message.optString("domId",""));appendHtmlField(canonical,Integer.toString(message.optInt("order",-1)));appendHtmlField(canonical,message.optString("timestamp",""));appendHtmlField(canonical,message.optString("sender",""));appendHtmlField(canonical,message.optString("direction",""));appendHtmlField(canonical,message.optString("type",""));appendHtmlField(canonical,Integer.toString(message.optInt("duplicateOrdinal",-1)));appendHtmlField(canonical,message.optString("text",""));appendHtmlField(canonical,message.optString("classes",""));JSONArray attachments=message.optJSONArray("attachments");for(int i=0;attachments!=null&&i<attachments.length();i++){JSONObject a=attachments.getJSONObject(i);appendHtmlField(canonical,a.optString("path",""));appendHtmlField(canonical,a.optString("mime",""));appendHtmlField(canonical,Long.toString(a.optLong("size",-1)));appendHtmlField(canonical,a.optString("sha256",""));}return hashText(canonical.toString());}
@@ -958,8 +1026,13 @@ public final class IntegrityVerifier {
                     }
                 }
             }
-            JSONObject payload=new JSONObject(event.toString());payload.remove("recordHash");String actual=hashText(payload.toString());
-            if(!expected.equalsIgnoreCase(actual)){c.historyStatus="hash de evento inválido";return;}previous=expected;
+            String format=event.optString("recordHashFormat","");
+            JSONObject payload=new JSONObject(event.toString());payload.remove("recordHash");
+            String canonicalActual=hashText(canonicalJson(payload));
+            boolean validHash="canonical-v1".equals(format)
+                    ?expected.equalsIgnoreCase(canonicalActual)
+                    :(expected.equalsIgnoreCase(canonicalActual)||expected.equalsIgnoreCase(hashText(payload.toString())));
+            if(!validHash){c.historyStatus="hash de evento inválido";return;}previous=expected;
         }
         c.historyHash=previous;
         StringBuilder current=new StringBuilder();for(JSONObject item:sorted){String path=item.optString("path","");Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)){c.historyStatus="arquivo ausente: "+path;return;}String actual=hash(file);if(!actual.equalsIgnoreCase(item.optString("sha256",""))||Files.size(file)!=item.optLong("size",-1)){c.historyStatus="arquivo divergente: "+path;return;}current.append(path).append('|').append(Files.size(file)).append('|').append(actual).append('\n');}
@@ -995,9 +1068,64 @@ public final class IntegrityVerifier {
     private static String field(String s,String name){Matcher m=Pattern.compile("\\\""+Pattern.quote(name)+"\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"").matcher(s);return m.find()?m.group(1).replace("\\/","/").replace("\\\"","\"").replace("\\\\","\\"):null;}
     private static long number(String s,String n){Matcher m=Pattern.compile("\\\""+n+"\\\"\\s*:\\s*(\\d+)").matcher(s);return m.find()?Long.parseLong(m.group(1)): -1;}
     private static String hash(Path p)throws Exception{MessageDigest d=MessageDigest.getInstance(ALG);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS)){byte[]b=new byte[32768];int n;while((n=in.read(b))>0)d.update(b,0,n);}return hex(d.digest());}
+    private static final class InvalidJsonException extends IOException {
+        InvalidJsonException(String message){super(message);}
+        InvalidJsonException(String message,Throwable cause){super(message,cause);}
+    }
+
+    private static String canonicalQuote(String s){
+        if(s==null)return "null";
+        StringBuilder out=new StringBuilder(s.length()+2);
+        out.append('"');
+        for(int i=0;i<s.length();i++){
+            char c=s.charAt(i);
+            switch(c){
+                case '"':out.append("\\\"");break;
+                case '\\':out.append("\\\\");break;
+                case '\b':out.append("\\b");break;
+                case '\f':out.append("\\f");break;
+                case '\n':out.append("\\n");break;
+                case '\r':out.append("\\r");break;
+                case '\t':out.append("\\t");break;
+                default:
+                    if(c<0x20)out.append(String.format(Locale.ROOT,"\\u%04x",(int)c));
+                    else out.append(c);
+            }
+        }
+        return out.append('"').toString();
+    }
+
+    private static String canonicalJson(Object value){
+        if(value==null||value==JSONObject.NULL)return "null";
+        if(value instanceof JSONObject){
+            JSONObject obj=(JSONObject)value;
+            TreeSet<String> keys=new TreeSet<>(obj.keySet());
+            StringBuilder out=new StringBuilder("{");
+            boolean first=true;
+            for(String key:keys){
+                if(!first)out.append(',');
+                first=false;
+                out.append(canonicalQuote(key)).append(':').append(canonicalJson(obj.opt(key)));
+            }
+            return out.append('}').toString();
+        }
+        if(value instanceof JSONArray){
+            JSONArray arr=(JSONArray)value;
+            StringBuilder out=new StringBuilder("[");
+            for(int i=0;i<arr.length();i++){
+                if(i>0)out.append(',');
+                out.append(canonicalJson(arr.opt(i)));
+            }
+            return out.append(']').toString();
+        }
+        if(value instanceof String)return canonicalQuote((String)value);
+        if(value instanceof Number||value instanceof Boolean)return value.toString();
+        return canonicalQuote(value.toString());
+    }
+
     private static String readUtf8Limited(Path p)throws IOException{return readUtf8Limited(p,MAX_METADATA_BYTES);}
     private static String readUtf8Limited(Path p,long maxBytes)throws IOException{if(maxBytes<=0||maxBytes>MAX_HTML_CAPTURE_BYTES)throw new IllegalArgumentException("Limite de leitura inválido: "+maxBytes);long size=Files.size(p);if(size>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS);ByteArrayOutputStream out=new ByteArrayOutputStream((int)Math.min(size,maxBytes))){byte[]buffer=new byte[8192];int n;long total=0;while((n=in.read(buffer))!=-1){total+=n;if(total>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);out.write(buffer,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
-    private static JSONObject parseBoundedJson(String json,Path source)throws IOException{int depth=0;boolean quoted=false,escaped=false;for(int i=0;i<json.length();i++){char ch=json.charAt(i);if(quoted){if(escaped)escaped=false;else if(ch=='\\')escaped=true;else if(ch=='"')quoted=false;continue;}if(ch=='"'){quoted=true;continue;}if(ch=='{'||ch=='['){if(++depth>MAX_JSON_DEPTH)throw new IOException("JSON excede a profundidade máxima de "+MAX_JSON_DEPTH+" níveis: "+source);}else if(ch=='}'||ch==']'){if(--depth<0)throw new IOException("JSON malformado: "+source);}}if(quoted||depth!=0)throw new IOException("JSON incompleto: "+source);try{return new JSONObject(json);}catch(RuntimeException invalid){throw new IOException("JSON inválido: "+source,invalid);}}
+    private static JSONObject parseBoundedJson(String json,Path source)throws IOException{int depth=0;boolean quoted=false,escaped=false;for(int i=0;i<json.length();i++){char ch=json.charAt(i);if(quoted){if(escaped)escaped=false;else if(ch=='\\')escaped=true;else if(ch=='"')quoted=false;continue;}if(ch=='"'){quoted=true;continue;}if(ch=='{'||ch=='['){if(++depth>MAX_JSON_DEPTH)throw new InvalidJsonException("JSON excede a profundidade máxima de "+MAX_JSON_DEPTH+" níveis: "+source);}else if(ch=='}'||ch==']'){if(--depth<0)throw new InvalidJsonException("JSON malformado: "+source);}}if(quoted||depth!=0)throw new InvalidJsonException("JSON incompleto: "+source);try{return new JSONObject(json);}catch(RuntimeException invalid){throw new InvalidJsonException("JSON inválido: "+source,invalid);}}
     static List<Path> listCaptureFiles(Path root)throws IOException{
         Path normalizedRoot=root.toAbsolutePath().normalize();
         Path realRoot=normalizedRoot.toRealPath();

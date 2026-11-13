@@ -37,6 +37,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Deque;
@@ -146,11 +147,11 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.2-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.3-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
-    private static final int HTML_GENERATOR_VERSION = 3;
+    private static final int HTML_GENERATOR_VERSION = 4;
     private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();"; //$NON-NLS-1$
     private static final String CAPTURE_CSP = "default-src 'none'; img-src 'self' data:; media-src 'self'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-Pq7vIvwsQpte7OdNyOYYE9cKIEPmIFR7E/G7kB1JaJI='; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'"; //$NON-NLS-1$
     private static final long MAX_HTML_MESSAGE_ATTACHMENT_BYTES = 8L * 1024L * 1024L;
@@ -171,6 +172,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private volatile String captureEndMessageId;
     private volatile boolean captureRunning;
     private final AtomicBoolean captureStarting = new AtomicBoolean(false);
+    private final AtomicBoolean recapturePreparing = new AtomicBoolean(false);
     private volatile boolean stopCaptureRequested;
     private final ExecutorService uiScriptExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "IPED-chat-ui-script"); //$NON-NLS-1$
@@ -1127,8 +1129,11 @@ private void clearChatCaptureMarks() {
             chatCapturePanel.setStatus("Nenhuma pasta de anotacoes vinculada");
             return;
         }
-        annotationStore.persist();
-        chatCapturePanel.setStatus("Trechos e notas salvos. Use Re-Extrair para atualizar o whatsapp.html.");
+        if (annotationStore.persist()) {
+            chatCapturePanel.setStatus("Trechos e notas salvos. Use Re-Extrair para atualizar o whatsapp.html.");
+        } else {
+            chatCapturePanel.setStatusText("Falha ao gravar anotacoes na pasta selecionada."); //$NON-NLS-1$
+        }
     }
 
     private volatile boolean annotationOnlyMode;
@@ -1252,7 +1257,7 @@ private void clearChatCaptureMarks() {
             ChatPreflightDialog dialog = new ChatPreflightDialog(SwingUtilities.getWindowAncestor(chatCapturePanel),
                     preflight, captureRangeLabel() + unresolvedLinksLabel(), pendingLinkLabel());
             dialog.setVisible(true);
-            confirmed[0] = dialog.isConfirmed() && dialog.isIncludeEnabled();
+            confirmed[0] = dialog.isConfirmed();
             if (dialog.isConfirmed() && !dialog.isIncludeEnabled()) {
                 chatCapturePanel.setAnnotationsEnabled(false);
             }
@@ -1284,6 +1289,50 @@ private void clearChatCaptureMarks() {
         chatCapturePanel.setCaptureRunning(true);
         chatCapturePanel.setStatus("ChatCapturePanel.Capturing"); //$NON-NLS-1$
         new Thread(() -> runChatCapture(outputFolder.toPath(), customFolderName), "IPED-chat-capture").start(); //$NON-NLS-1$
+    }
+
+    void startRecaptureFlowFromUi(java.awt.Component alertParent, File outputFolder,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
+        if (captureRunning) {
+            return;
+        }
+        if (outputFolder == null || outputFolder.getPath().trim().isEmpty()) {
+            reportMissingOutputFolder();
+            return;
+        }
+        if (!recapturePreparing.compareAndSet(false, true)) {
+            return;
+        }
+        Thread initializer = new Thread(() -> {
+            boolean handedOff = false;
+            try {
+                if (captureRunning) {
+                    return;
+                }
+                Path outputPath = outputFolder.toPath();
+                VerifierIntegrity.installVerifierFiles(outputPath);
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        if (alertParent != null) {
+                            VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath);
+                        }
+                        showRecaptureDialog(outputFolder, sensitiveImagesFolder,
+                                sensitiveSimilarityPercent, sensitiveBlurPercent);
+                    } finally {
+                        recapturePreparing.set(false);
+                    }
+                });
+                handedOff = true;
+            } catch (Exception e) {
+                LOGGER.warn("Unable to prepare recapture flow", e); //$NON-NLS-1$
+            } finally {
+                if (!handedOff) {
+                    recapturePreparing.set(false);
+                }
+            }
+        }, "IPED-chat-recapture-init"); //$NON-NLS-1$
+        initializer.setDaemon(true);
+        initializer.start();
     }
 
     public void showRecaptureDialog(File outputFolder) {
@@ -2326,7 +2375,7 @@ private void clearChatCaptureMarks() {
         return copy;
     }
 
-    private boolean regenerateWhatsAppHtmlFromSavedCoordinates(RecaptureJob job) throws IOException {
+    boolean regenerateWhatsAppHtmlFromSavedCoordinates(RecaptureJob job) throws IOException {
         Path coordinates = job.folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
         if (!CaptureIntegrity.isSafeRegularFile(coordinates)) {
             return false;
@@ -2381,9 +2430,9 @@ private void clearChatCaptureMarks() {
             }
             return true;
         } catch (IOException | RuntimeException e) {
-            Files.deleteIfExists(html);
             if (backedUpHtml && Files.exists(backup, LinkOption.NOFOLLOW_LINKS)
                     && !CaptureIntegrity.isLinkOrReparse(backup) && !CaptureIntegrity.isLinkOrReparse(html)) {
+                Files.deleteIfExists(html);
                 Files.move(backup, html);
             }
             CaptureIntegrity.writeAtomically(job.folderPath, manifestPath, oldManifest);
@@ -2967,14 +3016,20 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             } else if (!reachedEnd && hitFrameLimit) {
                 status = "stopped_frame_limit_end_not_found"; //$NON-NLS-1$
             }
-createReportThumbnails(captureDir, exported);
+            createReportThumbnails(captureDir, exported);
             // Unico momento em que as anotacoes da sessao vao para o disco.
             // Sem anotacoes selecionadas nada e gravado, preservando o
             // manifesto v1 e a ausencia de anotacoes no resultado.
             if (pendingAnnotations != null && !pendingAnnotations.isEmpty()) {
-                annotationStore.persist();
+                annotationStore.persistOrThrow();
             }
             CaptureSourceMetadata sourceMetadata = readCaptureSourceMetadata();
+            Path finalReportDir = (exactCaptureDir == null ? finalCaptureDir : captureDir).toAbsolutePath().normalize();
+            for (ExportedFile exportedFile : exported.values()) {
+                if (exportedFile != null && exportedFile.relativePath != null && !exportedFile.relativePath.isBlank()) {
+                    exportedFile.absolutePath = finalReportDir.resolve(exportedFile.relativePath).normalize().toString();
+                }
+            }
             writeHashes(captureDir, captureDir.resolve("hashes.txt"), exported); //$NON-NLS-1$
             writeFileListCsv(captureDir, captureDir.resolve("Lista de Arquivos.csv"), exported); //$NON-NLS-1$
             writeText(captureDir, captureDir.resolve("texto.txt"), buildCaptureText(sourceMetadata, frames)); //$NON-NLS-1$
@@ -3044,9 +3099,9 @@ createReportThumbnails(captureDir, exported);
                 + "for(var i=a;i<=b;i++){var src=all[i],clone=src.cloneNode(true),resources=[],resourceByHash={},media=[],resourceError='';" //$NON-NLS-1$
                 + "[].slice.call(clone.querySelectorAll('a[onclick]')).forEach(function(link){var click=link.getAttribute('onclick')||'';if(click.indexOf('app.open')<0)return;var match=click.match(/(?:sha-256|hash):([0-9a-f]{64})/i);if(!match){resourceError='';return;}var hash=match[1].toLowerCase(),token=resourceByHash[hash];if(!token){token='r'+resources.length;resourceByHash[hash]=token;resources.push({token:token,sha256:hash,label:(link.innerText||link.textContent||'').replace(/\\s+/g,' ').trim().substring(0,512)});}link.setAttribute('data-capture-link-token',token);});" //$NON-NLS-1$
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});" //$NON-NLS-1$
-                + "var nodes=[clone].concat([].slice.call(clone.querySelectorAll('[src]')));nodes.forEach(function(node){var value=node.getAttribute&&node.getAttribute('src');if(!value)return;if(/^data:(image|audio|video)\\//i.test(value)){media.push(value);return;}var link=node.closest?node.closest('a[data-capture-link-token]'):null;if(!link){resourceError='';return;}node.removeAttribute('src');node.setAttribute('data-capture-src-token',link.getAttribute('data-capture-link-token'));});" //$NON-NLS-1$
+                + "var nodes=[clone].concat([].slice.call(clone.querySelectorAll('[src]')));nodes.forEach(function(node){var value=node.getAttribute&&node.getAttribute('src');if(!value)return;if(/^data:(image|audio|video)\\//i.test(value)){media.push(value);return;}var link=node.closest?node.closest('a[data-capture-link-token]'):null;if(!link){node.removeAttribute('src');node.removeAttribute('srcset');node.removeAttribute('poster');resourceError='';return;}node.removeAttribute('src');node.setAttribute('data-capture-src-token',link.getAttribute('data-capture-link-token'));});" //$NON-NLS-1$
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink){/* unsupported attachment skipped, continue capture */}" //$NON-NLS-1$
-                + "clone.querySelectorAll('script,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
+                + "clone.querySelectorAll('script,template,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
                 + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
                 + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
                 + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
@@ -3118,6 +3173,8 @@ createReportThumbnails(captureDir, exported);
             Set<String> messageAttachmentPaths = new HashSet<>();
             Set<String> messageCensoredSha = new HashSet<>();
             Set<String> contentTypes = new HashSet<>();
+            Map<String, String> dataUriToRelative = new LinkedHashMap<>();
+            Map<String, String[]> tokenResources = new LinkedHashMap<>();
             if (media != null) for (int mediaIndex = 0; mediaIndex < media.length(); mediaIndex++) {
                 String dataUri = media.optString(mediaIndex); //$NON-NLS-1$
                 DecodedHtmlAttachment attachment = decodeHtmlAttachment(dataUri);
@@ -3129,7 +3186,7 @@ createReportThumbnails(captureDir, exported);
                 if (i + 1L + attachments.size() + (migrationJob == null ? 0 : migrationJob.stagedReusableAttachmentPaths.size()) > 25000L) throw new IOException("Mensagens e anexos ultrapassam o limite global de 25.000 itens."); //$NON-NLS-1$
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
                         .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
-                fragment = fragment.replace(dataUri, relative);
+                dataUriToRelative.put(dataUri, relative);
                 contentTypes.add(htmlContentKind(attachment.mime));
                 attachmentModals.putIfAbsent(relative, renderCaptureAttachmentModal(relative, attachment.mime,
                         attachment.size, attachment.sha256, safeAttachmentName("", attachment.name))); //$NON-NLS-1$
@@ -3151,17 +3208,11 @@ createReportThumbnails(captureDir, exported);
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
                         .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
                 String label = safeAttachmentName(resource.optString("label", ""), attachment.name); //$NON-NLS-1$
-                String linkAttributes = "href=\"#preview-" + attachment.sha256 + "\" class=\"capture-media-link\" title=\"" //$NON-NLS-1$ //$NON-NLS-2$
-                        + html(label) + "\""; //$NON-NLS-1$
-                fragment = fragment.replace("data-capture-link-token=\"" + token + "\"", linkAttributes); //$NON-NLS-1$
-                fragment = fragment.replace("data-capture-src-token=\"" + token + "\"", "src=\"" + relative + "\""); //$NON-NLS-1$ //$NON-NLS-2$
+                tokenResources.put(token, new String[] { attachment.sha256, label, relative });
                 attachmentModals.putIfAbsent(relative, renderCaptureAttachmentModal(relative, attachment.mime,
                         attachment.size, attachment.sha256, label));
                 contentTypes.add(htmlContentKind(attachment.mime));
             }
-            fragment = linkInlineCaptureImages(fragment);
-            fragment = CaptureCensorship.mark(fragment, messageCensoredSha);
-            fragment = replaceInlineCapturePlayers(fragment, attachmentModals);
             String messageType = row.optString("type"); //$NON-NLS-1$
             if (!"system".equals(messageType)) messageType = contentTypes.isEmpty() ? "text" : contentTypes.size() == 1 ? contentTypes.iterator().next() : "mixed"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             String natural = row.optString("timestamp") + "\n" + row.optString("sender") + "\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -3178,9 +3229,13 @@ createReportThumbnails(captureDir, exported);
             }
             record.put("key", key).put("messageHash", htmlMessageHash(record)); //$NON-NLS-1$ //$NON-NLS-2$
             records.put(record);
+            fragment = sanitizeCaptureMessageFragment(fragment, tokenResources, dataUriToRelative, key);
+            fragment = linkInlineCaptureImages(fragment);
+            fragment = CaptureCensorship.mark(fragment, messageCensoredSha);
+            fragment = replaceInlineCapturePlayers(fragment, attachmentModals);
             String separatorBefore = validateCaptureSeparatorHtml(row.optString("separatorBefore", "")); //$NON-NLS-1$
             if (!separatorBefore.isEmpty()) page.append(separatorBefore);
-            page.append(fragment.replaceFirst("<div(?=[ >])", "<div data-capture-message-key=\"" + key + "\"")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            page.append(fragment);
             JSONObject annotation = annotationsByMessage.get(domId);
             if (annotation != null) page.append(htmlAnnotationBlock(annotation));
         }
@@ -3273,15 +3328,73 @@ createReportThumbnails(captureDir, exported);
         }
     }
 
+    private static final Pattern CSS_FORBIDDEN_CONTENT_PATTERN = Pattern.compile(
+            "(?is)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:|vbscript\\s*:"); //$NON-NLS-1$
+    private static final Pattern CSS_HEX_ESCAPE_PATTERN = Pattern.compile(
+            "\\\\([0-9a-fA-F]{1,6})(?:\\r\\n|[ \\t\\r\\n\\f])?"); //$NON-NLS-1$
+    private static final Set<String> BLOCKED_SVG_ELEMENTS = new HashSet<>(Arrays.asList(
+            "script", "foreignobject", "iframe", "object", "embed", "style", "animate", "animatemotion", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+            "animatetransform", "set", "mpath")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+    private static String normalizeCssForSecurityCheck(String css) throws IOException {
+        if (css.indexOf('\0') >= 0) {
+            throw new IOException("CSS contém byte nulo."); //$NON-NLS-1$
+        }
+        String noComments = Pattern.compile("(?s)/\\*.*?\\*/").matcher(css).replaceAll(" "); //$NON-NLS-1$ //$NON-NLS-2$
+        Matcher hex = CSS_HEX_ESCAPE_PATTERN.matcher(noComments);
+        StringBuffer decoded = new StringBuffer(noComments.length());
+        while (hex.find()) {
+            int code = Integer.parseInt(hex.group(1), 16);
+            if (code <= 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+                throw new IOException("Escape CSS inválido."); //$NON-NLS-1$
+            }
+            hex.appendReplacement(decoded, Matcher.quoteReplacement(new String(Character.toChars(code))));
+        }
+        hex.appendTail(decoded);
+        StringBuilder out = new StringBuilder(decoded.length());
+        for (int i = 0; i < decoded.length(); i++) {
+            char ch = decoded.charAt(i);
+            if (ch == '\\') {
+                if (i + 1 < decoded.length()) {
+                    char next = decoded.charAt(++i);
+                    if (next == '\0') {
+                        throw new IOException("Escape CSS inválido."); //$NON-NLS-1$
+                    }
+                    out.append(next);
+                } else {
+                    out.append(ch);
+                }
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
+    }
+
     private static String sanitizeCaptureThemeCss(String css) throws IOException {
-        if (css == null || css.isBlank() || css.getBytes(StandardCharsets.UTF_8).length > 2L * 1024L * 1024L
-                || Pattern.compile("(?i)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:").matcher(css).find()) {
+        if (css == null || css.isBlank() || css.getBytes(StandardCharsets.UTF_8).length > 2L * 1024L * 1024L) {
+            throw new IOException("A folha de estilo do IPED excede o limite ou contém regra ativa não permitida."); //$NON-NLS-1$
+        }
+        String normalized = normalizeCssForSecurityCheck(css);
+        if (CSS_FORBIDDEN_CONTENT_PATTERN.matcher(css).find()
+                || CSS_FORBIDDEN_CONTENT_PATTERN.matcher(normalized).find()) {
             throw new IOException("A folha de estilo do IPED excede o limite ou contém regra ativa não permitida."); //$NON-NLS-1$
         }
         Pattern urlPattern = Pattern.compile("(?is)url\\(\\s*(['\\\"]?)(.*?)\\1\\s*\\)"); //$NON-NLS-1$
-        Matcher urls = urlPattern.matcher(css);
         String withoutUrls = urlPattern.matcher(css).replaceAll(""); //$NON-NLS-1$
-        if (Pattern.compile("(?i)url\\s*\\(").matcher(withoutUrls).find()) throw new IOException("URL CSS malformada na folha do IPED."); //$NON-NLS-1$
+        String withoutNormUrls = urlPattern.matcher(normalized).replaceAll(""); //$NON-NLS-1$
+        if (Pattern.compile("(?i)url\\s*\\(").matcher(withoutUrls).find()
+                || Pattern.compile("(?i)url\\s*\\(").matcher(withoutNormUrls).find()) {
+            throw new IOException("URL CSS malformada na folha do IPED."); //$NON-NLS-1$
+        }
+        Matcher normUrls = urlPattern.matcher(normalized);
+        while (normUrls.find()) {
+            if (!Pattern.compile("(?is)^data:(image/(?:png|jpe?g|gif|webp|svg\\+xml));base64,([a-z0-9+/=\\r\\n]+)$") //$NON-NLS-1$
+                    .matcher(normUrls.group(2).trim()).matches()) {
+                throw new IOException("A folha CSS contém URL que não é imagem base64 local."); //$NON-NLS-1$
+            }
+        }
+        Matcher urls = urlPattern.matcher(css);
         long aggregate = 0;
         while (urls.find()) {
             String value = urls.group(2).trim();
@@ -3328,16 +3441,31 @@ createReportThumbnails(captureDir, exported);
             if (document.getDocumentElement() == null || !"svg".equalsIgnoreCase(document.getDocumentElement().getLocalName() == null ? document.getDocumentElement().getTagName() : document.getDocumentElement().getLocalName())) throw new IOException("Raiz SVG inválida."); //$NON-NLS-1$
             NodeList all = document.getElementsByTagName("*"); //$NON-NLS-1$
             if (all.getLength() > 4096) throw new IOException("SVG excede 4.096 elementos."); //$NON-NLS-1$
+            Pattern unsafeSvgUrl = Pattern.compile("(?is)url\\s*\\((?>\\s*(?:['\"]\\s*)?)(?!#)"); //$NON-NLS-1$
             for (int i = 0; i < all.getLength(); i++) {
                 Element element = (Element) all.item(i);
                 String name = element.getLocalName() == null ? element.getTagName() : element.getLocalName();
-                if ("script".equalsIgnoreCase(name) || "foreignObject".equalsIgnoreCase(name) || "iframe".equalsIgnoreCase(name) || "object".equalsIgnoreCase(name) || "embed".equalsIgnoreCase(name)) throw new IOException("SVG contém elemento ativo."); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                if (BLOCKED_SVG_ELEMENTS.contains(name.toLowerCase(Locale.ROOT))) {
+                    throw new IOException("SVG contém elemento ativo."); //$NON-NLS-1$
+                }
                 NamedNodeMap attributes = element.getAttributes();
                 for (int j = 0; j < attributes.getLength(); j++) {
                     Node attribute = attributes.item(j);
                     String attr = attribute.getNodeName().toLowerCase(Locale.ROOT), value = attribute.getNodeValue();
-                    if (attr.startsWith("on") || (("href".equals(attr) || attr.endsWith(":href") || "src".equals(attr)) && !value.startsWith("#")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                            || Pattern.compile("(?i)url\\s*\\(\\s*(?:https?:|file:|javascript:|//)").matcher(value).find()) throw new IOException("SVG contém atributo de evento ou referência externa."); //$NON-NLS-1$
+                    String trimmed = value == null ? "" : value.trim(); //$NON-NLS-1$
+                    if (attr.startsWith("on") //$NON-NLS-1$
+                            || (("href".equals(attr) || attr.endsWith(":href") || "src".equals(attr)) && !trimmed.isEmpty() && !trimmed.startsWith("#")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                            || unsafeSvgUrl.matcher(trimmed).find()) {
+                        throw new IOException("SVG contém atributo de evento ou referência externa."); //$NON-NLS-1$
+                    }
+                    if ("style".equals(attr)) { //$NON-NLS-1$
+                        String normStyle = normalizeCssForSecurityCheck(trimmed);
+                        if (CSS_FORBIDDEN_CONTENT_PATTERN.matcher(trimmed).find()
+                                || CSS_FORBIDDEN_CONTENT_PATTERN.matcher(normStyle).find()
+                                || unsafeSvgUrl.matcher(normStyle).find()) {
+                            throw new IOException("SVG contém estilo externo ou ativo."); //$NON-NLS-1$
+                        }
+                    }
                 }
             }
         } catch (IOException e) { throw e; }
@@ -3605,6 +3733,410 @@ createReportThumbnails(captureDir, exported);
                 .replace(">", "&gt;") //$NON-NLS-1$ //$NON-NLS-2$
                 .replace("\"", "&quot;") //$NON-NLS-1$ //$NON-NLS-2$
                 .replace("'", "&#39;"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static final Set<String> ALLOWED_MESSAGE_HTML_TAGS = new HashSet<>(Arrays.asList(
+            "div", "span", "p", "strong", "small", "b", "i", "br", "ul", "li", "a", "img", "audio", "video")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$ //$NON-NLS-12$ //$NON-NLS-13$ //$NON-NLS-14$
+    private static final Set<String> MESSAGE_VOID_HTML_TAGS = new HashSet<>(Arrays.asList("br", "img")); //$NON-NLS-1$ //$NON-NLS-2$
+    private static final Set<String> STRIP_SUBTREE_HTML_TAGS = new HashSet<>(Arrays.asList(
+            "script", "template", "style", "svg", "math", "iframe", "object", "embed", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+            "form", "input", "button", "select", "textarea", "meta", "link", "base", "noscript")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
+    private static final Set<String> STRIP_SUBTREE_VOID_TAGS = new HashSet<>(Arrays.asList(
+            "input", "meta", "link", "base")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+    private static final Map<String, Set<String>> ALLOWED_MESSAGE_TAG_ATTRS = buildAllowedMessageTagAttrs();
+
+    private static Map<String, Set<String>> buildAllowedMessageTagAttrs() {
+        Map<String, Set<String>> map = new HashMap<>();
+        map.put("div", new HashSet<>(Arrays.asList(
+                "class", "title", "data-iped-capture-date", "data-time", "data-src1", "data-src2"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+        map.put("span", new HashSet<>(Arrays.asList(
+                "class", "title", "data-iped-capture-date", "data-time"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        map.put("p", Collections.singleton("class")); //$NON-NLS-1$
+        map.put("strong", Collections.emptySet());
+        map.put("small", Collections.emptySet());
+        map.put("b", Collections.emptySet());
+        map.put("i", Collections.emptySet());
+        map.put("br", Collections.emptySet());
+        map.put("ul", Collections.emptySet());
+        map.put("li", Collections.emptySet());
+        map.put("a", new HashSet<>(Arrays.asList(
+                "href", "class", "title", "download", "target", "rel", "aria-label"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
+        map.put("img", new HashSet<>(Arrays.asList(
+                "src", "class", "alt", "title", "width", "height"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+        map.put("audio", new HashSet<>(Arrays.asList(
+                "src", "class", "controls", "preload"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        map.put("video", new HashSet<>(Arrays.asList(
+                "src", "class", "controls", "preload", "width", "height"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+        return Collections.unmodifiableMap(map);
+    }
+
+    static String sanitizeCaptureMessageFragment(String fragment, Map<String, String[]> tokenResources,
+            Map<String, String> dataUriToRelative) {
+        return sanitizeCaptureMessageFragment(fragment, tokenResources, dataUriToRelative, null);
+    }
+
+    static String sanitizeCaptureMessageFragment(String fragment, Map<String, String[]> tokenResources,
+            Map<String, String> dataUriToRelative, String messageKey) {
+        if (fragment == null || fragment.isEmpty()) {
+            return ""; //$NON-NLS-1$
+        }
+        StringBuilder out = new StringBuilder(fragment.length());
+        Deque<String> openTags = new ArrayDeque<>();
+        boolean rootKeyInjected = false;
+        int len = fragment.length();
+        int i = 0;
+        while (i < len) {
+            int lt = fragment.indexOf('<', i);
+            if (lt < 0) {
+                out.append(fragment, i, len);
+                break;
+            }
+            if (lt > i) {
+                out.append(fragment, i, lt);
+            }
+            if (lt + 1 >= len) {
+                out.append("&lt;"); //$NON-NLS-1$
+                break;
+            }
+            char next = fragment.charAt(lt + 1);
+            if (next == '!' && fragment.startsWith("<!--", lt)) { //$NON-NLS-1$
+                int commentEnd = fragment.indexOf("-->", lt + 4); //$NON-NLS-1$
+                i = commentEnd >= 0 ? commentEnd + 3 : len;
+                continue;
+            }
+            if (next == '!' || next == '?') {
+                int declEnd = findHtmlTagEndQuoteSafe(fragment, lt + 1);
+                if (declEnd < 0) {
+                    out.append("&lt;"); //$NON-NLS-1$
+                    i = lt + 1;
+                } else {
+                    i = declEnd + 1;
+                }
+                continue;
+            }
+            boolean isClosing = next == '/';
+            int nameScanStart = isClosing ? lt + 2 : lt + 1;
+            if (nameScanStart >= len) {
+                out.append("&lt;"); //$NON-NLS-1$
+                break;
+            }
+            char firstNameChar = fragment.charAt(nameScanStart);
+            if (!((firstNameChar >= 'a' && firstNameChar <= 'z')
+                    || (firstNameChar >= 'A' && firstNameChar <= 'Z'))) {
+                out.append("&lt;"); //$NON-NLS-1$
+                i = lt + 1;
+                continue;
+            }
+            int tagEnd = findHtmlTagEndQuoteSafe(fragment, lt + 1);
+            if (tagEnd < 0) {
+                out.append("&lt;"); //$NON-NLS-1$
+                i = lt + 1;
+                continue;
+            }
+            String inside = fragment.substring(lt + 1, tagEnd);
+            if (isClosing) {
+                String body = inside.substring(1).trim();
+                int pos = 0;
+                while (pos < body.length() && Character.isLetterOrDigit(body.charAt(pos))) {
+                    pos++;
+                }
+                String closing = body.substring(0, pos).toLowerCase(Locale.ROOT);
+                if (ALLOWED_MESSAGE_HTML_TAGS.contains(closing) && !MESSAGE_VOID_HTML_TAGS.contains(closing)
+                        && openTags.contains(closing)) {
+                    while (!openTags.isEmpty()) {
+                        String popped = openTags.pop();
+                        out.append("</").append(popped).append('>'); //$NON-NLS-1$
+                        if (closing.equals(popped)) {
+                            break;
+                        }
+                    }
+                }
+                i = tagEnd + 1;
+                continue;
+            }
+            boolean selfClosing = inside.endsWith("/"); //$NON-NLS-1$
+            String tokenBody = selfClosing ? inside.substring(0, inside.length() - 1) : inside;
+            int pos = 0;
+            while (pos < tokenBody.length() && Character.isLetterOrDigit(tokenBody.charAt(pos))) {
+                pos++;
+            }
+            String tag = tokenBody.substring(0, pos).toLowerCase(Locale.ROOT);
+            if (STRIP_SUBTREE_HTML_TAGS.contains(tag)) {
+                if (selfClosing || STRIP_SUBTREE_VOID_TAGS.contains(tag)) {
+                    i = tagEnd + 1;
+                } else {
+                    int subtreeEnd = skipDisallowedSubtreeEnd(fragment, tag, tagEnd + 1);
+                    i = subtreeEnd >= 0 ? subtreeEnd : tagEnd + 1;
+                }
+                continue;
+            }
+            if (!ALLOWED_MESSAGE_HTML_TAGS.contains(tag)) {
+                i = tagEnd + 1;
+                continue;
+            }
+            String attrsPart = tokenBody.substring(pos);
+            Map<String, String> rawAttrs = parseMessageTagAttributes(attrsPart);
+            Map<String, String> cleanAttrs = sanitizeMessageTagAttributes(
+                    tag, rawAttrs, tokenResources, dataUriToRelative,
+                    !rootKeyInjected && "div".equals(tag) && openTags.isEmpty() ? messageKey : null); //$NON-NLS-1$
+            if (!rootKeyInjected && cleanAttrs.containsKey("data-capture-message-key")) { //$NON-NLS-1$
+                rootKeyInjected = true;
+            }
+            out.append('<').append(tag);
+            for (Map.Entry<String, String> attr : cleanAttrs.entrySet()) {
+                out.append(' ').append(attr.getKey()).append("=\"") //$NON-NLS-1$
+                        .append(escapeHtmlAttr(attr.getValue())).append('"');
+            }
+            out.append('>');
+            if (!MESSAGE_VOID_HTML_TAGS.contains(tag) && !selfClosing) {
+                openTags.push(tag);
+            }
+            i = tagEnd + 1;
+        }
+        while (!openTags.isEmpty()) {
+            out.append("</").append(openTags.pop()).append('>'); //$NON-NLS-1$
+        }
+        return out.toString();
+    }
+
+    private static int skipDisallowedSubtreeEnd(String html, String targetTag, int fromIndex) {
+        int len = html.length();
+        int depth = 1;
+        int i = fromIndex;
+        while (i < len) {
+            int lt = html.indexOf('<', i);
+            if (lt < 0 || lt + 1 >= len) {
+                return -1;
+            }
+            char next = html.charAt(lt + 1);
+            if (next == '!' && html.startsWith("<!--", lt)) { //$NON-NLS-1$
+                int end = html.indexOf("-->", lt + 4); //$NON-NLS-1$
+                i = end >= 0 ? end + 3 : len;
+                continue;
+            }
+            boolean isClosing = next == '/';
+            int nameStart = isClosing ? lt + 2 : lt + 1;
+            if (nameStart >= len) {
+                return -1;
+            }
+            char c0 = html.charAt(nameStart);
+            if (!((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z'))) {
+                i = lt + 1;
+                continue;
+            }
+            int tagEnd = findHtmlTagEndQuoteSafe(html, lt + 1);
+            if (tagEnd < 0) {
+                i = lt + 1;
+                continue;
+            }
+            String inside = html.substring(lt + 1, tagEnd);
+            String body = isClosing ? inside.substring(1).trim() : inside;
+            int pos = 0;
+            while (pos < body.length() && Character.isLetterOrDigit(body.charAt(pos))) {
+                pos++;
+            }
+            String name = body.substring(0, pos).toLowerCase(Locale.ROOT);
+            if (targetTag.equals(name)) {
+                if (isClosing) {
+                    depth--;
+                    if (depth == 0) {
+                        return tagEnd + 1;
+                    }
+                } else if (!inside.endsWith("/")) { //$NON-NLS-1$
+                    depth++;
+                }
+            }
+            i = tagEnd + 1;
+        }
+        return -1;
+    }
+
+    private static Map<String, String> parseMessageTagAttributes(String attrsPart) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        int len = attrsPart.length();
+        int i = 0;
+        while (i < len) {
+            while (i < len && (Character.isWhitespace(attrsPart.charAt(i)) || attrsPart.charAt(i) == '/')) {
+                i++;
+            }
+            if (i >= len) {
+                break;
+            }
+            int nameStart = i;
+            while (i < len) {
+                char ch = attrsPart.charAt(i);
+                if (Character.isLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == ':') {
+                    i++;
+                } else {
+                    break;
+                }
+            }
+            if (i == nameStart) {
+                i++;
+                continue;
+            }
+            String name = attrsPart.substring(nameStart, i).toLowerCase(Locale.ROOT);
+            while (i < len && Character.isWhitespace(attrsPart.charAt(i))) {
+                i++;
+            }
+            String value = ""; //$NON-NLS-1$
+            if (i < len && attrsPart.charAt(i) == '=') {
+                i++;
+                while (i < len && Character.isWhitespace(attrsPart.charAt(i))) {
+                    i++;
+                }
+                if (i < len && (attrsPart.charAt(i) == '"' || attrsPart.charAt(i) == '\'')) {
+                    char quote = attrsPart.charAt(i++);
+                    int valStart = i;
+                    while (i < len && attrsPart.charAt(i) != quote) {
+                        i++;
+                    }
+                    value = unescapeBasicHtmlEntities(attrsPart.substring(valStart, i));
+                    if (i < len && attrsPart.charAt(i) == quote) {
+                        i++;
+                    }
+                } else {
+                    int valStart = i;
+                    while (i < len && !Character.isWhitespace(attrsPart.charAt(i))) {
+                        i++;
+                    }
+                    value = unescapeBasicHtmlEntities(attrsPart.substring(valStart, i));
+                }
+            }
+            attrs.putIfAbsent(name, value);
+        }
+        return attrs;
+    }
+
+    private static Map<String, String> sanitizeMessageTagAttributes(
+            String tag,
+            Map<String, String> rawAttrs,
+            Map<String, String[]> tokenResources,
+            Map<String, String> dataUriToRelative,
+            String rootMessageKey) {
+        Map<String, String> clean = new LinkedHashMap<>();
+        if (rootMessageKey != null && !rootMessageKey.isEmpty()) {
+            clean.put("data-capture-message-key", stripControlChars(rootMessageKey)); //$NON-NLS-1$
+        }
+        Set<String> allowed = ALLOWED_MESSAGE_TAG_ATTRS.getOrDefault(tag, Collections.emptySet());
+        if ("a".equals(tag) && tokenResources != null && rawAttrs.containsKey("data-capture-link-token")) { //$NON-NLS-1$ //$NON-NLS-2$
+            String token = rawAttrs.get("data-capture-link-token"); //$NON-NLS-1$
+            String[] info = token == null ? null : tokenResources.get(token);
+            if (info != null && info.length >= 2 && info[0] != null && info[0].matches("(?i)[0-9a-f]{64}")) { //$NON-NLS-1$
+                clean.put("href", "#preview-" + info[0].toLowerCase(Locale.ROOT)); //$NON-NLS-1$ //$NON-NLS-2$
+                clean.put("class", "capture-media-link"); //$NON-NLS-1$ //$NON-NLS-2$
+                clean.put("title", stripControlChars(info[1] == null ? "" : info[1])); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+        }
+        if (("img".equals(tag) || "audio".equals(tag) || "video".equals(tag)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                && tokenResources != null && rawAttrs.containsKey("data-capture-src-token")) { //$NON-NLS-1$
+            String token = rawAttrs.get("data-capture-src-token"); //$NON-NLS-1$
+            String[] info = token == null ? null : tokenResources.get(token);
+            if (info != null && info.length >= 3 && isSafeCaptureAttachmentRelativePath(info[2])) {
+                clean.put("src", info[2].trim()); //$NON-NLS-1$
+            }
+        }
+        for (Map.Entry<String, String> entry : rawAttrs.entrySet()) {
+            String attr = entry.getKey();
+            String val = stripControlChars(entry.getValue());
+            if (!allowed.contains(attr) || attr.startsWith("on")) { //$NON-NLS-1$
+                continue;
+            }
+            if ("a".equals(tag) && clean.containsKey(attr)) { //$NON-NLS-1$
+                continue;
+            }
+            if ("src".equals(attr)) { //$NON-NLS-1$
+                if (clean.containsKey("src")) { //$NON-NLS-1$
+                    continue;
+                }
+                if (dataUriToRelative != null && dataUriToRelative.containsKey(entry.getValue())) {
+                    String mapped = dataUriToRelative.get(entry.getValue());
+                    if (isSafeCaptureAttachmentRelativePath(mapped)) {
+                        clean.put("src", mapped.trim()); //$NON-NLS-1$
+                        continue;
+                    }
+                }
+                if (isSafeCaptureMessageMediaSrc(tag, val)) {
+                    clean.put("src", val.trim()); //$NON-NLS-1$
+                }
+                continue;
+            }
+            if ("href".equals(attr)) { //$NON-NLS-1$
+                String trimmed = val.trim();
+                if ((trimmed.startsWith("#") && trimmed.length() > 1) || isSafeCaptureAttachmentRelativePath(trimmed)) { //$NON-NLS-1$
+                    clean.put("href", trimmed); //$NON-NLS-1$
+                }
+                continue;
+            }
+            if ("width".equals(attr) || "height".equals(attr)) { //$NON-NLS-1$ //$NON-NLS-2$
+                String trimmed = val.trim();
+                if (trimmed.matches("\\d{1,5}")) { //$NON-NLS-1$
+                    clean.put(attr, trimmed);
+                }
+                continue;
+            }
+            if ("target".equals(attr)) { //$NON-NLS-1$
+                if ("_blank".equals(val.trim())) { //$NON-NLS-1$
+                    clean.put("target", "_blank"); //$NON-NLS-1$ //$NON-NLS-2$
+                    clean.put("rel", "noopener noreferrer"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                continue;
+            }
+            if ("rel".equals(attr)) { //$NON-NLS-1$
+                clean.putIfAbsent("rel", "noopener noreferrer"); //$NON-NLS-1$ //$NON-NLS-2$
+                continue;
+            }
+            if ("controls".equals(attr)) { //$NON-NLS-1$
+                clean.putIfAbsent("controls", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                continue;
+            }
+            if ("preload".equals(attr)) { //$NON-NLS-1$
+                if ("none".equals(val.trim())) { //$NON-NLS-1$
+                    clean.put("preload", "none"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                continue;
+            }
+            clean.putIfAbsent(attr, val);
+        }
+        return clean;
+    }
+
+    private static String stripControlChars(String value) {
+        if (value == null || value.isEmpty()) {
+            return ""; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch < 0x20 && ch != '\t' && ch != '\n' && ch != '\r') {
+                continue;
+            }
+            sb.append(ch);
+        }
+        return sb.toString();
+    }
+
+    private static boolean isSafeCaptureAttachmentRelativePath(String value) {
+        return value != null && value.trim().matches("attachments/[0-9a-f]{64}\\.[a-z0-9]{1,10}"); //$NON-NLS-1$
+    }
+
+    private static boolean isSafeCaptureMessageMediaSrc(String tag, String value) {
+        if (value == null) {
+            return false;
+        }
+        String trimmed = value.trim();
+        if (isSafeCaptureAttachmentRelativePath(trimmed)) {
+            return true;
+        }
+        if ("img".equals(tag) && trimmed.toLowerCase(Locale.ROOT).startsWith("data:")) { //$NON-NLS-1$ //$NON-NLS-2$
+            try {
+                DecodedHtmlAttachment decoded = decodeHtmlAttachment(trimmed);
+                return decoded.mime != null && decoded.mime.startsWith("image/"); //$NON-NLS-1$
+            } catch (IOException ignored) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private String captureViewerCss() {
@@ -5187,7 +5719,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
         });
     }
 
-    private void createReportThumbnails(Path captureDir, Map<String, ExportedFile> exported) {
+    void createReportThumbnails(Path captureDir, Map<String, ExportedFile> exported) {
         for (ExportedFile file : exported.values()) {
             if (!isImageForReport(file)) {
                 continue;
@@ -5197,10 +5729,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 if (CaptureIntegrity.isLinkOrReparse(source) || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) {
                     continue;
                 }
-                BufferedImage image;
-                try (InputStream imgIn = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
-                    image = ImageIO.read(imgIn);
-                }
+                BufferedImage image = SensitiveImageMatcher.readBoundedImageFile(source);
                 if (image == null) {
                     continue;
                 }
@@ -6157,7 +6686,7 @@ out.append("{\n"); //$NON-NLS-1$
             out.println("<style>body{margin:0;background:#efe7dc;font-family:Arial,sans-serif;color:#222}.top{position:sticky;top:0;z-index:5;background:#075e54;color:white;padding:12px 18px;box-shadow:0 1px 4px rgba(0,0,0,.25)}.top h1{font-size:18px;margin:0}.wrap{max-width:960px;margin:0 auto;padding:18px 12px 80px}.frame{position:relative;margin:0 auto 6px;line-height:0;background:#ddd;box-shadow:0 1px 3px rgba(0,0,0,.15)}.frame img{width:100%;height:auto;display:block}.hotspot{position:absolute;border:2px solid transparent;background:rgba(37,211,102,.001);cursor:pointer;box-sizing:border-box}.hotspot:hover{border-color:#25d366;background:rgba(37,211,102,.16)}.hotspot[data-type='audio'],.hotspot[data-type='video'],.hotspot[data-type='image'],.hotspot[data-type='file']{background:rgba(3,169,244,.001)}.hotspot[data-type='audio']:hover,.hotspot[data-type='video']:hover,.hotspot[data-type='image']:hover,.hotspot[data-type='file']:hover{border-color:#03a9f4;background:rgba(3,169,244,.16)}#side{position:fixed;right:-360px;top:0;bottom:0;width:320px;background:#fff;z-index:20;box-shadow:-2px 0 10px rgba(0,0,0,.25);transition:right .2s ease;padding:18px;overflow:auto}#side.open{right:0}#side h2{font-size:18px;margin:0 0 12px}#side textarea{width:100%;height:180px;box-sizing:border-box}.btn{display:inline-block;margin:8px 6px 0 0;padding:8px 12px;border:0;background:#075e54;color:white;text-decoration:none;cursor:pointer}.btn.secondary{background:#555}#modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:30;padding:24px;box-sizing:border-box}#modal.open{display:flex}.modal-card{max-width:min(920px,96vw);max-height:92vh;background:#111;color:white;padding:14px;box-sizing:border-box}.modal-card img,.modal-card video{max-width:100%;max-height:75vh}.modal-card audio{width:min(720px,88vw)}.muted{color:#666;font-size:13px}#side .an-note{background:#fff8e1;border-left:4px solid #f9a825;padding:8px 10px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}#side .an-link{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid #eee;cursor:pointer}#side .an-link:hover{background:#f2f7f6}#side .an-link img{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto}#side .an-excerpt{margin-top:10px;border-top:1px solid #ddd;padding-top:10px}#side .an-excerpt img{width:100%;border:1px solid #ddd;margin-bottom:8px;cursor:zoom-in}#side .an-empty{color:#777;font-size:13px;margin:8px 0;overflow-wrap:anywhere}#side .an-pre{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee}.an-icon{position:absolute;left:3px;min-width:26px;height:26px;padding:0 5px;margin:0;font-size:14px;line-height:24px;background:#fffbe9;border:2px solid #f9a825;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:3}.an-icon:hover{background:#fff3c4}.an-menu{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:420px}.an-opt{display:block;width:100%;text-align:left;padding:11px 13px;margin:0;font-size:14px;background:#0b6b5d;color:#fff;border:0;border-radius:6px;cursor:pointer;overflow-wrap:anywhere}.an-opt:hover{background:#0d8a77}.hotspot.has-note{box-shadow:inset 0 0 0 2px #f9a825}.hotspot.has-link{box-shadow:inset 0 0 0 2px #25d366}.hotspot.has-note.has-link{box-shadow:inset 0 0 0 2px #b26a00}.layout{display:flex;gap:18px;max-width:1220px;margin:0 auto;padding:18px 12px 80px;align-items:flex-start}.centerCol{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:10px}.rail{width:250px;flex:0 0 250px;position:sticky;top:70px;display:flex;flex-direction:column;gap:10px}.rail-card{background:#fff;border:1px solid #d8d1c8;border-radius:8px;padding:8px 10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;position:relative}.rail-card:hover{background:#f7f4ee}.rail-card .arrow{position:absolute;right:-12px;top:14px;border:6px solid transparent;border-left-color:#d8d1c8}.rail-card.note{border-left:4px solid #f9a825}.rail-card.link{border-left:4px solid #25d366}.rail-card h3{margin:0 0 4px;font-size:13px}.rail-card p{margin:0;font-size:12px;color:#555;overflow-wrap:anywhere}.transcript-btn{position:absolute;right:3px;top:3px;min-width:24px;height:24px;padding:0 4px;margin:0;font-size:12px;line-height:22px;background:#e3f2fd;border:2px solid #1976d2;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:4}.transcript-btn:hover{background:#bbdefb}.iped-capture-running .transcript-btn{display:none !important}@media print{.transcript-btn{display:none !important}}</style>"); //$NON-NLS-1$
             out.println("</head><body><div class=\"top\"><h1>WhatsApp - visualiza&ccedil;&atilde;o por imagens</h1></div><div class=\"layout\"><aside id=\"rail\"></aside><div class=\"centerCol\"><div class=\"wrap\" id=\"chat\"></div></div></div><aside id=\"side\"></aside><div id=\"modal\" onclick=\"closeModal(event)\"><div class=\"modal-card\" id=\"modalCard\"></div></div>"); //$NON-NLS-1$
             out.println("<script id=\"coords\" type=\"application/json\">" + coordinatesJson.replace("</", "<\\/") + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            out.println("<script>var DATA=JSON.parse(document.getElementById('coords').textContent);var ANN=(DATA.annotations&&DATA.annotations.enabled)?DATA.annotations:null;var ANN_BY_MSG={};(ANN&&ANN.items||[]).forEach(function(a){ANN_BY_MSG[a.messageId]=a;});var AVATAR='data:image/png;base64," + avatarBase64() + "';var chat=document.getElementById('chat'),side=document.getElementById('side'),modal=document.getElementById('modal'),modalCard=document.getElementById('modalCard');function esc(s){return String(s||'').replace(/[&<>\\\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;'}[c];});}function pct(v,total){return total?((v*100/total)+'%'):'0%';}function isImageFile(p){return /\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(p||'').split('?')[0]);}function itemTitle(b){if(b.type==='date')return 'Data';if(b.type==='audio')return 'Audio';if(b.type==='video')return 'Video';if(b.type==='image'||isImageFile(b.file))return 'Imagem';if(b.type==='file')return 'Arquivo';return 'Mensagem';}function openSide(html){side.innerHTML=html;side.classList.add('open');loadExtras(side);}function closeSide(){side.classList.remove('open');}function copyText(){var t=document.getElementById('copyText');if(!t)return;t.select();document.execCommand('copy');}function showText(b){openSide('<h2>'+itemTitle(b)+'</h2><textarea id=\"copyText\">'+esc(b.text||'')+'</textarea><br><button class=\"btn\" onclick=\"copyText()\">Copiar</button><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function showFile(b){if(!b.file){showText(b);return;}openSide('<h2>'+itemTitle(b)+'</h2><p class=\"muted\">'+esc(b.text||b.file)+'</p><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir</a><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function closeModalNow(){modal.querySelectorAll('audio,video').forEach(function(m){try{m.pause();m.removeAttribute('src');m.load();}catch(e){}});modalCard.innerHTML='';modal.classList.remove('open');}function openModal(html){closeModalNow();modalCard.innerHTML=html+'<br><button class=\"btn secondary\" onclick=\"closeModalNow()\">Fechar</button>';modal.classList.add('open');}function closeModal(e){if(e.target===modal)closeModalNow();}function showAnnotation(a){openSide(renderAnnotation(a));}var ANN_CURRENT=null;function showAnnotationMenu(a){ANN_CURRENT=a;var links=a.links||[];var opts='';if(a.note)opts+='<button class=\"an-opt\" data-kind=\"note\">📝 Ver nota do analista</button>';links.forEach(function(l,i){opts+='<button class=\"an-opt\" data-kind=\"chat\" data-idx=\"'+i+'\">🔗 Chat vinculado: '+esc(l.title)+'</button>';});if(!opts)opts='<p class=\"an-empty\">Sem nota e sem chat vinculado.</p>';openModal('<h2>Anotação do analista</h2>'+(a.date?'<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>':'')+'<div class=\"an-menu\">'+opts+'</div>');}function showAnnotationOption(kind,idx){var a=ANN_CURRENT;if(!a)return;if(kind==='note'){if(!a.note)return;openModal('<h2>Nota do analista</h2><div class=\"an-note\"><b>'+esc(a.note.author||'analista')+'</b><br>'+esc(a.note.text)+'</div>');return;}var l=(a.links||[])[parseInt(idx,10)];if(l)openModal('<h2>Chat vinculado</h2>'+linkRowHtml(l,false)+excerptHtml(l));}function linkRowHtml(l,clickable){var h='<div class=\"an-link\"'+(clickable?' data-link=\"'+esc(l.chatRefId)+'\"':'')+'><img src=\"'+AVATAR+'\" alt=\"\"><span>'+esc(l.title)+(l.sourceName?('<br><span class=\"muted\">'+esc(l.sourceName)+'</span>'):'')+((l.hasCapture||l.chatRefId)?'':'<br><span class=\"muted\">sem captura vinculada</span>')+'</span></div>';return h;}function excerptHtml(l){if(!(l.hasCapture||l.chatRefId))return '<div class=\"an-empty\">Sem captura vinculada para este chat.</div>';var base=l.captureFolder?('../'+l.captureFolder+'/'):('../vinculado/'+esc(l.chatRefId)+'/');var s='<div class=\"an-excerpt\"><b>Trecho capturado em '+esc(l.title||'')+'</b>';var fr=l.frames||[];if(!fr.length){s+='<pre class=\"an-pre\" data-excerpt=\"'+esc(base+(l.excerptFile||'texto.txt'))+'\"></pre>';}else{fr.forEach(function(f){s+='<img src=\"'+esc(base+f)+'\" alt=\"\" data-zoom=\"'+esc(base+f)+'\">';});}return s+'</div>';}function loadExtras(root){root.querySelectorAll('pre[data-excerpt]').forEach(function(p){fetch(p.getAttribute('data-excerpt')).then(function(r){return r.ok?r.text():'';}).then(function(t){p.textContent=t;}).catch(function(){p.textContent='Trecho nao encontrado.';});});}function renderAnnotation(a){var h='<h2>Anotação do analista</h2>';if(a.date)h+='<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>';if(a.note){h+='<div class=\"an-note\"><b>Nota</b> ('+esc(a.note.author||'analista')+'):<br>'+esc(a.note.text)+'</div>';}var links=a.links||[];if(!links.length){if(!a.note)return h+'<div class=\"an-empty\">Sem nota e sem link.</div>';return h;}h+='<div style=\"margin-top:12px\"><b>'+(links.length===1?'Chat vinculado':'Chats vinculados')+'</b></div>';if(links.length===1){return h+linkRowHtml(links[0],false)+excerptHtml(links[0]);}links.forEach(function(l){h+=linkRowHtml(l,true);});return h+'<div id=\"anExcerpt\"></div>';}function openLink(chatRefId){var a=null;(ANN&&ANN.items||[]).forEach(function(x){(x.links||[]).forEach(function(l){if(l.chatRefId===chatRefId)a=l;});});if(!a)return;document.getElementById('anExcerpt').innerHTML=excerptHtml(a);loadExtras(document.getElementById('anExcerpt'));}document.getElementById('side').addEventListener('click',function(e){var row=e.target.closest('[data-link]');if(row){openLink(row.getAttribute('data-link'));return;}var z=e.target.closest('[data-zoom]');if(z){openModal('<img src=\"'+esc(z.getAttribute('data-zoom'))+'\">');}});modalCard.addEventListener('click',function(e){var o=e.target.closest('.an-opt');if(!o)return;showAnnotationOption(o.getAttribute('data-kind'),o.getAttribute('data-idx'));});function activate(b){if(ANN&&ANN_BY_MSG[b.id]){showAnnotation(ANN_BY_MSG[b.id]);return;}if(b.type==='audio'&&b.file){openModal('<h2>Audio</h2><audio controls autoplay src=\"'+esc(b.file)+'\"></audio>');return;}if(b.type==='video'&&b.file){openModal('<h2>Video</h2><video controls autoplay src=\"'+esc(b.file)+'\"></video>');return;}if(b.file&&(b.type==='image'||isImageFile(b.file))){openModal('<h2>Imagem</h2><img src=\"'+esc(b.file)+'\"><br><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar imagem</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir em nova aba</a>');return;}if(b.type==='file'){showFile(b);return;}showText(b);}DATA.frames.forEach(function(f){var box=document.createElement('div');box.className='frame';box.style.maxWidth=f.width+'px';var img=document.createElement('img');img.src=f.image;img.alt='Frame '+f.sequence;box.appendChild(img);(f.blocks||[]).forEach(function(b){var h=document.createElement('button');h.className='hotspot';h.type='button';h.dataset.type=b.type;h.title=itemTitle(b);h.style.left=pct(b.x,f.width);h.style.top=pct(b.y,f.height);h.style.width=pct(b.width,f.width);h.style.height=pct(b.height,f.height);var ann=ANN_BY_MSG[b.id];if(ann){if(ann.note)h.className+=' has-note';if((ann.links||[]).length)h.className+=' has-link';}h.onclick=function(ev){ev.preventDefault();activate(b);};box.appendChild(h);if((b.type==='audio'||b.type==='video'||b.type==='image'||(b.file&&/\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(b.file||''))))&&String(b.text||'').trim()){var tb=document.createElement('button');tb.className='transcript-btn';tb.type='button';tb.style.top=pct(b.y,f.height);tb.style.right='3px';tb.title='Transcricao';tb.textContent='T';tb.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showText(b);};box.appendChild(tb);}if(ann&&(ann.note||(ann.links||[]).length)){var ic=document.createElement('button');ic.className='an-icon';ic.type='button';ic.style.top=pct(b.y,f.height);ic.title='Anotação do analista';ic.textContent=(ann.note?'📝':'')+((ann.links||[]).length?'🔗':'');ic.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showAnnotationMenu(ANN_BY_MSG[b.id]);};box.appendChild(ic);}});chat.appendChild(box);});buildRail();function buildRail(){if(!ANN||!ANN.items||!ANN.items.length)return;var rail=document.getElementById('rail');if(!rail)return;ANN.items.forEach(function(a){if(!a.note&&!(a.links&&a.links.length))return;var card=document.createElement('div');card.className='rail-card '+(a.note?'note':'link');var h=document.createElement('h3');h.textContent=a.note?'Nota':'Chat vinculado';card.appendChild(h);var p=document.createElement('p');p.textContent=(a.date? (a.date+' - '):'')+ (a.note?a.note.text:((a.links||[]).map(function(l){return l.title;}).join(', ')));card.appendChild(p);var arrow=document.createElement('span');arrow.className='arrow';card.appendChild(arrow);card.onclick=function(){showAnnotation(a);};rail.appendChild(card);});}</script>"); //$NON-NLS-1$
+            out.println("<script>var DATA=JSON.parse(document.getElementById('coords').textContent);var ANN=(DATA.annotations&&DATA.annotations.enabled)?DATA.annotations:null;var ANN_BY_MSG={};(ANN&&ANN.items||[]).forEach(function(a){ANN_BY_MSG[a.messageId]=a;});var AVATAR='data:image/png;base64," + avatarBase64() + "';var chat=document.getElementById('chat'),side=document.getElementById('side'),modal=document.getElementById('modal'),modalCard=document.getElementById('modalCard');function esc(s){return String(s||'').replace(/[&<>\\\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\"'\":'&#39;'}[c];});}function pct(v,total){return total?((v*100/total)+'%'):'0%';}function isImageFile(p){return /\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(p||'').split('?')[0]);}function itemTitle(b){if(b.type==='date')return 'Data';if(b.type==='audio')return 'Audio';if(b.type==='video')return 'Video';if(b.type==='image'||isImageFile(b.file))return 'Imagem';if(b.type==='file')return 'Arquivo';return 'Mensagem';}function openSide(html){side.innerHTML=html;side.classList.add('open');loadExtras(side);}function closeSide(){side.classList.remove('open');}function copyText(){var t=document.getElementById('copyText');if(!t)return;t.select();document.execCommand('copy');}function showText(b){openSide('<h2>'+itemTitle(b)+'</h2><textarea id=\"copyText\">'+esc(b.text||'')+'</textarea><br><button class=\"btn\" onclick=\"copyText()\">Copiar</button><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function showFile(b){if(!b.file){showText(b);return;}openSide('<h2>'+itemTitle(b)+'</h2><p class=\"muted\">'+esc(b.text||b.file)+'</p><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir</a><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function closeModalNow(){modal.querySelectorAll('audio,video').forEach(function(m){try{m.pause();m.removeAttribute('src');m.load();}catch(e){}});modalCard.innerHTML='';modal.classList.remove('open');}function openModal(html){closeModalNow();modalCard.innerHTML=html+'<br><button class=\"btn secondary\" onclick=\"closeModalNow()\">Fechar</button>';modal.classList.add('open');}function closeModal(e){if(e.target===modal)closeModalNow();}function showAnnotation(a){openSide(renderAnnotation(a));}var ANN_CURRENT=null;function showAnnotationMenu(a){ANN_CURRENT=a;var links=a.links||[];var opts='';if(a.note)opts+='<button class=\"an-opt\" data-kind=\"note\">📝 Ver nota do analista</button>';links.forEach(function(l,i){opts+='<button class=\"an-opt\" data-kind=\"chat\" data-idx=\"'+i+'\">🔗 Chat vinculado: '+esc(l.title)+'</button>';});if(!opts)opts='<p class=\"an-empty\">Sem nota e sem chat vinculado.</p>';openModal('<h2>Anotação do analista</h2>'+(a.date?'<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>':'')+'<div class=\"an-menu\">'+opts+'</div>');}function showAnnotationOption(kind,idx){var a=ANN_CURRENT;if(!a)return;if(kind==='note'){if(!a.note)return;openModal('<h2>Nota do analista</h2><div class=\"an-note\"><b>'+esc(a.note.author||'analista')+'</b><br>'+esc(a.note.text)+'</div>');return;}var l=(a.links||[])[parseInt(idx,10)];if(l)openModal('<h2>Chat vinculado</h2>'+linkRowHtml(l,false)+excerptHtml(l));}function linkRowHtml(l,clickable){var h='<div class=\"an-link\"'+(clickable?' data-link=\"'+esc(l.chatRefId)+'\"':'')+'><img src=\"'+AVATAR+'\" alt=\"\"><span>'+esc(l.title)+(l.sourceName?('<br><span class=\"muted\">'+esc(l.sourceName)+'</span>'):'')+((l.hasCapture||l.chatRefId)?'':'<br><span class=\"muted\">sem captura vinculada</span>')+'</span></div>';return h;}function excerptHtml(l){if(!(l.hasCapture||l.chatRefId))return '<div class=\"an-empty\">Sem captura vinculada para este chat.</div>';var base=l.captureFolder?('../'+esc(l.captureFolder)+'/'):('../vinculado/'+esc(l.chatRefId)+'/');var s='<div class=\"an-excerpt\"><b>Trecho capturado em '+esc(l.title||'')+'</b>';var fr=l.frames||[];if(!fr.length){s+='<pre class=\"an-pre\" data-excerpt=\"'+esc(base+(l.excerptFile||'texto.txt'))+'\"></pre>';}else{fr.forEach(function(f){s+='<img src=\"'+esc(base+f)+'\" alt=\"\" data-zoom=\"'+esc(base+f)+'\">';});}return s+'</div>';}function loadExtras(root){root.querySelectorAll('pre[data-excerpt]').forEach(function(p){fetch(p.getAttribute('data-excerpt')).then(function(r){return r.ok?r.text():'';}).then(function(t){p.textContent=t;}).catch(function(){p.textContent='Trecho nao encontrado.';});});}function renderAnnotation(a){var h='<h2>Anotação do analista</h2>';if(a.date)h+='<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>';if(a.note){h+='<div class=\"an-note\"><b>Nota</b> ('+esc(a.note.author||'analista')+'):<br>'+esc(a.note.text)+'</div>';}var links=a.links||[];if(!links.length){if(!a.note)return h+'<div class=\"an-empty\">Sem nota e sem link.</div>';return h;}h+='<div style=\"margin-top:12px\"><b>'+(links.length===1?'Chat vinculado':'Chats vinculados')+'</b></div>';if(links.length===1){return h+linkRowHtml(links[0],false)+excerptHtml(links[0]);}links.forEach(function(l){h+=linkRowHtml(l,true);});return h+'<div id=\"anExcerpt\"></div>';}function openLink(chatRefId){var a=null;(ANN&&ANN.items||[]).forEach(function(x){(x.links||[]).forEach(function(l){if(l.chatRefId===chatRefId)a=l;});});if(!a)return;document.getElementById('anExcerpt').innerHTML=excerptHtml(a);loadExtras(document.getElementById('anExcerpt'));}document.getElementById('side').addEventListener('click',function(e){var row=e.target.closest('[data-link]');if(row){openLink(row.getAttribute('data-link'));return;}var z=e.target.closest('[data-zoom]');if(z){openModal('<img src=\"'+esc(z.getAttribute('data-zoom'))+'\">');}});modalCard.addEventListener('click',function(e){var o=e.target.closest('.an-opt');if(!o)return;showAnnotationOption(o.getAttribute('data-kind'),o.getAttribute('data-idx'));});function activate(b){if(ANN&&ANN_BY_MSG[b.id]){showAnnotation(ANN_BY_MSG[b.id]);return;}if(b.type==='audio'&&b.file){openModal('<h2>Audio</h2><audio controls autoplay src=\"'+esc(b.file)+'\"></audio>');return;}if(b.type==='video'&&b.file){openModal('<h2>Video</h2><video controls autoplay src=\"'+esc(b.file)+'\"></video>');return;}if(b.file&&(b.type==='image'||isImageFile(b.file))){openModal('<h2>Imagem</h2><img src=\"'+esc(b.file)+'\"><br><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar imagem</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir em nova aba</a>');return;}if(b.type==='file'){showFile(b);return;}showText(b);}DATA.frames.forEach(function(f){var box=document.createElement('div');box.className='frame';box.style.maxWidth=f.width+'px';var img=document.createElement('img');img.src=f.image;img.alt='Frame '+f.sequence;box.appendChild(img);(f.blocks||[]).forEach(function(b){var h=document.createElement('button');h.className='hotspot';h.type='button';h.dataset.type=b.type;h.title=itemTitle(b);h.style.left=pct(b.x,f.width);h.style.top=pct(b.y,f.height);h.style.width=pct(b.width,f.width);h.style.height=pct(b.height,f.height);var ann=ANN_BY_MSG[b.id];if(ann){if(ann.note)h.className+=' has-note';if((ann.links||[]).length)h.className+=' has-link';}h.onclick=function(ev){ev.preventDefault();activate(b);};box.appendChild(h);if((b.type==='audio'||b.type==='video'||b.type==='image'||(b.file&&/\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(b.file||''))))&&String(b.text||'').trim()){var tb=document.createElement('button');tb.className='transcript-btn';tb.type='button';tb.style.top=pct(b.y,f.height);tb.style.right='3px';tb.title='Transcricao';tb.textContent='T';tb.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showText(b);};box.appendChild(tb);}if(ann&&(ann.note||(ann.links||[]).length)){var ic=document.createElement('button');ic.className='an-icon';ic.type='button';ic.style.top=pct(b.y,f.height);ic.title='Anotação do analista';ic.textContent=(ann.note?'📝':'')+((ann.links||[]).length?'🔗':'');ic.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showAnnotationMenu(ANN_BY_MSG[b.id]);};box.appendChild(ic);}});chat.appendChild(box);});buildRail();function buildRail(){if(!ANN||!ANN.items||!ANN.items.length)return;var rail=document.getElementById('rail');if(!rail)return;ANN.items.forEach(function(a){if(!a.note&&!(a.links&&a.links.length))return;var card=document.createElement('div');card.className='rail-card '+(a.note?'note':'link');var h=document.createElement('h3');h.textContent=a.note?'Nota':'Chat vinculado';card.appendChild(h);var p=document.createElement('p');p.textContent=(a.date? (a.date+' - '):'')+ (a.note?a.note.text:((a.links||[]).map(function(l){return l.title;}).join(', ')));card.appendChild(p);var arrow=document.createElement('span');arrow.className='arrow';card.appendChild(arrow);card.onclick=function(){showAnnotation(a);};rail.appendChild(card);});}</script>"); //$NON-NLS-1$
             writeWhatsAppSearchHtml(out);
             out.println("</body></html>"); //$NON-NLS-1$
         });
@@ -6177,7 +6706,8 @@ out.append("{\n"); //$NON-NLS-1$
                 + "#searchBar input{flex:1;min-width:140px;padding:6px 10px;border:0;border-radius:4px;font-size:14px}"
                 + "#searchCount{color:#cfe9df;font-size:13px;white-space:nowrap}"
                 + "#searchResults{position:relative;width:100%;max-width:960px;margin:8px auto 0;max-height:58vh;overflow:auto;"
-                + "#searchResults .res.selected{background:#cfe9df;border-left:4px solid #075e54}"                + "background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.3);display:none;z-index:25}"
+                + "background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.3);display:none;z-index:25}"
+                + "#searchResults .res.selected{background:#cfe9df;border-left:4px solid #075e54}"
                 + "#searchResults.open{display:block}#searchResults .res{padding:8px 10px;border-bottom:1px solid #eee;"
                 + "cursor:pointer;font-size:13px;line-height:1.3}#searchResults .res:hover{background:#f0f8f4}"
                 + "#searchResults .res-seq{display:block;color:#075e54;font-weight:bold;font-size:11px}"
@@ -7310,11 +7840,55 @@ private String js(String value) {
         }
     }
 
-    private String json(String value) {
+    static String json(String value) {
         if (value == null) {
             return "null"; //$NON-NLS-1$
         }
-        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n") + "\""; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
+        StringBuilder out = new StringBuilder(value.length() + 16);
+        out.append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+            case '"':
+                out.append("\\\""); //$NON-NLS-1$
+                break;
+            case '\\':
+                out.append("\\\\"); //$NON-NLS-1$
+                break;
+            case '\b':
+                out.append("\\b"); //$NON-NLS-1$
+                break;
+            case '\f':
+                out.append("\\f"); //$NON-NLS-1$
+                break;
+            case '\n':
+                out.append("\\n"); //$NON-NLS-1$
+                break;
+            case '\r':
+                out.append("\\r"); //$NON-NLS-1$
+                break;
+            case '\t':
+                out.append("\\t"); //$NON-NLS-1$
+                break;
+            case '<':
+                out.append("\\u003c"); //$NON-NLS-1$
+                break;
+            case '\u2028':
+                out.append("\\u2028"); //$NON-NLS-1$
+                break;
+            case '\u2029':
+                out.append("\\u2029"); //$NON-NLS-1$
+                break;
+            default:
+                if (c < 0x20) {
+                    out.append(String.format(Locale.ROOT, "\\u%04x", (int) c)); //$NON-NLS-1$
+                } else {
+                    out.append(c);
+                }
+                break;
+            }
+        }
+        return out.append('"').toString();
     }
 
     private String jsonArray(Set<String> values) {
@@ -7398,7 +7972,8 @@ private String js(String value) {
     }
 
     private String html(String value) {
-        return safe(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+        return safe(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+                .replace("\"", "&quot;").replace("'", "&#39;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
     }
 
     private String htmlBreakableName(String value) {
@@ -7847,7 +8422,7 @@ String invalidReason;
         String metadataText;
     }
 
-    private static class ExportedFile {
+    static class ExportedFile {
         String relativePath;
         String thumbRelativePath;
         String absolutePath;
@@ -7900,6 +8475,12 @@ String invalidReason;
         private final List<Mat> referenceDescriptors = new ArrayList<>();
         private int referenceImageCount;
         private boolean closed;
+
+        SensitiveImageMatcher() {
+            this.orb = null;
+            this.matcher = null;
+            this.minSimilarityRatio = 0.90d;
+        }
 
         SensitiveImageMatcher(Path folder, int similarityPercent) throws IOException {
             if (!CaptureIntegrity.isSafeDirectory(folder)) {
@@ -8164,43 +8745,75 @@ String invalidReason;
             return decoded[0];
         }
 
+        static BufferedImage readBoundedImageFile(Path source) {
+            if (source == null || !CaptureIntegrity.isSafeRegularFile(source)) {
+                return null;
+            }
+            try {
+                long declaredSize = Files.size(source);
+                if (declaredSize <= 0L || declaredSize > MAX_SENSITIVE_IMAGE_BYTES) {
+                    return null;
+                }
+                try (InputStream imgIn = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS);
+                        ImageInputStream iis = ImageIO.createImageInputStream(imgIn)) {
+                    BufferedImage[] decoded = new BufferedImage[1];
+                    if (readBoundedImageFromStream(iis, null, decoded, source.getFileName().toString()) == null) {
+                        return null;
+                    }
+                    return decoded[0];
+                }
+            } catch (IOException | RuntimeException e) {
+                LOGGER.debug("Rejected malformed or oversized report image {}", source, e); //$NON-NLS-1$
+                return null;
+            }
+        }
+
         private static int[] readImageIoDimensionsAndOptionalDecode(
                 byte[] content, ImageFormat format, BufferedImage[] decodedOut) {
             try (ByteArrayInputStream bais = new ByteArrayInputStream(content);
                     ImageInputStream iis = ImageIO.createImageInputStream(bais)) {
-                if (iis == null) {
-                    return null;
-                }
-                ImageReader reader = findPreferredImageReader(format);
-                if (reader == null) {
-                    return null;
-                }
-                try {
-                    reader.setInput(iis, true, true);
-                    int width = reader.getWidth(0);
-                    int height = reader.getHeight(0);
-                    if (!areValidImageDimensions(width, height)) {
-                        return null;
-                    }
-                    if (decodedOut != null) {
-                        BufferedImage decoded = reader.read(0);
-                        if (decoded == null || !areValidImageDimensions(decoded.getWidth(), decoded.getHeight())) {
-                            return null;
-                        }
-                        decodedOut[0] = decoded;
-                    }
-                    return new int[] { width, height };
-                } finally {
-                    reader.dispose();
-                }
+                return readBoundedImageFromStream(iis, format.formatName(), decodedOut, format.formatName());
             } catch (IOException | RuntimeException e) {
                 LOGGER.debug("Rejected malformed {} image before OpenCV", format.formatName(), e); //$NON-NLS-1$
                 return null;
             }
         }
 
-        private static ImageReader findPreferredImageReader(ImageFormat format) {
-            Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName(format.formatName());
+        private static int[] readBoundedImageFromStream(
+                ImageInputStream iis, String preferredFormatName, BufferedImage[] decodedOut, String label)
+                throws IOException {
+            if (iis == null) {
+                return null;
+            }
+            Iterator<ImageReader> readers = preferredFormatName != null
+                    ? ImageIO.getImageReadersByFormatName(preferredFormatName)
+                    : ImageIO.getImageReaders(iis);
+            ImageReader reader = selectPreferredImageReader(readers);
+            if (reader == null) {
+                return null;
+            }
+            try {
+                reader.setInput(iis, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (!areValidImageDimensions(width, height)) {
+                    LOGGER.debug("Rejected oversized image {} ({}x{})", label, width, height); //$NON-NLS-1$
+                    return null;
+                }
+                if (decodedOut != null) {
+                    BufferedImage decoded = reader.read(0);
+                    if (decoded == null || !areValidImageDimensions(decoded.getWidth(), decoded.getHeight())) {
+                        return null;
+                    }
+                    decodedOut[0] = decoded;
+                }
+                return new int[] { width, height };
+            } finally {
+                reader.dispose();
+            }
+        }
+
+        private static ImageReader selectPreferredImageReader(Iterator<ImageReader> readers) {
             ImageReader preferred = null;
             ImageReader fallback = null;
             while (readers.hasNext()) {
@@ -8274,11 +8887,11 @@ String invalidReason;
             }
         }
 
-        private boolean matchesReferenceFileHash(byte[] content) {
+        boolean matchesReferenceFileHash(byte[] content) {
             if (referenceFileHashes.isEmpty()) {
                 return false;
             }
-            return referenceFileHashes.contains(hex(content, "MD5")) || referenceFileHashes.contains(hex(content, "SHA-256")); //$NON-NLS-1$ //$NON-NLS-2$
+            return referenceFileHashes.contains(hex(content, "SHA-256")); //$NON-NLS-1$
         }
 
         private static String hex(byte[] content, String algorithm) {
@@ -8293,12 +8906,8 @@ String invalidReason;
             }
         }
 
-        private void addReferenceFileHash(byte[] content) {
-            String md5 = hex(content, "MD5"); //$NON-NLS-1$
+        void addReferenceFileHash(byte[] content) {
             String sha256 = hex(content, "SHA-256"); //$NON-NLS-1$
-            if (!md5.isBlank()) {
-                referenceFileHashes.add(md5);
-            }
             if (!sha256.isBlank()) {
                 referenceFileHashes.add(sha256);
             }
