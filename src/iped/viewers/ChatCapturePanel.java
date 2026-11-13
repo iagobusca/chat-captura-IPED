@@ -195,25 +195,55 @@ public class ChatCapturePanel extends JPanel {
         chooseSensitiveFolder.addActionListener(e -> selectSensitiveFolder());
         customNameToggle.addActionListener(e -> customFolderName.setEnabled(customNameToggle.isSelected()));
         startStop.addActionListener(e -> {
-            if (viewer.isChatCaptureRunning()) {
+            if (viewer != null && viewer.isChatCaptureRunning()) {
                 viewer.stopChatCapture();
             } else {
-                File destination = new File(outputFolder.getText());
-                if (!viewer.validateCaptureStart(destination)) return;
-                VerifierIntegrity.installVerifierFiles(destination.toPath());
-                VerifierIntegrity.showAlertIfNeeded(this, destination.toPath());
-                viewer.startChatCapture(destination, getEffectiveCustomName(),
-                        getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+                File destination = resolveValidOutputFolder(outputFolder.getText());
+                if (destination == null) {
+                    if (viewer != null) {
+                        viewer.reportMissingOutputFolder();
+                    }
+                    return;
+                }
+                if (viewer != null) {
+                    viewer.startChatCaptureFromUi(this, destination, getEffectiveCustomName(),
+                            getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+                }
             }
         });
         recapture.addActionListener(e -> {
-            VerifierIntegrity.installVerifierFiles(new File(outputFolder.getText()).toPath());
-            VerifierIntegrity.showAlertIfNeeded(this, new File(outputFolder.getText()).toPath());
-            viewer.showRecaptureDialog(new File(outputFolder.getText()), getSensitiveImagesFolder(),
-                    getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+            File destination = resolveValidOutputFolder(outputFolder.getText());
+            if (destination == null) {
+                if (viewer != null) {
+                    viewer.reportMissingOutputFolder();
+                }
+                return;
+            }
+            VerifierIntegrity.installVerifierFiles(destination.toPath());
+            VerifierIntegrity.showAlertIfNeeded(this, destination.toPath());
+            if (viewer != null) {
+                viewer.showRecaptureDialog(destination, getSensitiveImagesFolder(),
+                        getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+            }
         });
         annotateSaved.addActionListener(e -> viewer.annotateSavedChat());
         saveAnnotations.addActionListener(e -> viewer.saveAnnotations());
+    }
+
+    static File resolveValidOutputFolder(String folderText) {
+        if (folderText == null) {
+            return null;
+        }
+        String trimmed = folderText.trim();
+        return trimmed.isEmpty() ? null : new File(trimmed);
+    }
+
+    JButton getStartStopButtonForTest() {
+        return startStop;
+    }
+
+    JButton getRecaptureButtonForTest() {
+        return recapture;
     }
 
     public void setOutputFolder(java.io.File folder) {

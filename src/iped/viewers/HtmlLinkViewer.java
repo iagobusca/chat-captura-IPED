@@ -49,7 +49,10 @@ import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -161,7 +164,13 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private volatile String captureStartMessageId;
     private volatile String captureEndMessageId;
     private volatile boolean captureRunning;
+    private final AtomicBoolean captureStarting = new AtomicBoolean(false);
     private volatile boolean stopCaptureRequested;
+    private final ExecutorService uiScriptExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "IPED-chat-ui-script"); //$NON-NLS-1$
+        thread.setDaemon(true);
+        return thread;
+    });
     private volatile Path sensitiveImagesFolder;
     private volatile int sensitiveSimilarityPercent = 90;
     private volatile int sensitiveBlurPercent = 90;
@@ -594,28 +603,30 @@ private void clearChatCaptureMarks() {
         if (messageId == null || messageId.isBlank()) {
             return;
         }
-        String chatKey = currentChatKey();
-        ChatAnnotation existing = annotationStore.get(chatKey, messageId);
-        String initialNote = existing == null ? "" : existing.noteText; //$NON-NLS-1$
-        String initialAuthor = existing == null || existing.noteAuthor.isEmpty() ? defaultAnnotationAuthor()
-                : existing.noteAuthor;
-        String preview = getMessagePreviewText(messageId);
-        SwingUtilities.invokeLater(() -> {
-            ChatNoteDialog dialog = new ChatNoteDialog(SwingUtilities.getWindowAncestor(chatCapturePanel), initialNote, initialAuthor,
-                    preview);
-            dialog.setVisible(true);
-            if (!dialog.isConfirmed()) {
-                return;
-            }
-            String text = dialog.getNoteText();
-            if (text.isEmpty()) {
-                annotationStore.removeNote(chatKey, messageId);
-                chatCapturePanel.setStatus("ChatCapturePanel.NoteRemoved"); //$NON-NLS-1$
-            } else {
-                annotationStore.setNote(chatKey, messageId, text, dialog.getNoteAuthor());
-                chatCapturePanel.setStatus("ChatCapturePanel.NotesMarked"); //$NON-NLS-1$
-            }
-            refreshAnnotationsUi();
+        runOffEdtIfNeeded(() -> {
+            String chatKey = currentChatKey();
+            ChatAnnotation existing = annotationStore.get(chatKey, messageId);
+            String initialNote = existing == null ? "" : existing.noteText; //$NON-NLS-1$
+            String initialAuthor = existing == null || existing.noteAuthor.isEmpty() ? defaultAnnotationAuthor()
+                    : existing.noteAuthor;
+            String preview = getMessagePreviewText(messageId);
+            SwingUtilities.invokeLater(() -> {
+                ChatNoteDialog dialog = new ChatNoteDialog(SwingUtilities.getWindowAncestor(chatCapturePanel), initialNote,
+                        initialAuthor, preview);
+                dialog.setVisible(true);
+                if (!dialog.isConfirmed()) {
+                    return;
+                }
+                String text = dialog.getNoteText();
+                if (text.isEmpty()) {
+                    annotationStore.removeNote(chatKey, messageId);
+                    chatCapturePanel.setStatus("ChatCapturePanel.NoteRemoved"); //$NON-NLS-1$
+                } else {
+                    annotationStore.setNote(chatKey, messageId, text, dialog.getNoteAuthor());
+                    chatCapturePanel.setStatus("ChatCapturePanel.NotesMarked"); //$NON-NLS-1$
+                }
+                refreshAnnotationsUi();
+            });
         });
     }
 
@@ -681,6 +692,10 @@ private void clearChatCaptureMarks() {
     }
 
     private void refreshAnnotationsUi() {
+        runOffEdtIfNeeded(this::refreshAnnotationsUiNow);
+    }
+
+    private void refreshAnnotationsUiNow() {
         List<ChatAnnotation> items = annotationStore.itemsFor(currentChatKey());
         int notes = 0;
         int links = 0;
@@ -1129,12 +1144,73 @@ private void clearChatCaptureMarks() {
         startChatCapture(outputFolder, customFolderName, sensitiveImagesFolder, sensitiveSimilarityPercent, 90);
     }
 
-public void startChatCapture(File outputFolder, String customFolderName, File sensitiveImagesFolder,
+    void reportMissingOutputFolder() {
+        chatCapturePanel.setStatus("ChatCapturePanel.MissingFolder"); //$NON-NLS-1$
+    }
+
+    void startChatCaptureFromUi(java.awt.Component alertParent, File outputFolder, String customFolderName,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
+        if (captureRunning) {
+            return;
+        }
+        if (outputFolder == null || outputFolder.getPath().trim().isEmpty()) {
+            reportMissingOutputFolder();
+            return;
+        }
+        if (!captureStarting.compareAndSet(false, true)) {
+            return;
+        }
+        Thread starter = new Thread(() -> {
+            try {
+                startChatCaptureInternal(alertParent, outputFolder, customFolderName, sensitiveImagesFolder,
+                        sensitiveSimilarityPercent, sensitiveBlurPercent);
+            } finally {
+                captureStarting.set(false);
+            }
+        }, "IPED-chat-capture-start"); //$NON-NLS-1$
+        starter.setDaemon(true);
+        starter.start();
+    }
+
+    public void startChatCapture(File outputFolder, String customFolderName, File sensitiveImagesFolder,
             int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            startChatCaptureFromUi(null, outputFolder, customFolderName, sensitiveImagesFolder,
+                    sensitiveSimilarityPercent, sensitiveBlurPercent);
+            return;
+        }
+        if (captureRunning) {
+            return;
+        }
+        if (!captureStarting.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            startChatCaptureInternal(null, outputFolder, customFolderName, sensitiveImagesFolder,
+                    sensitiveSimilarityPercent, sensitiveBlurPercent);
+        } finally {
+            captureStarting.set(false);
+        }
+    }
+
+    private void startChatCaptureInternal(java.awt.Component alertParent, File outputFolder, String customFolderName,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
         if (captureRunning) {
             return;
         }
         if (!validateCaptureStart(outputFolder)) return;
+        if (alertParent != null) {
+            Path outputPath = outputFolder.toPath();
+            VerifierIntegrity.installVerifierFiles(outputPath);
+            try {
+                SwingUtilities.invokeAndWait(() -> VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (Exception e) {
+                LOGGER.warn("Unable to show verifier integrity alert", e); //$NON-NLS-1$
+            }
+        }
         annotationStore.bindOutputRoot(outputFolder.toPath());
         // Recurso opcional: so entra no output se o toggle estiver ligado e houver
         // anotacao. A captura de chat vinculado nunca exporta anotacoes.
@@ -1166,16 +1242,21 @@ public void startChatCapture(File outputFolder, String customFolderName, File se
 
     private boolean confirmAnnotationPreflight(AnnotationPreflight preflight) {
         final boolean[] confirmed = new boolean[1];
+        Runnable showPreflight = () -> {
+            ChatPreflightDialog dialog = new ChatPreflightDialog(SwingUtilities.getWindowAncestor(chatCapturePanel),
+                    preflight, captureRangeLabel() + unresolvedLinksLabel(), pendingLinkLabel());
+            dialog.setVisible(true);
+            confirmed[0] = dialog.isConfirmed() && dialog.isIncludeEnabled();
+            if (dialog.isConfirmed() && !dialog.isIncludeEnabled()) {
+                chatCapturePanel.setAnnotationsEnabled(false);
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            showPreflight.run();
+            return confirmed[0];
+        }
         try {
-            SwingUtilities.invokeAndWait(() -> {
-                ChatPreflightDialog dialog = new ChatPreflightDialog(SwingUtilities.getWindowAncestor(chatCapturePanel),
-                        preflight, captureRangeLabel() + unresolvedLinksLabel(), pendingLinkLabel());
-                dialog.setVisible(true);
-                confirmed[0] = dialog.isConfirmed() && dialog.isIncludeEnabled();
-                if (dialog.isConfirmed() && !dialog.isIncludeEnabled()) {
-                    chatCapturePanel.setAnnotationsEnabled(false);
-                }
-            });
+            SwingUtilities.invokeAndWait(showPreflight);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -4293,14 +4374,16 @@ createReportThumbnails(captureDir, exported);
                 || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("texto.txt")); //$NON-NLS-1$
     }
 
-    private boolean isRecaptureAuxiliaryFolder(Path path) {
+    static boolean isRecaptureAuxiliaryFolder(Path path) {
         if (path == null || path.getFileName() == null) {
             return false;
         }
         String name = path.getFileName().toString();
         return name.equals(RECAPTURE_TRASH_FOLDER) || name.startsWith("_backup_integridade_") //$NON-NLS-1$
+                || name.startsWith(".__capture_staging_") //$NON-NLS-1$
                 || name.contains(".__old_") || name.contains(".__reextract_tmp_") //$NON-NLS-1$ //$NON-NLS-2$
-                || name.contains(".__reextract_failed_"); //$NON-NLS-1$
+                || name.contains(".__reextract_failed_") //$NON-NLS-1$
+                || name.contains(".__migration_html_backup"); //$NON-NLS-1$
     }
 
     private void cleanupRecaptureAuxiliaryFolders(Path outputRoot) {
@@ -4308,7 +4391,7 @@ createReportThumbnails(captureDir, exported);
             return;
         }
         try (Stream<Path> children = Files.list(outputRoot)) {
-            children.filter(CaptureIntegrity::isSafeDirectory).filter(this::isRecaptureAuxiliaryFolder).forEach(path -> {
+            children.filter(CaptureIntegrity::isSafeDirectory).filter(HtmlLinkViewer::isRecaptureAuxiliaryFolder).forEach(path -> {
                 try {
                     deleteDirectoryIfExists(path);
                 } catch (IOException e) {
@@ -6976,9 +7059,23 @@ private void setCaptureInteractionEnabled(boolean enabled) {
         }
     }
 
+    private void runOffEdtIfNeeded(Runnable task) {
+        if (task == null) {
+            return;
+        }
+        if (SwingUtilities.isEventDispatchThread() && !Platform.isFxApplicationThread()) {
+            uiScriptExecutor.execute(task);
+        } else {
+            task.run();
+        }
+    }
+
     private Object executeScriptAndWait(String script) {
         if (Platform.isFxApplicationThread()) {
             return webEngine.executeScript(script);
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            LOGGER.warn("executeScriptAndWait called on Swing EDT; risking FX/EDT deadlock"); //$NON-NLS-1$
         }
         CountDownLatch latch = new CountDownLatch(1);
         final Object[] result = new Object[1];
@@ -7187,7 +7284,7 @@ private String js(String value) {
         }
         int position = Math.floorMod(index, snapshot.size());
         ChatSearchHit hit = snapshot.get(position);
-        executeScriptAndWait("if(window.ipedChatCapture){window.ipedChatCapture.goToSearchMessage(" //$NON-NLS-1$
+        runScript("if(window.ipedChatCapture){window.ipedChatCapture.goToSearchMessage(" //$NON-NLS-1$
                 + js(hit.messageId) + ");}"); //$NON-NLS-1$ //$NON-NLS-2$
         searchIndex = position;
         chatCapturePanel.setCurrentSearchHit(position, snapshot.size());

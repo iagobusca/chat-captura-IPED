@@ -111,7 +111,7 @@ public final class IntegrityVerifier {
     private static final class Item {
         String path, expected; long size, bytes; String actual, state;
     }
-    private static final class Capture {
+    static final class Capture {
         Path dir; String name, hash, historyHash = "", contentRootHash = "", integrityFileHash = "", historyStatus = "registro ausente/legado", error = ""; JSONArray historyEvents = new JSONArray(); List<Item> items = new ArrayList<>(); Set<String> allowedFiles = new HashSet<>(); long bytes, metadataBytes; int fileCount;
     }
     private IntegrityVerifier() {}
@@ -503,10 +503,18 @@ public final class IntegrityVerifier {
         },"integridade-verifier-clipboard");
         worker.setDaemon(true);worker.start();
     }
-    private static List<Capture> discover(Path root) throws IOException {return discover(root,null);}
+    static boolean isIgnoredCaptureDirectoryName(String name) {
+        if (name == null || name.isEmpty()) return true;
+        return name.startsWith("_backup_chat_capture_") || name.startsWith("_backup_integridade_")
+                || name.equals("vinculado") || name.equals(".iped-reextract-trash")
+                || name.startsWith(".__capture_staging_") || name.contains(".__old_")
+                || name.contains(".__reextract_tmp_") || name.contains(".__reextract_failed_")
+                || name.contains(".__migration_html_backup");
+    }
+    static List<Capture> discover(Path root) throws IOException {return discover(root,null);}
     private static List<Capture> discover(Path root,IntConsumer progress) throws IOException {
         List<Capture> out=new ArrayList<>();
-        try(java.util.stream.Stream<Path> s=Files.list(root)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(p))continue;String n=p.getFileName().toString();if(n.startsWith("_backup_chat_capture_")||n.equals("vinculado")||n.equals(".iped-reextract-trash")||n.contains(".__old_")||n.contains(".__reextract_tmp_")||n.contains(".__reextract_failed_"))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
+        try(java.util.stream.Stream<Path> s=Files.list(root)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(p))continue;String n=p.getFileName().toString();if(isIgnoredCaptureDirectoryName(n))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
         out.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT))); return out;
     }
     private static List<Capture> chooseCaptures(List<Capture> captures) throws Exception {

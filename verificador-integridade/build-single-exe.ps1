@@ -37,7 +37,7 @@ try { & (Join-Path $Java8 'bin\jar.exe') xf $JsonJar; if ($LASTEXITCODE) { throw
 & (Join-Path $Java8 'bin\jar.exe') uf $Jar -C $JsonClasses org/json
 if ($LASTEXITCODE) { throw 'Falha ao embutir biblioteca JSON no JAR standalone.' }
 Copy-Item $Jar (Join-Path $Base 'integridade-verifier.jar') -Force
-& (Join-Path $Java11 'bin\jlink.exe') --module-path (Join-Path $Java11 'jmods') --add-modules java.base,java.desktop --strip-debug --no-header-files --no-man-pages --output $Runtime
+& (Join-Path $Java11 'bin\jlink.exe') --module-path (Join-Path $Java11 'jmods') --add-modules java.base,java.datatransfer,java.desktop,java.xml --strip-debug --no-header-files --no-man-pages --output $Runtime
 if ($LASTEXITCODE) { throw 'Falha ao criar runtime Java 11 reduzido.' }
 New-Item -ItemType Directory -Force -Path $AppImage | Out-Null
 & (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.3.6

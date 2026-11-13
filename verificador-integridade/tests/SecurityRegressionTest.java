@@ -30,9 +30,46 @@ public final class SecurityRegressionTest {
             junctionInsideCaptureAndOutputAreRejected(root);
             disallowedHtmlAttributesAndQuoteTricksAreRejected(root);
             largeHtmlCaptureOver16MiBUpTo64MiBIsAccepted(root);
+            auxiliaryCaptureFoldersAreIgnoredDuringDiscovery(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
+        }
+    }
+
+    private static void auxiliaryCaptureFoldersAreIgnoredDuringDiscovery(Path root) throws Exception {
+        String[] ignored = {
+            "_backup_chat_capture_2026",
+            "_backup_integridade_2026",
+            "vinculado",
+            ".iped-reextract-trash",
+            ".__capture_staging_abcdef",
+            "cap1.__old_2026",
+            "cap1.__reextract_tmp_1",
+            "cap1.__reextract_failed_1",
+            "cap1.__migration_html_backup"
+        };
+        Path scanRoot = root.resolve("discover-aux-filter");
+        Files.createDirectories(scanRoot);
+        for (String name : ignored) {
+            if (!IntegrityVerifier.isIgnoredCaptureDirectoryName(name)) {
+                throw new AssertionError("Expected auxiliary directory to be ignored: " + name);
+            }
+            Path auxDir = scanRoot.resolve(name);
+            Files.createDirectories(auxDir);
+            Files.write(auxDir.resolve("manifest.json"), "{}".getBytes("UTF-8"));
+        }
+        String validName = "captura-chat-20261107-134436";
+        if (IntegrityVerifier.isIgnoredCaptureDirectoryName(validName)) {
+            throw new AssertionError("Valid capture folder must not be ignored");
+        }
+        Path validDir = scanRoot.resolve(validName);
+        Files.createDirectories(validDir);
+        Files.write(validDir.resolve("manifest.json"), "{}".getBytes("UTF-8"));
+
+        java.util.List<IntegrityVerifier.Capture> discovered = IntegrityVerifier.discover(scanRoot);
+        if (discovered.size() != 1 || !validName.equals(discovered.get(0).name)) {
+            throw new AssertionError("discover() must only return real capture directories, found: " + discovered.size());
         }
     }
 

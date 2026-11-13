@@ -86,7 +86,7 @@ Na inicialização, o EXE verifica se há outro processo do verificador em execu
 - Uso do JAR: Java 8 (1.8) ou superior.
 - Uso do EXE: Windows x64; não requer Java nem .NET instalados.
 - Build do JAR: JDK 8. Build do EXE: JDK 11 para o runtime, JDK com `jpackage`, .NET SDK 10 e PowerShell.
-- O aplicativo Java usa `java.base`, `java.desktop` e a biblioteca JSON embutida no JAR standalone.
+- O aplicativo Java usa `java.base`, `java.datatransfer`, `java.desktop`, `java.xml` e a biblioteca JSON embutida no JAR standalone.
 - A biblioteca embutida é `org.json` 20260719, incluindo a correção de consumo de CPU por números JSON longos (CVE-2026-59171; CWE-400/CWE-770).
 
 ## Codigos de saida e erros
