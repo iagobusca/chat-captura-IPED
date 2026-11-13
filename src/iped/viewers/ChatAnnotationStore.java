@@ -133,7 +133,7 @@ class ChatAnnotationStore {
             return;
         }
         for (String[] entry : splitObjectEntries(chats)) {
-            String chatKey = unescape(entry[0]);
+            String chatKey = entry[0];
             List<ChatAnnotation> items = parseItems(entry[1]);
             if (!items.isEmpty()) {
                 byChatKey.put(chatKey, items);
@@ -146,7 +146,7 @@ class ChatAnnotationStore {
         for (String[] entry : splitObjectEntries(content)) {
             List<ChatAnnotation> items = parseItems(entry[1]);
             if (!items.isEmpty()) {
-                byChatKey.put(unescape(entry[0]), items);
+                byChatKey.put(entry[0], items);
             }
         }
     }
@@ -623,6 +623,7 @@ class ChatAnnotationStore {
         for (int i = start + 1; i < json.length(); i++) {
             char c = json.charAt(i);
             if (c == '\\') {
+                out.append(c);
                 i++;
                 if (i < json.length()) {
                     out.append(json.charAt(i));
