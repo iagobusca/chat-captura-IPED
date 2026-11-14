@@ -360,7 +360,7 @@ O histórico de hashes das versões do verificador está em [versao_hash.md](ver
 - JAR: `31B0CE725708ED53AD9BE319FFE51439940C65BB46EF8593AB78376C07BF46B9`
 - EXE: `75FB542BCB53C44C7B17553EEC761C16F17C670F8033DD3F901F80A0897AC42B`
 
-Veja [versao_hash.md](versao_hash.md) para os hashes das versoes anteriores e [RELEASE_NOTES_v2.5.9-beta.md](RELEASE_NOTES_v2.5.9-beta.md) para as notas da versão anterior.
+Veja [versao_hash.md](versao_hash.md) para os hashes das versoes anteriores e [RELEASE_NOTES.md](RELEASE_NOTES.md) para as notas de todas as versões.
 
 ---
 
