@@ -1,9 +1,40 @@
-param(
-    [string]$CaptureRoot = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\teste_chat_extraido',
+﻿param(
+    [string]$CaptureRoot = '',
     [int]$PageSize = 100,
     [int]$ValidationBatchSize = 25
 )
 $ErrorActionPreference = 'Stop'
+
+function Get-RelativeChildPath([string]$BaseDir, [string]$ChildPath) {
+    $normBase = [IO.Path]::GetFullPath($BaseDir).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $normChild = [IO.Path]::GetFullPath($ChildPath)
+    if ($normChild.StartsWith($normBase, [StringComparison]::OrdinalIgnoreCase)) {
+        return $normChild.Substring($normBase.Length).Replace('\', '/')
+    }
+    return ([Uri]$normBase).MakeRelativeUri([Uri]$normChild).ToString().TrimEnd('/')
+}
+
+$cleanupSample = $false
+if ([string]::IsNullOrWhiteSpace($CaptureRoot)) {
+    if ($env:CHAT_CAPTURE_SAMPLE_ROOT) {
+        $CaptureRoot = $env:CHAT_CAPTURE_SAMPLE_ROOT
+    } else {
+        $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $probe = $repoRoot
+        for ($i = 0; $i -lt 5 -and $probe; $i++) {
+            $cand = Join-Path $probe 'IPED_testes_chat_real\teste_chat_extraido'
+            if (Test-Path -LiteralPath $cand -PathType Container) { $CaptureRoot = $cand; break }
+            $probe = Split-Path -Parent $probe
+        }
+        if ([string]::IsNullOrWhiteSpace($CaptureRoot)) {
+            $cleanupSample = $true
+            $CaptureRoot = Join-Path $env:TEMP ('two-phase-sample-' + [guid]::NewGuid().ToString('N'))
+            $capDir = Join-Path $CaptureRoot 'captura-chat-sintetica-001'
+            New-Item -ItemType Directory -Force -Path $capDir | Out-Null
+            '{"status":"completed","artifacts":[]}' | Set-Content -LiteralPath (Join-Path $capDir 'manifest.json') -Encoding UTF8
+        }
+    }
+}
 
 function Assert([bool]$condition, [string]$message) {
     if (!$condition) { throw "FALHOU: $message" }
@@ -75,7 +106,7 @@ foreach ($dir in [IO.Directory]::EnumerateDirectories($CaptureRoot)) {
     $markers = @('manifest.json','integridade.json','whatsapp.html','relatorio.htm','texto.txt')
     $found = $false
     foreach ($marker in $markers) { if ([IO.File]::Exists([IO.Path]::Combine($dir,$marker))) { $found = $true; break } }
-    if ($found) { $relative = [IO.Path]::GetRelativePath($CaptureRoot,$dir).Replace('\','/'); $candidates.Add([pscustomobject]@{Id=$relative;Name=$name;Path=$dir;Validated=$false;Eligible=$false}) }
+    if ($found) { $relative = Get-RelativeChildPath $CaptureRoot $dir; $candidates.Add([pscustomobject]@{Id=$relative;Name=$name;Path=$dir;Validated=$false;Eligible=$false}) }
 }
 Assert (($candidates | Select-Object -ExpandProperty Id -Unique).Count -eq $candidates.Count) 'IDs únicos'
 Write-Output "PASS fase 1: $($candidates.Count) candidatos listados por caminhos/marcadores"
@@ -101,4 +132,5 @@ for ($offset = 0; $offset -lt $candidates.Count; $offset += $ValidationBatchSize
 }
 Assert ($validated -eq $candidates.Count) 'todos os candidatos foram validados'
 Write-Output "PASS fase 2: $validated metadados validados em sublotes de até $ValidationBatchSize; elegíveis=$eligible"
-Write-Output "PASS amostra real: $CaptureRoot"
+Write-Output "PASS amostra: $CaptureRoot"
+if ($cleanupSample) { Remove-Item -LiteralPath $CaptureRoot -Recurse -Force -ErrorAction SilentlyContinue }

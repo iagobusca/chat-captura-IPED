@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Prototype-only tests for SPEC_CAPTURA_HTML_POR_MENSAGEM.md."""
-import base64, hashlib, json, re, unittest
+import base64, hashlib, json, re, sys, unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
-SAMPLE = Path(r'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\Exportados\arquivos\F\A\FAF3132301A706022E1C3EAD6AE0800B.html')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_env_paths import find_sample_html
+
+SAMPLE = find_sample_html()
 PLUGIN_VIEWER = Path(__file__).resolve().parents[1] / 'src' / 'iped' / 'viewers' / 'HtmlLinkViewer.java'
 
 class Scan(HTMLParser):

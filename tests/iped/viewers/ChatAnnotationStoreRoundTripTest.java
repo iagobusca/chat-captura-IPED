@@ -21,7 +21,7 @@ public final class ChatAnnotationStoreRoundTripTest {
 
     private static void testNotesAndLinksRoundTrip() throws Exception {
         String[] samples = new String[] {
-                "C:\\Users\\tom\\notas.txt",
+                "C:\\Users\\perito\\notas.txt",
                 "quoted \"text\" and \\\\backslash\\\\",
                 "Linha 1\nLinha 2\tTab\rCR",
                 "literal \\n and \\t and \\\"quote\\\"",

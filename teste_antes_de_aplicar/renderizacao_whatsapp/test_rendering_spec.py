@@ -12,11 +12,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(REPO / "teste_antes_de_aplicar"))
 import prototype_renderer as proto
+from test_env_paths import find_iped_jjs, find_sample_capture, find_sample_html
 
-SOURCE = Path(r"C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\Exportados\arquivos\F\A\FAF3132301A706022E1C3EAD6AE0800B.html")
-CAPTURE = Path(r"C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\teste_chat_extraido\captura-chat-20261107-134436")
-JJS = Path(r"C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\jre\bin\jjs.exe")
+SOURCE = find_sample_html()
+CAPTURE = find_sample_capture()
+JJS = find_iped_jjs()
 
 
 def run_webview(page: Path, report: Path, image: Path | None = None, scripts: bool = False) -> dict:

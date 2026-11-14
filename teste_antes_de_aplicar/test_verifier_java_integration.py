@@ -7,8 +7,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JAVA = Path(r"C:\Program Files\Eclipse Adoptium\jdk-8.0.512.9-hotspot\bin\java.exe")
-JAVA11 = Path(r"C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\java.exe")
+import sys as _sys
+if str(ROOT / "teste_antes_de_aplicar") not in _sys.path:
+    _sys.path.insert(0, str(ROOT / "teste_antes_de_aplicar"))
+from test_env_paths import find_jdk_tool
+JAVA = find_jdk_tool("javac.exe", (8,), ("JAVA8_HOME",)).with_name("java.exe")
+JAVA11 = find_jdk_tool("javac.exe", (26, 25, 24, 23, 22, 21, 17, 11), ("JAVA26_HOME", "JAVA21_HOME", "JAVA11_HOME")).with_name("java.exe")
 CLASSES = ROOT / "tmp" / "verifier-html-v1"
 PLUGIN_TEST_CLASSES = ROOT / "tmp" / "plugin-integrity-tests"
 VERIFIER_JAR = ROOT / "verificador-integridade" / "integridade-verifier.jar"

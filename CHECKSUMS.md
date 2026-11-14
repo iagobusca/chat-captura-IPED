@@ -253,14 +253,14 @@ Este é o pacote anterior à correção 2.4.1-beta; o pacote atual e seu JAR pri
 
 ```powershell
 Get-FileHash -Algorithm SHA256 `
-  'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\plugins\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
+  '.\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
 ```
 
 E o instalado:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 `
-  'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\lib\iped-viewers-impl-4.3.1.jar'
+  '<pasta-do-iped>\lib\iped-viewers-impl-4.3.1.jar'
 ```
 
 Os dois hashes devem ser iguais.

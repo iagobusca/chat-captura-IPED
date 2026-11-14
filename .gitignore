@@ -23,8 +23,10 @@ __pycache__/
 /build/
 /release-assets/
 
-# Installer artifacts (large binaries; publish via Gitea releases)
+# Installer artifacts and versioned verifier archives (publish via Gitea releases)
 instalador-*.zip
+/verificador-integridade/integridade-verifier-[0-9]*.exe
+/verificador-integridade/integridade-verifier-[0-9]*.jar
 /verificador-integridade/build/
 /verificador-integridade/build-native/
 /verificador-integridade/build-single-exe/

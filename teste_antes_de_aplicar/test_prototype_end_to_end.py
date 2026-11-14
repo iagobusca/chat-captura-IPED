@@ -1,8 +1,10 @@
-import json,tempfile,unittest
+import json, sys, tempfile, unittest
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from html_capture_prototype import candidates,make_capture,write_capture,verify_capture
+from test_env_paths import find_sample_html
 
-SAMPLE=Path(r'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\Exportados\arquivos\F\A\FAF3132301A706022E1C3EAD6AE0800B.html')
+SAMPLE = find_sample_html()
 FIXTURE='''<html><body><div id="topbar">excluded</div><div id="100" class="linha incoming"><span class="name">Ana</span><span class="time">10:00</span><p>primeira</p><img src="data:image/png;base64,YWJj"></div><div id="date" class="date">hoje</div><div id="101" class="linha outgoing"><p>segunda &amp; texto</p><a href="javascript:evil()">unsafe</a></div><div id="102" class="linha incoming">fora do range</div></body></html>'''
 
 class EndToEnd(unittest.TestCase):

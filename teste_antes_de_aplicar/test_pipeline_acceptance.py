@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Executable prototype acceptance checks; deliberately independent of product code."""
-import base64, hashlib, html, json, re, tempfile, unittest
+import base64, hashlib, html, json, re, sys, tempfile, unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
-SAMPLE=Path(r'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\Exportados\arquivos\F\A\FAF3132301A706022E1C3EAD6AE0800B.html')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_env_paths import find_sample_html
+
+SAMPLE = find_sample_html()
 ALLOWED={'html','head','meta','title','style','body','div','span','p','br','a','img','audio','video','source','strong','b','i'}
 VOID={'meta','br','img','source'}
 

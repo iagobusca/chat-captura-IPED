@@ -1,14 +1,14 @@
-param(
-    [string]$IpedRoot,
-    [string]$JavaFxLib = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\javafx-sdk-26.0.1\lib',
-    [string]$JdkHome = 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot'
+﻿param(
+    [string]$IpedRoot = '',
+    [string]$JavaFxLib = '',
+    [string]$JdkHome = ''
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (!$IpedRoot) {
-    $workspaceRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
-    $IpedRoot = Join-Path $workspaceRoot 'iped-4.3.1'
-}
+. (Join-Path $PSScriptRoot 'resolve_test_env.ps1')
+$IpedRoot = Resolve-WorkspaceIpedRoot -Explicit $IpedRoot -RepoRoot $repoRoot
+$JavaFxLib = Resolve-JavaFxLib -Explicit $JavaFxLib -RepoRoot $repoRoot -IpedRoot $IpedRoot
+$JdkHome = Resolve-JdkHome -Explicit $JdkHome -EnvNames @('JAVA26_HOME', 'JAVA21_HOME', 'JAVA11_HOME', 'JAVA_HOME') -MajorVersions @(26, 25, 24, 23, 22, 21, 17, 11) -RequiredTool 'bin\javac.exe'
 $pluginJar = Join-Path $repoRoot 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
 $javac = Join-Path $JdkHome 'bin\javac.exe'
 $java = Join-Path $JdkHome 'bin\java.exe'

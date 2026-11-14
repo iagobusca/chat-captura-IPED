@@ -1,13 +1,62 @@
 ﻿param(
-    [string]$Java8 = 'C:\Program Files\Eclipse Adoptium\jdk-8.0.512.9-hotspot',
-    [string]$Java11 = 'C:\Program Files\Eclipse Adoptium\jdk-11.0.32.101-hotspot',
-    [string]$JdkWithJpackage = 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot',
+    [string]$Java8 = '',
+    [string]$Java11 = '',
+    [string]$JdkWithJpackage = '',
     [string]$JsonJar = '',
     [string]$Output = '',
     [switch]$OfflineBuild
 )
 $ErrorActionPreference = 'Stop'
 $Base = $PSScriptRoot
+
+function Get-JavaMajorFromHome {
+    param([string]$HomeDir)
+    $releaseFile = Join-Path $HomeDir 'release'
+    if (Test-Path -LiteralPath $releaseFile) {
+        $line = Get-Content -LiteralPath $releaseFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^JAVA_VERSION=' } | Select-Object -First 1
+        if ($line -match 'JAVA_VERSION="1\.(\d+)') { return [int]$Matches[1] }
+        if ($line -match 'JAVA_VERSION="(\d+)') { return [int]$Matches[1] }
+    }
+    return 0
+}
+
+function Resolve-JdkHome {
+    param([string]$Explicit, [string[]]$EnvNames, [int[]]$Majors, [string]$Tool)
+    if ($Explicit) {
+        if (!(Test-Path -LiteralPath (Join-Path $Explicit $Tool))) { throw "JDK invalido ($Tool ausente): $Explicit" }
+        return $Explicit
+    }
+    foreach ($name in ($EnvNames | Where-Object { $_ -ne 'JAVA_HOME' })) {
+        $val = [Environment]::GetEnvironmentVariable($name)
+        if ($val -and (Test-Path -LiteralPath (Join-Path $val $Tool)) -and (Test-Path -LiteralPath (Join-Path $val 'bin\javac.exe')) -and ($Majors -contains (Get-JavaMajorFromHome $val))) { return $val }
+    }
+    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Programs'), (Join-Path $env:USERPROFILE '.jdks')) |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    $vendors = @('Eclipse Adoptium', 'Java', 'Microsoft', 'Zulu', 'BellSoft', 'Amazon Corretto', 'Temurin', '')
+    $found = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $roots) {
+        foreach ($v in $vendors) {
+            $dir = if ($v) { Join-Path $r $v } else { $r }
+            if (!(Test-Path -LiteralPath $dir)) { continue }
+            foreach ($child in (Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue)) {
+                if (!(Test-Path -LiteralPath (Join-Path $child.FullName $Tool)) -or !(Test-Path -LiteralPath (Join-Path $child.FullName 'bin\javac.exe'))) { continue }
+                $major = Get-JavaMajorFromHome $child.FullName
+                if ($Majors -contains $major) {
+                    $found.Add([pscustomobject]@{ Rank = [Array]::IndexOf($Majors, $major); Name = $child.Name; Path = $child.FullName })
+                }
+            }
+        }
+    }
+    $pick = $found | Sort-Object Rank, @{ Expression = 'Name'; Descending = $true } | Select-Object -First 1
+    if ($pick) { return $pick.Path }
+    if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME $Tool)) -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\javac.exe')) -and ($Majors -contains (Get-JavaMajorFromHome $env:JAVA_HOME))) { return $env:JAVA_HOME }
+    throw "JDK compativel nao encontrado dinamicamente (majors=$($Majors -join ','); tool=$Tool)."
+}
+
+$Java8 = Resolve-JdkHome -Explicit $Java8 -EnvNames @('JAVA8_HOME', 'JAVA_HOME') -Majors @(8) -Tool 'bin\javac.exe'
+$Java11 = Resolve-JdkHome -Explicit $Java11 -EnvNames @('JAVA11_HOME', 'JAVA_HOME') -Majors @(11) -Tool 'bin\jlink.exe'
+$JdkWithJpackage = Resolve-JdkHome -Explicit $JdkWithJpackage -EnvNames @('JAVA26_HOME', 'JAVA21_HOME', 'JAVA17_HOME', 'JAVA_HOME') -Majors @(26, 25, 24, 23, 22, 21, 17, 16, 15, 14) -Tool 'bin\jpackage.exe'
+
 if (!$JsonJar) { $JsonJar = Join-Path $Base 'dependencies\json-20260719.jar' }
 if (!$Output) { $Output = Join-Path $Base 'dist' }
 $Work = Join-Path $Base 'build-single-exe\1.4.2'

@@ -1,7 +1,8 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'resolve_test_env.ps1')
 $verifier = Join-Path $repoRoot 'verificador-integridade\integridade-verifier.jar'
-$jdkHome = 'C:\Program Files\Eclipse Adoptium\jdk-8.0.512.9-hotspot'
+$jdkHome = Resolve-JdkHome -EnvNames @('JAVA8_HOME', 'JAVA_HOME') -MajorVersions @(8) -RequiredTool 'bin\javac.exe'
 $out = Join-Path $repoRoot 'tmp\verifier-embedded-image-compatibility'
 $javac = Join-Path $jdkHome 'bin\javac.exe'
 $java = Join-Path $jdkHome 'bin\java.exe'
