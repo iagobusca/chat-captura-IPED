@@ -7,11 +7,14 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 
 ## v2.6.8-beta / Verificador 1.4.3
 
+- **Tag**: [v2.6.8-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.8-beta) (Pre-Release)
+
 ### Downloads
 
-- `integridade-verifier.exe` 1.4.3 (`77.867.588` bytes | SHA-256: `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581`)
-- `integridade-verifier.jar` 1.4.3 (`154.638` bytes | SHA-256: `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D`)
-- `iped-viewers-impl-4.3.1-2.6.8-beta.jar` (`1.506.195` bytes | SHA-256: `8BD552C41AFD9A3D63A57F06A21FB0AD4A8ECA016FAD1F3A3CADABF3272CFFB3`)
+- [instalador-chat-captura-IPED-2.6.8-beta-verificador-1.4.3.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8-beta/instalador-chat-captura-IPED-2.6.8-beta-verificador-1.4.3.zip) (`96.948.771` bytes | SHA-256: `5593E3EA0701C39806A976273A4C14750BBFF8C204DECD50B8C39DEBAFB9CE81`)
+- [integridade-verifier-1.4.3.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8-beta/integridade-verifier-1.4.3.exe) (`77.867.588` bytes | SHA-256: `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581`)
+- [integridade-verifier-1.4.3.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8-beta/integridade-verifier-1.4.3.jar) (`154.638` bytes | SHA-256: `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D`)
+- [iped-viewers-impl-4.3.1-2.6.8-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8-beta/iped-viewers-impl-4.3.1-2.6.8-beta.jar) (`1.506.195` bytes | SHA-256: `8BD552C41AFD9A3D63A57F06A21FB0AD4A8ECA016FAD1F3A3CADABF3272CFFB3`)
 
 ### Corrigido e Melhorado
 
@@ -30,9 +33,9 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 ### Downloads
 
 - [instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip) (`96.949.777` bytes | SHA-256: `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB`)
-- [integridade-verifier-1.4.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.exe) (`77.867.588` bytes | SHA-256: `9E3C237FADC01811BB96C4B0D62EDEEDF86DF428EBBE7273F340C93E26815876`)
-- [integridade-verifier-1.4.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.jar) (`154.638` bytes | SHA-256: `D4454E0F344CB6BF5E16729545A9404C455C7AB45382DA1AC40AE7ABCEB022EA`)
-- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.506.119` bytes | SHA-256: `F6E3474CCD1F5ED2342FDB61AD7A688393B6FC41948BD4640ABCDA0AE155C2AE`)
+- [integridade-verifier-1.4.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.exe) (`77.868.100` bytes | SHA-256: `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105`)
+- [integridade-verifier-1.4.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.jar) (`155.216` bytes | SHA-256: `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475`)
+- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.516.022` bytes | SHA-256: `8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB`)
 
 ### Segurança e Corrigido (`F-01..F-10`)
 
