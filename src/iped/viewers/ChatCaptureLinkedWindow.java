@@ -62,7 +62,7 @@ class ChatCaptureLinkedWindow extends JDialog {
         split.setContinuousLayout(true);
 
         JPanel bottom = new JPanel(new BorderLayout(4, 4));
-        bottom.add(new JLabel(Messages.getString("ChatCaptureLink.WindowHint")), BorderLayout.WEST); //$NON-NLS-1$
+        bottom.add(ChatCapturePanel.plainLabel(Messages.getString("ChatCaptureLink.WindowHint")), BorderLayout.WEST); //$NON-NLS-1$
         JButton close = new JButton(Messages.getString("ChatNoteDialog.Close")); //$NON-NLS-1$
         JPanel closeRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         closeRow.add(close);

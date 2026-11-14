@@ -4,6 +4,42 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.7-beta] - 2026-11-14
+
+### Segurança e Corrigido
+
+- **Verificador `1.4.2` (`IntegrityVerifier` e launcher `.exe`)**:
+  - `F-01`: rejeição de `artifacts` vazio ou duplicado (case-insensitive), amarração de `contentRootHash` do último evento e verificação do inventário completo de `integridade.json` em `html-message-v1`.
+  - `F-02`: reprovação fail-closed em `verifyMessageCapture` para `captureRootHash` divergente e validação estrita de `historyStatus` no `--verify-only`.
+  - `F-03`: classificação correta de estados saudáveis de `html-message-v1` e reconciliação em `writeReports` (`isHealthyVerifierItemState`).
+  - `F-04`/`F-05`: `html.disable` em todos os `JLabel`/`JCheckBox` do verificador e bloqueio de comentários HTML, CDATA e instruções `<?` em `validateRenderedCaptureHtml`.
+  - `F-06`/`F-10`: launcher C# com exclusão segura sem seguir junctions/reparse points, janela de tolerância de 2 min na limpeza de diretórios sem lock e autoteste de entrada ZIP de 0 bytes no `--self-test`.
+  - `F-07`/`F-08`/`F-09`: comparação pública com normalização de chaves e vínculo `(domId, key, messageHash)`, rejeição de `integridade.json` com `schemaVersion < 2` em `html-message-v1` e carregamento exclusivo de ícone pelo classpath.
+- **Plugin `2.6.7-beta` (`HtmlLinkViewer` / `VerifierIntegrity` / Swing / instalador)**:
+  - `F-04`: `html.disable` nos diálogos e visualizadores (`HtmlLinkViewer`, `ChatNoteDialog`, `ChatPreflightDialog`, `ChatCaptureLinkedWindow`).
+  - `F-08`: comparação de `migration.json` via `CaptureIntegrity.canonicalJson()` (independente da ordem de chaves JSON).
+  - `F-09`: escape HTML em `VerifierIntegrity.showAlertIfNeeded` para nomes de arquivos e hashes exibidos no `JTextPane`.
+  - Incremento de versão para `2.6.7-beta` e allowlist exclusiva de `VerifierIntegrity` atualizada para os binários oficiais do Verificador `1.4.2` (`08877EFF...` / `4859980D...`), rejeitando `<= 1.4.1`.
+
+---
+
+## [2.6.6-beta] - 2026-11-13
+
+### Segurança e Corrigido
+
+- **Verificador `1.4.1` (`IntegrityVerifier` e launcher `.exe`)**:
+  - `V-01`: detecção e reprovação fail-closed de arquivos extras em capturas legadas (não `html-message-v1`) na verificação e no modo `--verify-only`.
+  - `V-02`: bloqueio de diretório raiz quando for NTFS junction ou link simbólico em CLI, GUI e `discover()` (`LinkOption.NOFOLLOW_LINKS` / `isLinkOrReparse`).
+  - `V-03`: cancelamento da busca inicial (`CancellationException`) passa a encerrar silenciosamente com código `0`.
+  - `V-04`: relatório `integridade.html` passa a emitir `<meta http-equiv="Content-Security-Policy">` com hash SHA-256 (`sha256Base64`), listeners DOM (`addEventListener`) sem `onclick=` inline, escape de apóstrofo (`&#39;`) e escape JSON seguro.
+- **Plugin `2.6.6-beta` (`HtmlLinkViewer` / `VerifierIntegrity` / instalador)**:
+  - `P-01`: validação contra `null`/vazio em `AttachmentHandler.open` e escape seguro em `showAttachNotFound`.
+  - `P-02`/`P-03`: validação de caminhos e payload em `isSafeCoordinatesRelativePath` e `validateWhatsAppCoordinatesData` antes da gravação em `regenerateWhatsAppHtmlFromSavedCoordinates` e `writeWhatsAppHtml`; endurecimento JS (`safeRelPath`, `safeLinkedUrl`, `rel="noopener noreferrer"`), remoção de double-escaping em `excerptHtml`, substituição de `onclick=` inline (uso de `data-avatar` e delegação em `#menu a[data-section]`) e política `Content-Security-Policy` por hash SHA-256 (`sha256Base64`) em `whatsapp.html`, `index.html`, `relatorio.htm` raiz e `relatorio.htm` das capturas.
+  - `P-04`: guarda contra `null` e serialização via `js(hash)` em `setSelected`.
+  - Incremento de versão para `2.6.6-beta` e atualização da allowlist exclusiva de `VerifierIntegrity` para aceitar somente os binários oficiais do Verificador `1.4.1` (`CC295881...` / `A7283005...`), rejeitando `1.4.0` e `<= 1.3.9`.
+
+---
+
 ## [2.6.5-beta] - 2026-11-13
 
 ### Melhorado e Corrigido

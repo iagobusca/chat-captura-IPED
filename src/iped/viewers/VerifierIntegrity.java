@@ -18,8 +18,8 @@ public final class VerifierIntegrity {
     private static final String JAR_NAME = "integridade-verifier.jar";
     private static final String EXE_NAME = "integridade-verifier.exe";
 
-    private static final Set<String> VALID_JAR_HASHES = Set.of("9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5");
-    private static final Set<String> VALID_EXE_HASHES = Set.of("11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809");
+    private static final Set<String> VALID_JAR_HASHES = Set.of("08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475");
+    private static final Set<String> VALID_EXE_HASHES = Set.of("4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105");
     private static volatile boolean alertShown = false;
 
     /** Copia os arquivos do verificador (jar/exe) para a pasta de captura, se encontrados. */
@@ -232,6 +232,12 @@ public final class VerifierIntegrity {
         }
     }
 
+    static String htmlEscape(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
     private static boolean isValid(String name, String hash) {
         if (JAR_NAME.equalsIgnoreCase(name)) return VALID_JAR_HASHES.contains(hash.toUpperCase());
         if (EXE_NAME.equalsIgnoreCase(name)) return VALID_EXE_HASHES.contains(hash.toUpperCase());
@@ -266,8 +272,9 @@ public final class VerifierIntegrity {
                     valid = isValid(f.getFileName().toString(), hash);
                 } catch (IOException ignored) {
                 }
-                sb.append("<br>- ").append(f.getFileName()).append(": ")
-                        .append(valid ? "VALIDO" : "INVALIDO/DESCONHECIDO").append(" (").append(hash).append(")");
+                sb.append("<br>- ").append(htmlEscape(String.valueOf(f.getFileName()))).append(": ")
+                        .append(valid ? "VALIDO" : "INVALIDO/DESCONHECIDO").append(" (")
+                        .append(htmlEscape(hash)).append(")");
             }
         }
         sb.append("</body></html>");

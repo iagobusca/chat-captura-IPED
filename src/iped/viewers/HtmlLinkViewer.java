@@ -147,7 +147,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.5-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.7-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1394,7 +1394,7 @@ private void clearChatCaptureMarks() {
                 String normalizedFolder = job.folder == null ? "" : job.folder.replace('\\', '/'); //$NON-NLS-1$
                 int separator = normalizedFolder.lastIndexOf('/');
                 String label = separator >= 0 ? normalizedFolder.substring(separator + 1) : normalizedFolder;
-                JCheckBox check = new JCheckBox(label, allFuture[0] || selectedIds.contains(job.folder));
+                JCheckBox check = ChatCapturePanel.plainCheckBox(label, allFuture[0] || selectedIds.contains(job.folder));
                 check.setEnabled(job.valid);
                 check.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
                 checks.add(check); list.add(check);
@@ -1402,7 +1402,7 @@ private void clearChatCaptureMarks() {
                 // The selection page needs only light descriptors. Drop full inventory JSON now.
                 job.expectedArtifacts = null; job.captureFingerprint = null; job.artifactGenerators = null;
             }
-            JLabel count = new JLabel("Exibindo " + (start + 1) + "–" + (start + jobs.size()) + " de " + folders.size() + " capturas");
+            JLabel count = ChatCapturePanel.plainLabel("Exibindo " + (start + 1) + "–" + (start + jobs.size()) + " de " + folders.size() + " capturas");
             JButton bulk = new JButton(allFuture[0] ? "Desmarcar todos" : "Marcar todos");
             bulk.addActionListener(e -> { allFuture[0] = !allFuture[0]; selectedIds.clear(); for(int i=0;i<checks.size();i++) if(checks.get(i).isEnabled())checks.get(i).setSelected(allFuture[0]); bulk.setText(allFuture[0] ? "Desmarcar todos" : "Marcar todos"); });
             for (int i=0;i<checks.size();i++) { final String id=jobs.get(i).folder; checks.get(i).addActionListener(e -> { boolean checked=((JCheckBox)e.getSource()).isSelected();if(allFuture[0]){for(String existing:folders)if(!existing.equals(id))selectedIds.add(existing);allFuture[0]=false;bulk.setText("Marcar todos");}if(checked)selectedIds.add(id);else selectedIds.remove(id); }); }
@@ -1478,19 +1478,19 @@ private void clearChatCaptureMarks() {
             hasSelectableLegacy |= job.valid && job.legacyCapture;
             hasSelectableNew |= job.valid && job.htmlMessageCapture;
         }
-        recaptureAnnotationsToggle = new JCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), annotationsEnabled); //$NON-NLS-1$
+        recaptureAnnotationsToggle = ChatCapturePanel.plainCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), annotationsEnabled); //$NON-NLS-1$
         recaptureAnnotationsToggle.setEnabled(!allLegacy);
         if (allLegacy) {
             recaptureAnnotationsToggle.setToolTipText(Messages.getString("ChatCapturePanel.LegacyAnnotationsLocked")); //$NON-NLS-1$
         }
-        recaptureLegacyMigrationToggle = new JCheckBox(
+        recaptureLegacyMigrationToggle = ChatCapturePanel.plainCheckBox(
                 Messages.getString("ChatCapturePanel.MigrateLegacyToHtml"), migrateLegacyToHtml); //$NON-NLS-1$
         recaptureLegacyMigrationToggle.setToolTipText(Messages.getString("ChatCapturePanel.MigrateLegacyToHtmlTip")); //$NON-NLS-1$
         recaptureLegacyMigrationToggle.setEnabled(hasSelectableLegacy);
         final boolean legacyAvailable = hasSelectableLegacy;
         final boolean newAvailable = hasSelectableNew;
         boolean resetAvailable = newAvailable || (legacyAvailable && migrateLegacyToHtml);
-        recaptureLegacyResetToggle = new JCheckBox(
+        recaptureLegacyResetToggle = ChatCapturePanel.plainCheckBox(
                 Messages.getString("ChatCapturePanel.ResetLegacyRecords"), resetAvailable && resetLegacyRecords); //$NON-NLS-1$
         recaptureLegacyResetToggle.setToolTipText(resetAvailable || legacyAvailable
                 ? Messages.getString("ChatCapturePanel.ResetLegacyRecordsTip") //$NON-NLS-1$
@@ -1701,7 +1701,7 @@ private void clearChatCaptureMarks() {
         final javax.swing.SwingWorker<T, Integer>[] holder = new javax.swing.SwingWorker[1];
         Runnable show = () -> {
             javax.swing.JDialog dialog = new javax.swing.JDialog((java.awt.Frame) null, title, true);
-            JLabel status = new JLabel("Procurando… 0 processados");
+            JLabel status = ChatCapturePanel.plainLabel("Procurando… 0 processados");
             JButton cancel = new JButton("Cancelar");
             JPanel content = new JPanel(new BorderLayout(8, 8));
             content.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 14, 12, 14));
@@ -2183,7 +2183,7 @@ private void clearChatCaptureMarks() {
                 throw new IOException("Registro de proveniência da migração ausente ou divergente."); //$NON-NLS-1$
             }
             JSONObject migrationFile = new JSONObject(CaptureIntegrity.readJsonUtf8Limited(migrationPath));
-            if (!migration.toString().equals(migrationFile.toString())) {
+            if (!CaptureIntegrity.canonicalJson(migration).equals(CaptureIntegrity.canonicalJson(migrationFile))) {
                 throw new IOException("O manifesto e o registro da migração não correspondem."); //$NON-NLS-1$
             }
             boolean annotationsPreserved = migration.optBoolean("legacyAnnotationsPreserved", false); //$NON-NLS-1$
@@ -2392,6 +2392,7 @@ private void clearChatCaptureMarks() {
         if (frames == null || frames.length() == 0) {
             return false;
         }
+        validateWhatsAppCoordinatesData(data);
         Path html = job.folderPath.resolve("whatsapp.html"); //$NON-NLS-1$
         Path temporary = uniqueSibling(html.resolveSibling("whatsapp.html.__migration_tmp")); //$NON-NLS-1$
         Path backup = uniqueSibling(job.folderPath.resolveSibling(job.folderPath.getFileName().toString() + ".__migration_html_backup")); //$NON-NLS-1$
@@ -5457,8 +5458,12 @@ Set<String> hashes = getCaptureBlockHashes(plan);
     }
 
     private void writeCaptureRootIndexHtml(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
+        String indexScript = captures.isEmpty() ? "" : buildCaptureRootIndexScript(); //$NON-NLS-1$
+        String scriptSrc = captures.isEmpty() ? "'none'" : "'sha256-" + sha256Base64(indexScript) + "'"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        String indexCsp = "default-src 'none'; style-src 'unsafe-inline'; script-src " + scriptSrc //$NON-NLS-1$
+                + "; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'"; //$NON-NLS-1$
         writeAtomicallyWithPrinter(outputRoot, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
-            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>&Iacute;ndice de Capturas</title>"); //$NON-NLS-1$
+            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"" + indexCsp + "\"><title>&Iacute;ndice de Capturas</title>"); //$NON-NLS-1$ //$NON-NLS-2$
             out.println("<style>body{margin:0;background:#f2efe9;color:#1f2a30;font-family:Arial,sans-serif}.hero{background:#102b35;color:#fff;padding:26px 34px}.hero h1{margin:0 0 8px;font-size:28px}.hero p{margin:4px 0;color:#d7e6ea}.hero .hash{display:inline-block;background:#06171d;color:#f7fbfd;border:1px solid #6fa9b8;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}.wrap{padding:24px 34px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.card{background:white;border:1px solid #d8d1c8;border-radius:10px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06)}.card h2{font-size:18px;margin:0 0 8px;overflow-wrap:normal;word-break:normal;hyphens:none}.meta{font-size:13px;color:#52646c;line-height:1.45}.hash{font-family:Consolas,monospace;font-size:11px;word-break:break-all;background:#f5f5f5;padding:8px;border-radius:6px}.btn{display:inline-block;margin:8px 6px 0 0;padding:8px 10px;background:#0b6b5d;color:white;text-decoration:none;border-radius:5px;font-size:13px}.btn.alt{background:#46545a}.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.hero-main{flex:1 1 320px}.hero-side{flex:0 1 320px;display:flex;flex-direction:column;gap:10px}.hero-side input[type=search]{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:6px;border:1px solid #6fa9b8;background:#06171d;color:#f7fbfd;font-size:13px}.hero-side input[type=search]::placeholder{color:#8fb0bb}.tgl{display:flex;align-items:center;gap:8px;font-size:13px;color:#d7e6ea;background:#06171d;border:1px solid #6fa9b8;border-radius:6px;padding:9px 11px;cursor:pointer}.tgl input{cursor:pointer}.noresult{display:none;margin:10px 0;font-size:13px;color:#52646c}.card.hidden{display:none}.empty{background:white;border:1px solid #ddd;padding:18px;border-radius:8px}</style>"); //$NON-NLS-1$
 out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&Iacute;ndice de Capturas de Chat</h1>"); //$NON-NLS-1$
             out.println("<p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p>"); //$NON-NLS-1$
@@ -5501,7 +5506,11 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
      * primeiro usando a chave cronologica ISO, que ordena lexicograficamente.
      */
     private String writeCaptureRootIndexScript() {
-        return "<script>(function(){var cards=Array.prototype.slice.call(document.querySelectorAll('.card'));"
+        return "<script>" + buildCaptureRootIndexScript() + "</script>"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private String buildCaptureRootIndexScript() {
+        return "(function(){var cards=Array.prototype.slice.call(document.querySelectorAll('.card'));"
                 + "var grid=document.getElementById('grid');var q=document.getElementById('q');"
                 + "var chrono=document.getElementById('chrono');var count=document.getElementById('count');"
                 + "var none=document.getElementById('noresult');"
@@ -5519,7 +5528,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 + "if(count)count.textContent=String(shown);if(none)none.style.display=shown?'none':'block';}"
                 + "if(q)q.addEventListener('input',applyFilter);"
                 + "if(chrono)chrono.addEventListener('change',function(){applyOrder();applyFilter();});"
-                + "applyOrder();applyFilter();})();</script>"; //$NON-NLS-1$
+                + "applyOrder();applyFilter();})();"; //$NON-NLS-1$
     }
 
     /**
@@ -5537,7 +5546,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
 
     private void writeCaptureRootReport(Path path, Path outputRoot, String rootHash, List<CaptureRootEntry> captures) throws IOException {
         writeAtomicallyWithPrinter(outputRoot, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
-            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>Relat&oacute;rio Geral de Capturas</title>"); //$NON-NLS-1$
+            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'\"><title>Relat&oacute;rio Geral de Capturas</title>"); //$NON-NLS-1$
             out.println("<style>body{font-family:Arial,sans-serif;color:#222;margin:24px}.columnHead{background:#c0c0c0;border:1px solid #777;text-align:left;padding:4px}.clrBkgrnd{background:#e8e8e8}.mono{font-family:Consolas,monospace;font-size:12px;word-break:break-all}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #ccc;padding:6px;vertical-align:top;font-size:13px}th{background:#ddd}.summary{border:1px solid #ccc;padding:12px;background:#fafafa}</style></head><body>"); //$NON-NLS-1$
             out.println("<table><tbody><tr><th class=\"columnHead\" colspan=\"1\" style=\"font-size:16px\">Relat&oacute;rio Geral de Capturas</th></tr><tr><td class=\"clrBkgrnd\"><span style=\"font-weight:bold\">Coment&aacute;rios: </span>&Iacute;ndice pai das capturas existentes na pasta raiz.</td></tr></tbody></table>"); //$NON-NLS-1$
             out.println("<div class=\"summary\"><p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p><p><b>Quantidade de capturas:</b> " + captures.size() + "</p><p><b>Hash geral da raiz:</b> <span class=\"mono\">" + html(rootHash) + "</span></p><p><a href=\"index.html\">Abrir index.html</a> &nbsp; <a href=\"capturas-index.json\">Abrir capturas-index.json</a></p></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -5769,16 +5778,18 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
     }
 
     private void writeInteractiveCaptureReport(Path captureDir, Path path, String status, List<CaptureFrame> frames, Map<String, ExportedFile> exported) throws IOException {
+        String reportScript = "function showSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});var el=document.getElementById(id);if(el)el.classList.add('active');document.querySelectorAll('#menu a[data-section]').forEach(function(a){a.classList.toggle('active-link',a.getAttribute('data-section')===id)});return false;}window.onload=function(){var menu=document.getElementById('menu');if(menu){menu.addEventListener('click',function(e){var link=e.target&&e.target.closest?e.target.closest('a[data-section]'):null;if(link){e.preventDefault();showSection(link.getAttribute('data-section'));}});}showSection('info');};"; //$NON-NLS-1$
+        String reportCsp = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; media-src 'self'; script-src 'sha256-" + sha256Base64(reportScript) + "'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'"; //$NON-NLS-1$
         writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
             out.println("<!DOCTYPE html>"); //$NON-NLS-1$
-            out.println("<html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>Relat&oacute;rio de Captura de Chat</title>"); //$NON-NLS-1$
+            out.println("<html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"" + reportCsp + "\"><title>Relat&oacute;rio de Captura de Chat</title>"); //$NON-NLS-1$ //$NON-NLS-2$
             out.println("<link rel=\"stylesheet\" type=\"text/css\" href=\"res/common.css\"><link rel=\"stylesheet\" type=\"text/css\" href=\"res/bookmarks.css\">"); //$NON-NLS-1$
             out.println("<style>body{margin:0;font-family:Arial,sans-serif;background:#fff;color:#222}#menu{position:fixed;left:0;top:0;bottom:0;width:280px;background:#263238;color:white;padding:16px;overflow:auto;box-sizing:border-box}#menu h1{font-size:18px;margin:0 0 14px}#menu h2{font-size:15px;margin:18px 0 8px;color:#d9f3ff}#menu a{color:white;display:block;padding:4px 0;text-decoration:none;cursor:pointer}.sub{padding-left:18px!important;color:#dce7ea!important}.active-link{font-weight:bold;color:#fff59d!important}#content{margin-left:310px;padding:24px}.section{display:none}.section.active{display:block}.report-page{background:white}.card{background:white;border:1px solid #ddd;padding:16px;margin-bottom:16px}.columnHead{background:#c0c0c0;border:1px solid #777;text-align:left;color:#000;padding:4px}.clrBkgrnd{background:#e8e8e8}.bkmkLblFiles{background:#c0c0c0;border:1px solid #777;font-weight:bold;margin-top:12px;padding:3px}.bkmkSeparator{height:8px;margin-top:8px}.bkmkValue{font-size:13px}.row{display:flex;width:100%;clear:both}.bkmkColLeft{display:inline-block;width:220px;box-sizing:border-box;padding:3px 5px;border-bottom:1px solid #fff;font-weight:normal}.bkmkColRight{display:inline-block;flex:1;box-sizing:border-box;padding:3px 5px;border-bottom:1px solid #eee;word-break:break-word}.labelBorderless{border-left:0;border-right:0}.thumb{width:auto;height:auto;max-width:112px;max-height:112px}.mono{font-family:Consolas,monospace;font-size:12px;word-break:break-all}.links a{margin-right:14px}.empty{color:#777;font-style:italic}.help-page{max-width:980px;line-height:1.45}.help-page h2{font-size:22px;margin:0 0 16px}.help-page h3{font-size:18px;margin:28px 0 10px}.help-page p{margin:10px 0 10px 28px}.help-page .item{margin-left:28px}.help-page .subitem{margin-left:56px}.help-page .cmd{font-family:Consolas,monospace;background:#f4f4f4;border:1px solid #ddd;padding:6px 8px;display:inline-block}</style>"); //$NON-NLS-1$
-            out.println("<script>function showSection(id){document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});var el=document.getElementById(id);if(el)el.classList.add('active');document.querySelectorAll('#menu a[data-section]').forEach(function(a){a.classList.toggle('active-link',a.getAttribute('data-section')===id)});return false;}window.onload=function(){showSection('info');};</script>"); //$NON-NLS-1$
+            out.println("<script>" + reportScript + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$
             out.println("</head><body><div id=\"menu\"><h1>Relat&oacute;rio de Captura</h1>"); //$NON-NLS-1$
-            out.println("<h2>Informa&ccedil;&otilde;es</h2><a href=\"#\" data-section=\"info\" onclick=\"return showSection('info')\">Informa&ccedil;&otilde;es</a><a href=\"#\" data-section=\"busca\" onclick=\"return showSection('busca')\">Busca por palavras-chave</a>"); //$NON-NLS-1$
-            out.println("<h2>Categorias</h2><a class=\"sub\" href=\"#\" data-section=\"captura\" onclick=\"return showSection('captura')\">Captura</a><a class=\"sub\" href=\"#\" data-section=\"audios\" onclick=\"return showSection('audios')\">&Aacute;udios</a><a class=\"sub\" href=\"#\" data-section=\"pdfs\" onclick=\"return showSection('pdfs')\">Documentos PDF</a><a class=\"sub\" href=\"#\" data-section=\"imagens\" onclick=\"return showSection('imagens')\">Outras Imagens</a><a class=\"sub\" href=\"#\" data-section=\"scans\" onclick=\"return showSection('scans')\">Poss&iacute;veis Digitaliza&ccedil;&otilde;es</a><a class=\"sub\" href=\"#\" data-section=\"videos\" onclick=\"return showSection('videos')\">V&iacute;deos</a><a class=\"sub\" href=\"#\" data-section=\"whatsapp\" onclick=\"return showSection('whatsapp')\">WhatsApp</a>"); //$NON-NLS-1$
-            out.println("<h2>Ajuda</h2><a class=\"sub\" href=\"#\" data-section=\"ajuda\" onclick=\"return showSection('ajuda')\">Relat&oacute;rio e Anexo</a></div><div id=\"content\">"); //$NON-NLS-1$
+            out.println("<h2>Informa&ccedil;&otilde;es</h2><a href=\"#\" data-section=\"info\">Informa&ccedil;&otilde;es</a><a href=\"#\" data-section=\"busca\">Busca por palavras-chave</a>"); //$NON-NLS-1$
+            out.println("<h2>Categorias</h2><a class=\"sub\" href=\"#\" data-section=\"captura\">Captura</a><a class=\"sub\" href=\"#\" data-section=\"audios\">&Aacute;udios</a><a class=\"sub\" href=\"#\" data-section=\"pdfs\">Documentos PDF</a><a class=\"sub\" href=\"#\" data-section=\"imagens\">Outras Imagens</a><a class=\"sub\" href=\"#\" data-section=\"scans\">Poss&iacute;veis Digitaliza&ccedil;&otilde;es</a><a class=\"sub\" href=\"#\" data-section=\"videos\">V&iacute;deos</a><a class=\"sub\" href=\"#\" data-section=\"whatsapp\">WhatsApp</a>"); //$NON-NLS-1$
+            out.println("<h2>Ajuda</h2><a class=\"sub\" href=\"#\" data-section=\"ajuda\">Relat&oacute;rio e Anexo</a></div><div id=\"content\">"); //$NON-NLS-1$
             out.println("<div class=\"section\" id=\"info\"><div class=\"card\"><h2>Informa&ccedil;&otilde;es</h2><p><b>Status:</b> " + html(status) + "</p><p><b>Frames capturados:</b> " + frames.size() + "</p><p><b>Arquivos exportados:</b> " + exported.size() + "</p><p class=\"links\"><a href=\"whatsapp.html\">whatsapp.html</a><a href=\"whatsapp-coordinates.json\">whatsapp-coordinates.json</a><a href=\"texto.txt\">texto.txt</a><a href=\"hashes.txt\">hashes.txt</a><a href=\"Lista de Arquivos.csv\">Lista de Arquivos.csv</a><a href=\"manifest.json\">manifest.json</a></p></div></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             out.println("<div class=\"section\" id=\"busca\"><div class=\"card\"><h2>Busca por palavras-chave</h2><p>Use a busca do navegador neste relat&oacute;rio ou consulte os arquivos exportados na lista CSV.</p></div></div>"); //$NON-NLS-1$
             writeReportFileSection(out, "captura", "Captura", exported, "capture"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -6680,40 +6691,149 @@ out.append("{\n"); //$NON-NLS-1$
         return encoded;
     }
 
+    private static String sha256Base64(String content) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
+            return Base64.getEncoder().encodeToString(md.digest(content.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e); //$NON-NLS-1$
+        }
+    }
+
+    static boolean isSafeCoordinatesRelativePath(String value, boolean singleSegment) {
+        if (value == null) {
+            return false;
+        }
+        String s = value.trim();
+        if (s.isEmpty() || s.length() > 4096 || s.indexOf(':') >= 0
+                || s.startsWith("/") || s.startsWith("\\") || s.contains("\\") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                || s.contains("//")) { //$NON-NLS-1$
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch < 0x20 || ch == 0x7F) {
+                return false;
+            }
+        }
+        String[] parts = s.split("/", -1); //$NON-NLS-1$
+        if (singleSegment && parts.length != 1) {
+            return false;
+        }
+        for (String part : parts) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) { //$NON-NLS-1$ //$NON-NLS-2$
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void validateOptionalCoordinatesPath(JSONObject obj, String key, boolean singleSegment) throws IOException {
+        Object raw = obj.opt(key);
+        if (raw == null || raw == JSONObject.NULL) {
+            return;
+        }
+        if (!(raw instanceof String)) {
+            throw new IOException("Coordenadas legadas contêm caminho inválido ou esquema não permitido."); //$NON-NLS-1$
+        }
+        String value = ((String) raw).trim();
+        if (!value.isEmpty() && !isSafeCoordinatesRelativePath(value, singleSegment)) {
+            throw new IOException("Coordenadas legadas contêm caminho inválido ou esquema não permitido."); //$NON-NLS-1$
+        }
+    }
+
+    static void validateWhatsAppCoordinatesData(JSONObject data) throws IOException {
+        if (data == null) {
+            return;
+        }
+        JSONArray frames = data.optJSONArray("frames"); //$NON-NLS-1$
+        if (frames != null) {
+            for (int i = 0; i < frames.length(); i++) {
+                JSONObject frame = frames.optJSONObject(i);
+                if (frame == null) {
+                    continue;
+                }
+                validateOptionalCoordinatesPath(frame, "image", false); //$NON-NLS-1$
+                JSONArray blocks = frame.optJSONArray("blocks"); //$NON-NLS-1$
+                if (blocks != null) {
+                    for (int j = 0; j < blocks.length(); j++) {
+                        JSONObject block = blocks.optJSONObject(j);
+                        if (block != null) {
+                            validateOptionalCoordinatesPath(block, "file", false); //$NON-NLS-1$
+                        }
+                    }
+                }
+            }
+        }
+        JSONObject annotations = data.optJSONObject("annotations"); //$NON-NLS-1$
+        JSONArray items = annotations == null ? null : annotations.optJSONArray("items"); //$NON-NLS-1$
+        if (items != null) {
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                JSONArray links = item == null ? null : item.optJSONArray("links"); //$NON-NLS-1$
+                if (links == null) {
+                    continue;
+                }
+                for (int k = 0; k < links.length(); k++) {
+                    JSONObject link = links.optJSONObject(k);
+                    if (link == null) {
+                        continue;
+                    }
+                    validateOptionalCoordinatesPath(link, "captureFolder", false); //$NON-NLS-1$
+                    validateOptionalCoordinatesPath(link, "chatRefId", true); //$NON-NLS-1$
+                    validateOptionalCoordinatesPath(link, "excerptFile", false); //$NON-NLS-1$
+                    JSONArray linkedFrames = link.optJSONArray("frames"); //$NON-NLS-1$
+                    if (linkedFrames != null) {
+                        for (int m = 0; m < linkedFrames.length(); m++) {
+                            Object fRaw = linkedFrames.opt(m);
+                            if (fRaw == null || fRaw == JSONObject.NULL) {
+                                continue;
+                            }
+                            if (!(fRaw instanceof String)
+                                    || (!((String) fRaw).trim().isEmpty() && !isSafeCoordinatesRelativePath((String) fRaw, false))) {
+                                throw new IOException("Coordenadas legadas contêm caminho inválido ou esquema não permitido."); //$NON-NLS-1$
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private String buildWhatsAppMainScript() {
+        return "var DATA=JSON.parse(document.getElementById('coords').textContent);var ANN=(DATA.annotations&&DATA.annotations.enabled)?DATA.annotations:null;var ANN_BY_MSG={};(ANN&&ANN.items||[]).forEach(function(a){ANN_BY_MSG[a.messageId]=a;});var chat=document.getElementById('chat'),side=document.getElementById('side'),modal=document.getElementById('modal'),modalCard=document.getElementById('modalCard');var AVATAR=chat?String(chat.getAttribute('data-avatar')||''):'';function esc(s){return String(s||'').replace(/[&<>\\\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\"'\":'&#39;'}[c];});}function safeRelPath(p){var s=String(p||'').trim().replace(/\\\\/g,'/');if(!s||s.length>4096||s.indexOf(':')>=0||s.charAt(0)==='/'||s.indexOf('//')===0||/[\\x00-\\x1f\\x7f]/.test(s))return '';var parts=s.split('/');for(var i=0;i<parts.length;i++){if(!parts[i]||parts[i]==='.'||parts[i]==='..')return '';}return s;}function safeLinkedUrl(p){var s=String(p||'').trim();if(s.indexOf('../')!==0)return '';var rest=safeRelPath(s.substring(3));return rest?('../'+rest):'';}function pct(v,total){return total?((v*100/total)+'%'):'0%';}function isImageFile(p){return /\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(p||'').split('?')[0]);}function itemTitle(b){if(b.type==='date')return 'Data';if(b.type==='audio')return 'Audio';if(b.type==='video')return 'Video';if(b.type==='image'||isImageFile(b.file))return 'Imagem';if(b.type==='file')return 'Arquivo';return 'Mensagem';}function openSide(html){side.innerHTML=html;side.classList.add('open');loadExtras(side);}function closeSide(){side.classList.remove('open');}function copyText(){var t=document.getElementById('copyText');if(!t)return;t.select();document.execCommand('copy');}function showText(b){openSide('<h2>'+itemTitle(b)+'</h2><textarea id=\"copyText\">'+esc(b.text||'')+'</textarea><br><button class=\"btn js-copy-text\" type=\"button\">Copiar</button><button class=\"btn secondary js-close-side\" type=\"button\">Fechar</button>');}function showFile(b){var f=safeRelPath(b.file);if(!f){showText(b);return;}openSide('<h2>'+itemTitle(b)+'</h2><p class=\"muted\">'+esc(b.text||f)+'</p><a class=\"btn\" href=\"'+esc(f)+'\" download>Baixar</a><a class=\"btn secondary\" href=\"'+esc(f)+'\" target=\"_blank\" rel=\"noopener noreferrer\">Abrir</a><button class=\"btn secondary js-close-side\" type=\"button\">Fechar</button>');}function closeModalNow(){modal.querySelectorAll('audio,video').forEach(function(m){try{m.pause();m.removeAttribute('src');m.load();}catch(e){}});modalCard.innerHTML='';modal.classList.remove('open');}function openModal(html){closeModalNow();modalCard.innerHTML=html+'<br><button class=\"btn secondary js-close-modal\" type=\"button\">Fechar</button>';modal.classList.add('open');}function closeModal(e){if(e.target===modal)closeModalNow();}modal.addEventListener('click',function(e){closeModal(e);});function showAnnotation(a){openSide(renderAnnotation(a));}var ANN_CURRENT=null;function showAnnotationMenu(a){ANN_CURRENT=a;var links=a.links||[];var opts='';if(a.note)opts+='<button class=\"an-opt\" data-kind=\"note\">📝 Ver nota do analista</button>';links.forEach(function(l,i){opts+='<button class=\"an-opt\" data-kind=\"chat\" data-idx=\"'+i+'\">🔗 Chat vinculado: '+esc(l.title)+'</button>';});if(!opts)opts='<p class=\"an-empty\">Sem nota e sem chat vinculado.</p>';openModal('<h2>Anotação do analista</h2>'+(a.date?'<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>':'')+'<div class=\"an-menu\">'+opts+'</div>');}function showAnnotationOption(kind,idx){var a=ANN_CURRENT;if(!a)return;if(kind==='note'){if(!a.note)return;openModal('<h2>Nota do analista</h2><div class=\"an-note\"><b>'+esc(a.note.author||'analista')+'</b><br>'+esc(a.note.text)+'</div>');return;}var l=(a.links||[])[parseInt(idx,10)];if(l)openModal('<h2>Chat vinculado</h2>'+linkRowHtml(l,false)+excerptHtml(l));}function linkRowHtml(l,clickable){var h='<div class=\"an-link\"'+(clickable?' data-link=\"'+esc(l.chatRefId)+'\"':'')+'><img src=\"'+AVATAR+'\" alt=\"\"><span>'+esc(l.title)+(l.sourceName?('<br><span class=\"muted\">'+esc(l.sourceName)+'</span>'):'')+((l.hasCapture||l.chatRefId)?'':'<br><span class=\"muted\">sem captura vinculada</span>')+'</span></div>';return h;}function excerptHtml(l){if(!(l.hasCapture||l.chatRefId))return '<div class=\"an-empty\">Sem captura vinculada para este chat.</div>';var cap=safeRelPath(l.captureFolder),ref=safeRelPath(l.chatRefId);if(cap&&cap.indexOf('/')>=0&&cap.indexOf('vinculado/')!==0)cap='';if(ref&&ref.indexOf('/')>=0)ref='';var base=cap?('../'+cap+'/'):(ref?('../vinculado/'+ref+'/'):'');if(!base)return '<div class=\"an-empty\">Caminho da captura vinculada indisponivel.</div>';var s='<div class=\"an-excerpt\"><b>Trecho capturado em '+esc(l.title||'')+'</b>';var fr=l.frames||[];if(!fr.length){var ex=safeRelPath(l.excerptFile||'texto.txt')||'texto.txt';s+='<pre class=\"an-pre\" data-excerpt=\"'+esc(base+ex)+'\"></pre>';}else{fr.forEach(function(f){var sf=safeRelPath(f);if(sf)s+='<img src=\"'+esc(base+sf)+'\" alt=\"\" data-zoom=\"'+esc(base+sf)+'\">';});}return s+'</div>';}function loadExtras(root){root.querySelectorAll('pre[data-excerpt]').forEach(function(p){var u=safeLinkedUrl(p.getAttribute('data-excerpt'));if(!u){p.textContent='Trecho nao encontrado.';return;}fetch(u).then(function(r){return r.ok?r.text():'';}).then(function(t){p.textContent=t;}).catch(function(){p.textContent='Trecho nao encontrado.';});});}function renderAnnotation(a){var h='<h2>Anotação do analista</h2>';if(a.date)h+='<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>';if(a.note){h+='<div class=\"an-note\"><b>Nota</b> ('+esc(a.note.author||'analista')+'):<br>'+esc(a.note.text)+'</div>';}var links=a.links||[];if(!links.length){if(!a.note)return h+'<div class=\"an-empty\">Sem nota e sem link.</div>';return h;}h+='<div style=\"margin-top:12px\"><b>'+(links.length===1?'Chat vinculado':'Chats vinculados')+'</b></div>';if(links.length===1){return h+linkRowHtml(links[0],false)+excerptHtml(links[0]);}links.forEach(function(l){h+=linkRowHtml(l,true);});return h+'<div id=\"anExcerpt\"></div>';}function openLink(chatRefId){var a=null;(ANN&&ANN.items||[]).forEach(function(x){(x.links||[]).forEach(function(l){if(l.chatRefId===chatRefId)a=l;});});if(!a)return;document.getElementById('anExcerpt').innerHTML=excerptHtml(a);loadExtras(document.getElementById('anExcerpt'));}document.getElementById('side').addEventListener('click',function(e){if(e.target.closest('.js-copy-text')){copyText();return;}if(e.target.closest('.js-close-side')){closeSide();return;}var row=e.target.closest('[data-link]');if(row){openLink(row.getAttribute('data-link'));return;}var z=e.target.closest('[data-zoom]');if(z){var zs=safeLinkedUrl(z.getAttribute('data-zoom'));if(zs)openModal('<img src=\"'+esc(zs)+'\">');}});modalCard.addEventListener('click',function(e){if(e.target.closest('.js-close-modal')){closeModalNow();return;}var o=e.target.closest('.an-opt');if(!o)return;showAnnotationOption(o.getAttribute('data-kind'),o.getAttribute('data-idx'));});function activate(b){if(ANN&&ANN_BY_MSG[b.id]){showAnnotation(ANN_BY_MSG[b.id]);return;}var f=safeRelPath(b.file);if(b.type==='audio'&&f){openModal('<h2>Audio</h2><audio controls autoplay src=\"'+esc(f)+'\"></audio>');return;}if(b.type==='video'&&f){openModal('<h2>Video</h2><video controls autoplay src=\"'+esc(f)+'\"></video>');return;}if(f&&(b.type==='image'||isImageFile(f))){openModal('<h2>Imagem</h2><img src=\"'+esc(f)+'\"><br><a class=\"btn\" href=\"'+esc(f)+'\" download>Baixar imagem</a><a class=\"btn secondary\" href=\"'+esc(f)+'\" target=\"_blank\" rel=\"noopener noreferrer\">Abrir em nova aba</a>');return;}if(b.type==='file'){showFile(b);return;}showText(b);}DATA.frames.forEach(function(f){var box=document.createElement('div');box.className='frame';box.style.maxWidth=f.width+'px';var img=document.createElement('img');var frameSrc=safeRelPath(f.image);if(frameSrc)img.src=frameSrc;img.alt='Frame '+f.sequence;box.appendChild(img);(f.blocks||[]).forEach(function(b){var h=document.createElement('button');h.className='hotspot';h.type='button';h.dataset.type=b.type;h.title=itemTitle(b);h.style.left=pct(b.x,f.width);h.style.top=pct(b.y,f.height);h.style.width=pct(b.width,f.width);h.style.height=pct(b.height,f.height);var ann=ANN_BY_MSG[b.id];if(ann){if(ann.note)h.className+=' has-note';if((ann.links||[]).length)h.className+=' has-link';}h.onclick=function(ev){ev.preventDefault();activate(b);};box.appendChild(h);if((b.type==='audio'||b.type==='video'||b.type==='image'||(b.file&&/\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(b.file||''))))&&String(b.text||'').trim()){var tb=document.createElement('button');tb.className='transcript-btn';tb.type='button';tb.style.top=pct(b.y,f.height);tb.style.right='3px';tb.title='Transcricao';tb.textContent='T';tb.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showText(b);};box.appendChild(tb);}if(ann&&(ann.note||(ann.links||[]).length)){var ic=document.createElement('button');ic.className='an-icon';ic.type='button';ic.style.top=pct(b.y,f.height);ic.title='Anotação do analista';ic.textContent=(ann.note?'📝':'')+((ann.links||[]).length?'🔗':'');ic.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showAnnotationMenu(ANN_BY_MSG[b.id]);};box.appendChild(ic);}});chat.appendChild(box);});buildRail();function buildRail(){if(!ANN||!ANN.items||!ANN.items.length)return;var rail=document.getElementById('rail');if(!rail)return;ANN.items.forEach(function(a){if(!a.note&&!(a.links&&a.links.length))return;var card=document.createElement('div');card.className='rail-card '+(a.note?'note':'link');var h=document.createElement('h3');h.textContent=a.note?'Nota':'Chat vinculado';card.appendChild(h);var p=document.createElement('p');p.textContent=(a.date? (a.date+' - '):'')+ (a.note?a.note.text:((a.links||[]).map(function(l){return l.title;}).join(', ')));card.appendChild(p);var arrow=document.createElement('span');arrow.className='arrow';card.appendChild(arrow);card.onclick=function(){showAnnotation(a);};rail.appendChild(card);});}";
+    }
+
     private void writeWhatsAppHtml(Path captureDir, Path path, String coordinatesJson) throws IOException {
+        JSONObject parsedCoords;
+        try {
+            parsedCoords = new JSONObject(coordinatesJson);
+        } catch (RuntimeException e) {
+            throw new IOException("Coordenadas JSON inválidas.", e); //$NON-NLS-1$
+        }
+        validateWhatsAppCoordinatesData(parsedCoords);
+        String mainScript = buildWhatsAppMainScript();
+        String searchScript = buildWhatsAppSearchScript();
+        String csp = "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; script-src 'sha256-" //$NON-NLS-1$
+                + sha256Base64(mainScript) + "' 'sha256-" + sha256Base64(searchScript) //$NON-NLS-1$
+                + "'; connect-src 'self' file:; object-src 'none'; form-action 'none'; base-uri 'none'"; //$NON-NLS-1$
         writeAtomicallyWithPrinter(captureDir, path, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES, out -> {
-            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><title>WhatsApp</title>"); //$NON-NLS-1$
+            out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"" + csp + "\"><title>WhatsApp</title>"); //$NON-NLS-1$ //$NON-NLS-2$
             out.println("<style>body{margin:0;background:#efe7dc;font-family:Arial,sans-serif;color:#222}.top{position:sticky;top:0;z-index:5;background:#075e54;color:white;padding:12px 18px;box-shadow:0 1px 4px rgba(0,0,0,.25)}.top h1{font-size:18px;margin:0}.wrap{max-width:960px;margin:0 auto;padding:18px 12px 80px}.frame{position:relative;margin:0 auto 6px;line-height:0;background:#ddd;box-shadow:0 1px 3px rgba(0,0,0,.15)}.frame img{width:100%;height:auto;display:block}.hotspot{position:absolute;border:2px solid transparent;background:rgba(37,211,102,.001);cursor:pointer;box-sizing:border-box}.hotspot:hover{border-color:#25d366;background:rgba(37,211,102,.16)}.hotspot[data-type='audio'],.hotspot[data-type='video'],.hotspot[data-type='image'],.hotspot[data-type='file']{background:rgba(3,169,244,.001)}.hotspot[data-type='audio']:hover,.hotspot[data-type='video']:hover,.hotspot[data-type='image']:hover,.hotspot[data-type='file']:hover{border-color:#03a9f4;background:rgba(3,169,244,.16)}#side{position:fixed;right:-360px;top:0;bottom:0;width:320px;background:#fff;z-index:20;box-shadow:-2px 0 10px rgba(0,0,0,.25);transition:right .2s ease;padding:18px;overflow:auto}#side.open{right:0}#side h2{font-size:18px;margin:0 0 12px}#side textarea{width:100%;height:180px;box-sizing:border-box}.btn{display:inline-block;margin:8px 6px 0 0;padding:8px 12px;border:0;background:#075e54;color:white;text-decoration:none;cursor:pointer}.btn.secondary{background:#555}#modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.74);z-index:30;padding:24px;box-sizing:border-box}#modal.open{display:flex}.modal-card{max-width:min(920px,96vw);max-height:92vh;background:#111;color:white;padding:14px;box-sizing:border-box}.modal-card img,.modal-card video{max-width:100%;max-height:75vh}.modal-card audio{width:min(720px,88vw)}.muted{color:#666;font-size:13px}#side .an-note{background:#fff8e1;border-left:4px solid #f9a825;padding:8px 10px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}#side .an-link{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid #eee;cursor:pointer}#side .an-link:hover{background:#f2f7f6}#side .an-link img{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto}#side .an-excerpt{margin-top:10px;border-top:1px solid #ddd;padding-top:10px}#side .an-excerpt img{width:100%;border:1px solid #ddd;margin-bottom:8px;cursor:zoom-in}#side .an-empty{color:#777;font-size:13px;margin:8px 0;overflow-wrap:anywhere}#side .an-pre{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:#fafafa;padding:8px;border:1px solid #eee}.an-icon{position:absolute;left:3px;min-width:26px;height:26px;padding:0 5px;margin:0;font-size:14px;line-height:24px;background:#fffbe9;border:2px solid #f9a825;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:3}.an-icon:hover{background:#fff3c4}.an-menu{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:420px}.an-opt{display:block;width:100%;text-align:left;padding:11px 13px;margin:0;font-size:14px;background:#0b6b5d;color:#fff;border:0;border-radius:6px;cursor:pointer;overflow-wrap:anywhere}.an-opt:hover{background:#0d8a77}.hotspot.has-note{box-shadow:inset 0 0 0 2px #f9a825}.hotspot.has-link{box-shadow:inset 0 0 0 2px #25d366}.hotspot.has-note.has-link{box-shadow:inset 0 0 0 2px #b26a00}.layout{display:flex;gap:18px;max-width:1220px;margin:0 auto;padding:18px 12px 80px;align-items:flex-start}.centerCol{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:10px}.rail{width:250px;flex:0 0 250px;position:sticky;top:70px;display:flex;flex-direction:column;gap:10px}.rail-card{background:#fff;border:1px solid #d8d1c8;border-radius:8px;padding:8px 10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;position:relative}.rail-card:hover{background:#f7f4ee}.rail-card .arrow{position:absolute;right:-12px;top:14px;border:6px solid transparent;border-left-color:#d8d1c8}.rail-card.note{border-left:4px solid #f9a825}.rail-card.link{border-left:4px solid #25d366}.rail-card h3{margin:0 0 4px;font-size:13px}.rail-card p{margin:0;font-size:12px;color:#555;overflow-wrap:anywhere}.transcript-btn{position:absolute;right:3px;top:3px;min-width:24px;height:24px;padding:0 4px;margin:0;font-size:12px;line-height:22px;background:#e3f2fd;border:2px solid #1976d2;border-radius:6px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35);z-index:4}.transcript-btn:hover{background:#bbdefb}.iped-capture-running .transcript-btn{display:none !important}@media print{.transcript-btn{display:none !important}}</style>"); //$NON-NLS-1$
-            out.println("</head><body><div class=\"top\"><h1>WhatsApp - visualiza&ccedil;&atilde;o por imagens</h1></div><div class=\"layout\"><aside id=\"rail\"></aside><div class=\"centerCol\"><div class=\"wrap\" id=\"chat\"></div></div></div><aside id=\"side\"></aside><div id=\"modal\" onclick=\"closeModal(event)\"><div class=\"modal-card\" id=\"modalCard\"></div></div>"); //$NON-NLS-1$
+            out.println("</head><body><div class=\"top\"><h1>WhatsApp - visualiza&ccedil;&atilde;o por imagens</h1></div><div class=\"layout\"><aside id=\"rail\"></aside><div class=\"centerCol\"><div class=\"wrap\" id=\"chat\" data-avatar=\"data:image/png;base64," + html(avatarBase64()) + "\"></div></div></div><aside id=\"side\"></aside><div id=\"modal\"><div class=\"modal-card\" id=\"modalCard\"></div></div>"); //$NON-NLS-1$
             out.println("<script id=\"coords\" type=\"application/json\">" + coordinatesJson.replace("</", "<\\/") + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            out.println("<script>var DATA=JSON.parse(document.getElementById('coords').textContent);var ANN=(DATA.annotations&&DATA.annotations.enabled)?DATA.annotations:null;var ANN_BY_MSG={};(ANN&&ANN.items||[]).forEach(function(a){ANN_BY_MSG[a.messageId]=a;});var AVATAR='data:image/png;base64," + avatarBase64() + "';var chat=document.getElementById('chat'),side=document.getElementById('side'),modal=document.getElementById('modal'),modalCard=document.getElementById('modalCard');function esc(s){return String(s||'').replace(/[&<>\\\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\"'\":'&#39;'}[c];});}function pct(v,total){return total?((v*100/total)+'%'):'0%';}function isImageFile(p){return /\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(p||'').split('?')[0]);}function itemTitle(b){if(b.type==='date')return 'Data';if(b.type==='audio')return 'Audio';if(b.type==='video')return 'Video';if(b.type==='image'||isImageFile(b.file))return 'Imagem';if(b.type==='file')return 'Arquivo';return 'Mensagem';}function openSide(html){side.innerHTML=html;side.classList.add('open');loadExtras(side);}function closeSide(){side.classList.remove('open');}function copyText(){var t=document.getElementById('copyText');if(!t)return;t.select();document.execCommand('copy');}function showText(b){openSide('<h2>'+itemTitle(b)+'</h2><textarea id=\"copyText\">'+esc(b.text||'')+'</textarea><br><button class=\"btn\" onclick=\"copyText()\">Copiar</button><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function showFile(b){if(!b.file){showText(b);return;}openSide('<h2>'+itemTitle(b)+'</h2><p class=\"muted\">'+esc(b.text||b.file)+'</p><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir</a><button class=\"btn secondary\" onclick=\"closeSide()\">Fechar</button>');}function closeModalNow(){modal.querySelectorAll('audio,video').forEach(function(m){try{m.pause();m.removeAttribute('src');m.load();}catch(e){}});modalCard.innerHTML='';modal.classList.remove('open');}function openModal(html){closeModalNow();modalCard.innerHTML=html+'<br><button class=\"btn secondary\" onclick=\"closeModalNow()\">Fechar</button>';modal.classList.add('open');}function closeModal(e){if(e.target===modal)closeModalNow();}function showAnnotation(a){openSide(renderAnnotation(a));}var ANN_CURRENT=null;function showAnnotationMenu(a){ANN_CURRENT=a;var links=a.links||[];var opts='';if(a.note)opts+='<button class=\"an-opt\" data-kind=\"note\">📝 Ver nota do analista</button>';links.forEach(function(l,i){opts+='<button class=\"an-opt\" data-kind=\"chat\" data-idx=\"'+i+'\">🔗 Chat vinculado: '+esc(l.title)+'</button>';});if(!opts)opts='<p class=\"an-empty\">Sem nota e sem chat vinculado.</p>';openModal('<h2>Anotação do analista</h2>'+(a.date?'<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>':'')+'<div class=\"an-menu\">'+opts+'</div>');}function showAnnotationOption(kind,idx){var a=ANN_CURRENT;if(!a)return;if(kind==='note'){if(!a.note)return;openModal('<h2>Nota do analista</h2><div class=\"an-note\"><b>'+esc(a.note.author||'analista')+'</b><br>'+esc(a.note.text)+'</div>');return;}var l=(a.links||[])[parseInt(idx,10)];if(l)openModal('<h2>Chat vinculado</h2>'+linkRowHtml(l,false)+excerptHtml(l));}function linkRowHtml(l,clickable){var h='<div class=\"an-link\"'+(clickable?' data-link=\"'+esc(l.chatRefId)+'\"':'')+'><img src=\"'+AVATAR+'\" alt=\"\"><span>'+esc(l.title)+(l.sourceName?('<br><span class=\"muted\">'+esc(l.sourceName)+'</span>'):'')+((l.hasCapture||l.chatRefId)?'':'<br><span class=\"muted\">sem captura vinculada</span>')+'</span></div>';return h;}function excerptHtml(l){if(!(l.hasCapture||l.chatRefId))return '<div class=\"an-empty\">Sem captura vinculada para este chat.</div>';var base=l.captureFolder?('../'+esc(l.captureFolder)+'/'):('../vinculado/'+esc(l.chatRefId)+'/');var s='<div class=\"an-excerpt\"><b>Trecho capturado em '+esc(l.title||'')+'</b>';var fr=l.frames||[];if(!fr.length){s+='<pre class=\"an-pre\" data-excerpt=\"'+esc(base+(l.excerptFile||'texto.txt'))+'\"></pre>';}else{fr.forEach(function(f){s+='<img src=\"'+esc(base+f)+'\" alt=\"\" data-zoom=\"'+esc(base+f)+'\">';});}return s+'</div>';}function loadExtras(root){root.querySelectorAll('pre[data-excerpt]').forEach(function(p){fetch(p.getAttribute('data-excerpt')).then(function(r){return r.ok?r.text():'';}).then(function(t){p.textContent=t;}).catch(function(){p.textContent='Trecho nao encontrado.';});});}function renderAnnotation(a){var h='<h2>Anotação do analista</h2>';if(a.date)h+='<p class=\"muted\">Mensagem em '+esc(a.date)+'</p>';if(a.note){h+='<div class=\"an-note\"><b>Nota</b> ('+esc(a.note.author||'analista')+'):<br>'+esc(a.note.text)+'</div>';}var links=a.links||[];if(!links.length){if(!a.note)return h+'<div class=\"an-empty\">Sem nota e sem link.</div>';return h;}h+='<div style=\"margin-top:12px\"><b>'+(links.length===1?'Chat vinculado':'Chats vinculados')+'</b></div>';if(links.length===1){return h+linkRowHtml(links[0],false)+excerptHtml(links[0]);}links.forEach(function(l){h+=linkRowHtml(l,true);});return h+'<div id=\"anExcerpt\"></div>';}function openLink(chatRefId){var a=null;(ANN&&ANN.items||[]).forEach(function(x){(x.links||[]).forEach(function(l){if(l.chatRefId===chatRefId)a=l;});});if(!a)return;document.getElementById('anExcerpt').innerHTML=excerptHtml(a);loadExtras(document.getElementById('anExcerpt'));}document.getElementById('side').addEventListener('click',function(e){var row=e.target.closest('[data-link]');if(row){openLink(row.getAttribute('data-link'));return;}var z=e.target.closest('[data-zoom]');if(z){openModal('<img src=\"'+esc(z.getAttribute('data-zoom'))+'\">');}});modalCard.addEventListener('click',function(e){var o=e.target.closest('.an-opt');if(!o)return;showAnnotationOption(o.getAttribute('data-kind'),o.getAttribute('data-idx'));});function activate(b){if(ANN&&ANN_BY_MSG[b.id]){showAnnotation(ANN_BY_MSG[b.id]);return;}if(b.type==='audio'&&b.file){openModal('<h2>Audio</h2><audio controls autoplay src=\"'+esc(b.file)+'\"></audio>');return;}if(b.type==='video'&&b.file){openModal('<h2>Video</h2><video controls autoplay src=\"'+esc(b.file)+'\"></video>');return;}if(b.file&&(b.type==='image'||isImageFile(b.file))){openModal('<h2>Imagem</h2><img src=\"'+esc(b.file)+'\"><br><a class=\"btn\" href=\"'+esc(b.file)+'\" download>Baixar imagem</a><a class=\"btn secondary\" href=\"'+esc(b.file)+'\" target=\"_blank\">Abrir em nova aba</a>');return;}if(b.type==='file'){showFile(b);return;}showText(b);}DATA.frames.forEach(function(f){var box=document.createElement('div');box.className='frame';box.style.maxWidth=f.width+'px';var img=document.createElement('img');img.src=f.image;img.alt='Frame '+f.sequence;box.appendChild(img);(f.blocks||[]).forEach(function(b){var h=document.createElement('button');h.className='hotspot';h.type='button';h.dataset.type=b.type;h.title=itemTitle(b);h.style.left=pct(b.x,f.width);h.style.top=pct(b.y,f.height);h.style.width=pct(b.width,f.width);h.style.height=pct(b.height,f.height);var ann=ANN_BY_MSG[b.id];if(ann){if(ann.note)h.className+=' has-note';if((ann.links||[]).length)h.className+=' has-link';}h.onclick=function(ev){ev.preventDefault();activate(b);};box.appendChild(h);if((b.type==='audio'||b.type==='video'||b.type==='image'||(b.file&&/\\.(png|jpe?g|webp|gif|bmp)$/i.test(String(b.file||''))))&&String(b.text||'').trim()){var tb=document.createElement('button');tb.className='transcript-btn';tb.type='button';tb.style.top=pct(b.y,f.height);tb.style.right='3px';tb.title='Transcricao';tb.textContent='T';tb.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showText(b);};box.appendChild(tb);}if(ann&&(ann.note||(ann.links||[]).length)){var ic=document.createElement('button');ic.className='an-icon';ic.type='button';ic.style.top=pct(b.y,f.height);ic.title='Anotação do analista';ic.textContent=(ann.note?'📝':'')+((ann.links||[]).length?'🔗':'');ic.onclick=function(ev){ev.preventDefault();ev.stopPropagation();showAnnotationMenu(ANN_BY_MSG[b.id]);};box.appendChild(ic);}});chat.appendChild(box);});buildRail();function buildRail(){if(!ANN||!ANN.items||!ANN.items.length)return;var rail=document.getElementById('rail');if(!rail)return;ANN.items.forEach(function(a){if(!a.note&&!(a.links&&a.links.length))return;var card=document.createElement('div');card.className='rail-card '+(a.note?'note':'link');var h=document.createElement('h3');h.textContent=a.note?'Nota':'Chat vinculado';card.appendChild(h);var p=document.createElement('p');p.textContent=(a.date? (a.date+' - '):'')+ (a.note?a.note.text:((a.links||[]).map(function(l){return l.title;}).join(', ')));card.appendChild(p);var arrow=document.createElement('span');arrow.className='arrow';card.appendChild(arrow);card.onclick=function(){showAnnotation(a);};rail.appendChild(card);});}</script>"); //$NON-NLS-1$
-            writeWhatsAppSearchHtml(out);
+            out.println("<script>" + mainScript + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$
+            writeWhatsAppSearchHtml(out, searchScript);
             out.println("</body></html>"); //$NON-NLS-1$
         });
     }
 
-    /**
-     * Busca por texto no HTML gerado.
-     *
-     * O {@code whatsapp.html} mostra o chat por imagens, entao nao ha texto no DOM
-     * para o navegador pesquisar. O indice vem do {@code blocks} de cada frame, que
-     * guarda o texto de cada mensagem no momento da captura. O resultado rola ate o
-     * frame, destaca o bloco e mostra o texto na lateral.
-     */
     private void writeWhatsAppSearchHtml(PrintWriter out) {
-        out.println("<style>#searchBar{position:sticky;top:0;z-index:100;background:#075e54;padding:8px 18px;"
-                + "display:flex;gap:8px;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);margin:0 auto 10px;max-width:960px;width:100%;box-sizing:border-box}"
-                + "#searchBar input{flex:1;min-width:140px;padding:6px 10px;border:0;border-radius:4px;font-size:14px}"
-                + "#searchCount{color:#cfe9df;font-size:13px;white-space:nowrap}"
-                + "#searchResults{position:relative;width:100%;max-width:960px;margin:8px auto 0;max-height:58vh;overflow:auto;"
-                + "background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.3);display:none;z-index:25}"
-                + "#searchResults .res.selected{background:#cfe9df;border-left:4px solid #075e54}"
-                + "#searchResults.open{display:block}#searchResults .res{padding:8px 10px;border-bottom:1px solid #eee;"
-                + "cursor:pointer;font-size:13px;line-height:1.3}#searchResults .res:hover{background:#f0f8f4}"
-                + "#searchResults .res-seq{display:block;color:#075e54;font-weight:bold;font-size:11px}"
-                + ".hotspot.found{border-color:#1565c0!important;background:rgba(21,101,192,.30)!important;"
-                + "box-shadow:0 0 0 3px rgba(21,101,192,.5)!important}</style>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        out.println("<script>(function(){"
+        writeWhatsAppSearchHtml(out, buildWhatsAppSearchScript());
+    }
+
+    private String buildWhatsAppSearchScript() {
+        return "(function(){"
                 + "if(!window.DATA||typeof esc!=='function')return;"
                 + "var bar=document.createElement('div');bar.id='searchBar';"
                 + "var inp=document.createElement('input');inp.type='search';"
@@ -6749,7 +6869,31 @@ out.append("{\n"); //$NON-NLS-1$
                 + "d.onclick=function(){var old=panel.querySelectorAll('.res.selected');for(var i=0;i<old.length;i++)old[i].classList.remove('selected');d.classList.add('selected');go(it);};panel.appendChild(d);});}"
                 + "inp.addEventListener('input',function(){if(timer)clearTimeout(timer);timer=setTimeout(run,300);});"
                 + "inp.addEventListener('keydown',function(e){if(e.key==='Escape'){inp.value='';run();}});"
-                + "})();</script>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                + "})();";
+    }
+
+    /**
+     * Busca por texto no HTML gerado.
+     *
+     * O {@code whatsapp.html} mostra o chat por imagens, entao nao ha texto no DOM
+     * para o navegador pesquisar. O indice vem do {@code blocks} de cada frame, que
+     * guarda o texto de cada mensagem no momento da captura. O resultado rola ate o
+     * frame, destaca o bloco e mostra o texto na lateral.
+     */
+    private void writeWhatsAppSearchHtml(PrintWriter out, String searchScript) {
+        out.println("<style>#searchBar{position:sticky;top:0;z-index:100;background:#075e54;padding:8px 18px;"
+                + "display:flex;gap:8px;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);margin:0 auto 10px;max-width:960px;width:100%;box-sizing:border-box}"
+                + "#searchBar input{flex:1;min-width:140px;padding:6px 10px;border:0;border-radius:4px;font-size:14px}"
+                + "#searchCount{color:#cfe9df;font-size:13px;white-space:nowrap}"
+                + "#searchResults{position:relative;width:100%;max-width:960px;margin:8px auto 0;max-height:58vh;overflow:auto;"
+                + "background:#fff;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.3);display:none;z-index:25}"
+                + "#searchResults .res.selected{background:#cfe9df;border-left:4px solid #075e54}"
+                + "#searchResults.open{display:block}#searchResults .res{padding:8px 10px;border-bottom:1px solid #eee;"
+                + "cursor:pointer;font-size:13px;line-height:1.3}#searchResults .res:hover{background:#f0f8f4}"
+                + "#searchResults .res-seq{display:block;color:#075e54;font-weight:bold;font-size:11px}"
+                + ".hotspot.found{border-color:#1565c0!important;background:rgba(21,101,192,.30)!important;"
+                + "box-shadow:0 0 0 3px rgba(21,101,192,.5)!important}</style>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        out.println("<script>" + searchScript + "</script>"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     private CapturePlan captureImage(Path path, boolean includeHeader, String previousLastCompleteMessageId, Set<String> capturedBlockIds) throws Exception {
@@ -9119,9 +9263,30 @@ String invalidReason;
             HtmlLinkViewer.this.annotationAction(messageId);
         }
 
-        public void open(final String luceneQuery) {
+        private void showAttachNotFound(final String luceneQuery) {
+            try {
+                SwingUtilities.invokeAndWait(new Runnable() {
+                    @Override
+                    public void run() {
+                        LOGGER.info("Attachment not found by query " + luceneQuery); //$NON-NLS-1$
+                        JOptionPane.showMessageDialog(null, Messages.getString("HtmlLinkViewer.AttachNotFound")); //$NON-NLS-1$
+                    }
+                });
+            } catch (InvocationTargetException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
 
+        public void open(final String luceneQuery) {
+            if (luceneQuery == null || luceneQuery.isBlank() || attachSearcher == null) {
+                showAttachNotFound(luceneQuery);
+                return;
+            }
             IItem item = attachSearcher.getItem(luceneQuery);
+            if (item == null) {
+                showAttachNotFound(luceneQuery);
+                return;
+            }
             if (!IOUtil.isToOpenExternally(item.getName(), item.getType())) {
                 return;
             }
@@ -9132,17 +9297,7 @@ String invalidReason;
                 e1.printStackTrace();
             }
             if (file == null) {
-                try {
-                    SwingUtilities.invokeAndWait(new Runnable() {
-                        @Override
-                        public void run() {
-                            LOGGER.info("Attachment not found by query " + luceneQuery); //$NON-NLS-1$
-                            JOptionPane.showMessageDialog(null, Messages.getString("HtmlLinkViewer.AttachNotFound")); //$NON-NLS-1$
-                        }
-                    });
-                } catch (InvocationTargetException | InterruptedException e) {
-                    e.printStackTrace();
-                }
+                showAttachNotFound(luceneQuery);
 
             } else {
                 this.openFile(file);
@@ -9183,9 +9338,9 @@ String invalidReason;
         if (cheking || mediaHashesInView.isEmpty())
             return;
         String hash = attachSearcher.getHash(item);
-        if (!mediaHashesInView.contains(hash))
+        if (hash == null || !mediaHashesInView.contains(hash))
             return;
-        String script = "var x = document.getElementsByName(\"" + hash + "\");"
+        String script = "var x = document.getElementsByName(" + js(hash) + ");"
                 + "for(var i = 0; i < x.length; i++) x[i].checked = " + value + ";";
         runScript(script);
     }

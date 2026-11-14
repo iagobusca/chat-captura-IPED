@@ -40,13 +40,13 @@ public class ChatCapturePanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static JLabel plainLabel(String text) {
+    static JLabel plainLabel(String text) {
         JLabel label = new JLabel(text);
         label.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
         return label;
     }
 
-    private static JCheckBox plainCheckBox(String text, boolean selected) {
+    static JCheckBox plainCheckBox(String text, boolean selected) {
         JCheckBox box = new JCheckBox(text, selected);
         box.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
         return box;

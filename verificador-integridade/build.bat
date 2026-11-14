@@ -14,10 +14,17 @@ if not exist "%OUT%" mkdir "%OUT%"
 if not exist "%JSON_OUT%" mkdir "%JSON_OUT%"
 >"%MANIFEST%" echo Manifest-Version: 1.0
 >>"%MANIFEST%" echo Main-Class: IntegrityVerifier
->>"%MANIFEST%" echo Implementation-Version: 1.4.0
+>>"%MANIFEST%" echo Implementation-Version: 1.4.2
 >>"%MANIFEST%" echo.
+if exist "%OUT%" rmdir /s /q "%OUT%"
+mkdir "%OUT%"
 "%JAVA_HOME%\bin\javac.exe" -encoding UTF-8 -source 1.8 -target 1.8 -cp "%JSON%" -d "%OUT%" "%SRC%"
 if errorlevel 1 exit /b 1
+if exist "%HERE%imagem doc\verificador-icon.png" (
+  if not exist "%OUT%\imagem doc" mkdir "%OUT%\imagem doc"
+  copy /Y "%HERE%imagem doc\verificador-icon.png" "%OUT%\imagem doc\verificador-icon.png" >nul
+  copy /Y "%HERE%imagem doc\verificador-icon.png" "%OUT%\verificador-icon.png" >nul
+)
 "%JAVA_HOME%\bin\jar.exe" cfm "%HERE%integridade-verifier.jar" "%MANIFEST%" -C "%OUT%" .
 if errorlevel 1 exit /b 1
 pushd "%JSON_OUT%"

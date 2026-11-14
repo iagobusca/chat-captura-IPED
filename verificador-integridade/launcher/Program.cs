@@ -1,4 +1,4 @@
-// Versão 1.4.0 — janelas alwaysOnTop, carregamento em fluxo Local/Público, resumo simplificado e HTML OK/FALHA.
+// Versão 1.4.2 — endurecimento F-06/F-10: limpeza segura de diretórios temporários (grace window + anti-junction) e teste ZIP de 0 bytes.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
@@ -45,28 +45,13 @@ internal static class Program
             using (Stream zip = Resource("payload.zip"))
             using (var archive = new ZipArchive(zip, ZipArchiveMode.Read))
             {
-                foreach (ZipArchiveEntry entry in archive.Entries)
-                {
-                    string destination = Path.GetFullPath(Path.Combine(tempRoot, entry.FullName));
-                    if (!destination.StartsWith(Path.GetFullPath(tempRoot) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("O pacote contém um caminho inválido.");
-                    bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\");
-                    string destPath = destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    if (isDir)
-                    {
-                        Directory.CreateDirectory(destPath);
-                    }
-                    else
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-                        entry.ExtractToFile(destPath, true);
-                    }
-                }
+                ExtractArchiveSafely(archive, tempRoot);
             }
             VerifyExtractedFiles(tempRoot);
 
             if (selfTest)
             {
+                RunLauncherSelfTest();
                 int selfTestExit = RunBundledJarCli(tempRoot, captureRoot, hasAttachedConsole, new[] { "--self-test" });
                 if (selfTestExit != 0)
                 {
@@ -126,7 +111,7 @@ internal static class Program
         finally
         {
             instanceLock?.Dispose();
-            if (tempRoot != null) { try { Directory.Delete(tempRoot, true); } catch { } }
+            if (tempRoot != null) { try { DeleteDirectorySafely(tempRoot); } catch { } }
         }
     }
 
@@ -234,26 +219,133 @@ internal static class Program
     {
         if (HasOtherVerifierProcess(tempBase)) return;
         string currentFull = Path.GetFullPath(currentRoot).TrimEnd(Path.DirectorySeparatorChar);
+        DateTime nowUtc = DateTime.UtcNow;
         foreach (string directory in Directory.GetDirectories(tempBase))
         {
             string full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
             if (full.Equals(currentFull, StringComparison.OrdinalIgnoreCase) || !IsVerifierTempDirectory(Path.GetFileName(full))) continue;
             try
             {
-                var info = new DirectoryInfo(full);
-                if ((info.Attributes & FileAttributes.ReparsePoint) != 0) continue;
-
-                // A marker held by another process means that directory is still in use.
-                string lockPath = Path.Combine(full, LockFileName);
-                if (File.Exists(lockPath))
-                {
-                    using (var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-                    {
-                    }
-                }
-                Directory.Delete(full, true);
+                if (!ShouldCleanupStaleTempDirectory(full, nowUtc)) continue;
+                DeleteDirectorySafely(full);
             }
             catch { /* Preserve anything that is locked, inaccessible, or not fully stale. */ }
+        }
+    }
+
+    private static void ExtractArchiveSafely(ZipArchive archive, string rootDir)
+    {
+        string normalizedRoot = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (ZipArchiveEntry entry in archive.Entries)
+        {
+            string destination = Path.GetFullPath(Path.Combine(rootDir, entry.FullName));
+            if (!destination.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("O pacote contém um caminho inválido.");
+            bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\") || string.IsNullOrEmpty(entry.Name);
+            string destPath = destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (isDir)
+            {
+                Directory.CreateDirectory(destPath);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                entry.ExtractToFile(destPath, true);
+            }
+        }
+    }
+
+    private static bool ShouldCleanupStaleTempDirectory(string fullPath, DateTime nowUtc)
+    {
+        var info = new DirectoryInfo(fullPath);
+        if (!info.Exists || (info.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+        string lockPath = Path.Combine(fullPath, LockFileName);
+        if (File.Exists(lockPath))
+        {
+            // A marker held by another process throws on exclusive open.
+            using (var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+            }
+            return true;
+        }
+        DateTime lastTouchUtc = info.CreationTimeUtc > info.LastWriteTimeUtc ? info.CreationTimeUtc : info.LastWriteTimeUtc;
+        return nowUtc - lastTouchUtc >= TimeSpan.FromMinutes(2);
+    }
+
+    private static void DeleteDirectorySafely(string rootPath)
+    {
+        var dir = new DirectoryInfo(rootPath);
+        if (!dir.Exists || (dir.Attributes & FileAttributes.ReparsePoint) != 0) return;
+        foreach (FileInfo file in dir.GetFiles())
+        {
+            if ((file.Attributes & FileAttributes.ReparsePoint) == 0 && (file.Attributes & FileAttributes.ReadOnly) != 0)
+            {
+                file.Attributes &= ~FileAttributes.ReadOnly;
+            }
+            file.Delete();
+        }
+        foreach (DirectoryInfo sub in dir.GetDirectories())
+        {
+            if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            DeleteDirectorySafely(sub.FullName);
+        }
+        if ((dir.Attributes & FileAttributes.ReadOnly) != 0)
+        {
+            dir.Attributes &= ~FileAttributes.ReadOnly;
+        }
+        if (dir.GetFileSystemInfos().Length == 0)
+        {
+            dir.Delete(false);
+        }
+    }
+
+    private static void RunLauncherSelfTest()
+    {
+        string scratch = Path.Combine(Path.GetTempPath(), $"integridade-launcher-selftest-{Guid.NewGuid():N}");
+        try
+        {
+            string extractRoot = Path.Combine(scratch, "extract");
+            Directory.CreateDirectory(extractRoot);
+            using (var buffer = new MemoryStream())
+            {
+                using (var creator = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    creator.CreateEntry("sub/");
+                    creator.CreateEntry("sub/empty.txt");
+                    ZipArchiveEntry dataEntry = creator.CreateEntry("sub/ok.txt");
+                    using var writer = new StreamWriter(dataEntry.Open(), new UTF8Encoding(false));
+                    writer.Write("ok");
+                }
+                buffer.Position = 0;
+                using var readerArchive = new ZipArchive(buffer, ZipArchiveMode.Read);
+                ExtractArchiveSafely(readerArchive, extractRoot);
+            }
+            string emptyFile = Path.Combine(extractRoot, "sub", "empty.txt");
+            string dataFile = Path.Combine(extractRoot, "sub", "ok.txt");
+            if (!Directory.Exists(Path.Combine(extractRoot, "sub")) || !File.Exists(emptyFile) || new FileInfo(emptyFile).Length != 0)
+                throw new InvalidOperationException("Falha no autoteste de extração de arquivo ZIP vazio.");
+            if (!File.Exists(dataFile) || File.ReadAllText(dataFile, Encoding.UTF8) != "ok")
+                throw new InvalidOperationException("Falha no autoteste de extração de arquivo ZIP.");
+
+            string freshDir = Path.Combine(scratch, "instance-fresh");
+            string staleDir = Path.Combine(scratch, "instance-stale");
+            Directory.CreateDirectory(freshDir);
+            Directory.CreateDirectory(staleDir);
+            DateTime oldTime = DateTime.UtcNow.AddMinutes(-5);
+            Directory.SetCreationTimeUtc(staleDir, oldTime);
+            Directory.SetLastWriteTimeUtc(staleDir, oldTime);
+            if (ShouldCleanupStaleTempDirectory(freshDir, DateTime.UtcNow))
+                throw new InvalidOperationException("Diretório recente sem lock não deve ser removido antes da janela de tolerância.");
+            if (!ShouldCleanupStaleTempDirectory(staleDir, DateTime.UtcNow))
+                throw new InvalidOperationException("Diretório antigo sem lock deve ser elegível para limpeza.");
+
+            DeleteDirectorySafely(scratch);
+            if (Directory.Exists(scratch))
+                throw new InvalidOperationException("Falha na limpeza segura de diretório temporário.");
+        }
+        finally
+        {
+            if (Directory.Exists(scratch)) { try { DeleteDirectorySafely(scratch); } catch { } }
         }
     }
 

@@ -39,7 +39,8 @@ class ChatPreflightDialog extends JDialog {
         setPreferredSize(new Dimension(620, 540));
         ((javax.swing.JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        JLabel title = new JLabel(Messages.getString("ChatCapturePreflight.Title")); //$NON-NLS-1$
+        toggle.putClientProperty("html.disable", Boolean.TRUE);
+        JLabel title = ChatCapturePanel.plainLabel(Messages.getString("ChatCapturePreflight.Title")); //$NON-NLS-1$
         title.setForeground(new Color(0x8B, 0x1A, 0x1A));
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
@@ -122,8 +123,8 @@ class ChatPreflightDialog extends JDialog {
 
     private static JPanel row(String label, int value) {
         JPanel panel = new JPanel(new BorderLayout(6, 2));
-        JLabel left = new JLabel(label);
-        JLabel right = new JLabel(Integer.toString(value));
+        JLabel left = ChatCapturePanel.plainLabel(label);
+        JLabel right = ChatCapturePanel.plainLabel(Integer.toString(value));
         right.setFont(right.getFont().deriveFont(Font.BOLD));
         panel.add(left, BorderLayout.CENTER);
         panel.add(right, BorderLayout.EAST);

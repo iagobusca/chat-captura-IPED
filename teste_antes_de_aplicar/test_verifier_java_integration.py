@@ -734,7 +734,7 @@ public final class PublicAnonHarness {
         for prefix in targets:
             ver = subprocess.run(prefix + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
-            self.assertIn("Verificador de Integridade", ver.stdout)
+            self.assertIn("Verificador de Integridade 1.4.2", ver.stdout)
 
             hlp = subprocess.run(prefix + ["--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(hlp.returncode, 0, hlp.stdout + hlp.stderr)
@@ -742,7 +742,7 @@ public final class PublicAnonHarness {
 
             st = subprocess.run(prefix + ["--self-test"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(st.returncode, 0, st.stdout + st.stderr)
-            self.assertIn("SELF_TEST_OK", st.stdout)
+            self.assertIn("SELF_TEST_OK 1.4.2", st.stdout)
 
             bad = subprocess.run(prefix + ["--nao-existe"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertNotEqual(bad.returncode, 0)
@@ -752,6 +752,123 @@ public final class PublicAnonHarness {
                 empty = subprocess.run(prefix + ["--verify-only", empty_dir], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
                 self.assertNotEqual(empty.returncode, 0)
                 self.assertIn("Nenhuma captura", empty.stderr)
+
+    def test_verify_only_rejects_extra_file_in_legacy_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cap = root / "Legacy_Chat-20261113-120000"
+            cap.mkdir()
+            data = b"conteudo-legado-integro"
+            (cap / "texto.txt").write_bytes(data)
+            sha = hashlib.sha256(data).hexdigest()
+            root_hash = hashlib.sha256(f"texto.txt|{len(data)}|{sha}\n".encode("utf-8")).hexdigest()
+            artifacts = [{"path": "texto.txt", "size": len(data), "sha256": sha}]
+            event = {
+                "sequence": 1,
+                "timestampUtc": "2026-11-13T12:00:00Z",
+                "action": "capture_created",
+                "previousRecordHash": "",
+                "contentRootHash": root_hash,
+                "changes": [{"action": "added", "path": "texto.txt", "sha256": sha}],
+            }
+            event["recordHashFormat"] = "canonical-v1"
+            event["recordHash"] = hashlib.sha256(json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+            record = {
+                "schemaVersion": 2,
+                "contentRootHash": root_hash,
+                "artifacts": artifacts,
+                "events": [event],
+            }
+            (cap / "integridade.json").write_text(json.dumps(record), encoding="utf-8")
+            (cap / "manifest.json").write_text(json.dumps({"artifacts": artifacts}), encoding="utf-8")
+
+            clean = self.verify(root)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+
+            (cap / "extra-nao-declarado.txt").write_bytes(b"intruso")
+            dirty = self.verify(root)
+            self.assertNotEqual(dirty.returncode, 0, "Legacy capture with undeclared extra file must fail --verify-only")
+            self.assertIn("arquivos extras na captura: 1", dirty.stdout)
+
+    def test_verify_only_rejects_html_capture_root_hash_tamper_and_schema_downgrade(self):
+        harness_cp = ";".join(map(str, (PLUGIN_TEST_CLASSES, PLUGIN_JAR, JSON_JAR, VERIFIER_JAR)))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cap = self.create_capture(root, modern=True)
+            generated = subprocess.run([str(JAVA11), "-cp", harness_cp,
+                                        "iped.viewers.MigrationIntegrityHistoryHarness", str(cap)],
+                                       text=True, capture_output=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+
+            clean = self.verify(root)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+
+            # Even if integridade.json is regenerated over tampered manifest.json, captureRootHash mismatch must fail CLI
+            manifest_path = cap / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["captureRootHash"] = "f" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            regenerated = subprocess.run([str(JAVA11), "-cp", harness_cp,
+                                          "iped.viewers.MigrationIntegrityHistoryHarness", str(cap)],
+                                         text=True, capture_output=True)
+            self.assertEqual(regenerated.returncode, 0, regenerated.stdout + regenerated.stderr)
+            tampered = self.verify(root)
+            self.assertNotEqual(tampered.returncode, 0, "Tampered captureRootHash must fail --verify-only even with consistent integridade.json")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cap = self.create_capture(root, modern=True)
+            generated = subprocess.run([str(JAVA11), "-cp", harness_cp,
+                                        "iped.viewers.MigrationIntegrityHistoryHarness", str(cap)],
+                                       text=True, capture_output=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            integrity_path = cap / "integridade.json"
+            integrity = json.loads(integrity_path.read_text(encoding="utf-8"))
+            integrity["schemaVersion"] = 1
+            integrity_path.write_text(json.dumps(integrity), encoding="utf-8")
+            downgraded = self.verify(root)
+            self.assertNotEqual(downgraded.returncode, 0, "html-message-v1 must reject integridade.json schemaVersion < 2")
+
+    def test_verifier_icon_ignores_cwd_file_and_loads_from_classpath(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            probe_classes = cwd / "probe_classes"
+            probe_classes.mkdir()
+            (cwd / "verificador-icon.png").write_bytes(b"not-a-valid-icon-cwd")
+            (cwd / "imagem doc").mkdir()
+            (cwd / "imagem doc" / "verificador-icon.png").write_bytes(b"not-a-valid-icon-sub")
+            probe_src = cwd / "IconProbe.java"
+            probe_src.write_text(
+                "import java.awt.Image;\n"
+                "import java.lang.reflect.Method;\n"
+                "import javax.swing.ImageIcon;\n"
+                "public class IconProbe {\n"
+                "  public static void main(String[] args) throws Exception {\n"
+                "    Method m = IntegrityVerifier.class.getDeclaredMethod(\"verifierIcon\");\n"
+                "    m.setAccessible(true);\n"
+                "    Image img = (Image) m.invoke(null);\n"
+                "    if (img == null) { System.out.println(\"NULL\"); return; }\n"
+                "    ImageIcon ii = new ImageIcon(img);\n"
+                "    System.out.println(\"LOADED:\" + ii.getIconWidth() + \"x\" + ii.getIconHeight());\n"
+                "  }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            javac = JAVA.parent / "javac.exe"
+            c1 = subprocess.run([str(javac), "-encoding", "UTF-8", "-cp", str(CLASSES), "-d", str(probe_classes), str(probe_src)],
+                                capture_output=True, text=True)
+            self.assertEqual(c1.returncode, 0, c1.stdout + c1.stderr)
+            r_loose = subprocess.run([str(JAVA), "-cp", f"{probe_classes};{CLASSES};{VERIFIER_JAR.parent / 'dependencies' / '*'}", "IconProbe"],
+                                     cwd=str(cwd), capture_output=True, text=True, timeout=20)
+            self.assertEqual(r_loose.returncode, 0, r_loose.stdout + r_loose.stderr)
+            self.assertEqual(r_loose.stdout.strip(), "NULL", "verifierIcon() must ignore CWD files")
+
+            r_jar = subprocess.run([str(JAVA), "-cp", f"{probe_classes};{VERIFIER_JAR}", "IconProbe"],
+                                   cwd=str(cwd), capture_output=True, text=True, timeout=20)
+            self.assertEqual(r_jar.returncode, 0, r_jar.stdout + r_jar.stderr)
+            out = r_jar.stdout.strip()
+            self.assertTrue(out.startswith("LOADED:") and not out.endswith(":-1x-1"),
+                            f"verifierIcon() must load embedded PNG from classpath resource: {out}")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

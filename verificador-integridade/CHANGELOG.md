@@ -4,6 +4,26 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.4.2] - 2026-11-14
+
+### Segurança e Corrigido
+
+- `F-01`: `verifyHistory` passa a rejeitar inventário `artifacts` vazio ou com caminhos duplicados (case-insensitive) e confirma que `contentRootHash` do último evento corresponde ao `contentRootHash` atual; capturas `html-message-v1` com `integridade.json` exigem inventário completo dos arquivos esperados.
+- `F-02`: `verifyMessageCapture` falha de forma fail-closed ao detectar divergência de `captureRootHash` no manifesto; `--verify-only` valida igualdade exata de status locais consistentes.
+- `F-03`: `writeReports` e os contadores HTML passam a considerar íntegros todos os estados saudáveis verificados em capturas `html-message-v1` e reconciliação (`isHealthyVerifierItemState`).
+- `F-04`/`F-05`: aplica `html.disable` nos `JLabel`/`JCheckBox` da GUI e rejeita comentários HTML, `<![CDATA[` e instruções `<?` em `validateRenderedCaptureHtml` (versões de apresentação `0` e `2`).
+- `F-07`/`F-08`: `comparePublicMessageManifest` normaliza chaves em minúsculas e verifica correspondência entre `domId`, `key` e `messageHash`; capturas `html-message-v1` rejeitam `integridade.json` com `schemaVersion < 2`.
+- `F-09`/`F-06`/`F-10`: `verifierIcon()` carrega somente recursos do classpath empacotado (ignora diretório de trabalho); launcher EXE protege limpeza temporária com tolerância de 2 minutos sem lock, exclusão segura contra junctions/reparse points e autoteste ZIP com entrada de 0 bytes no `--self-test`.
+
+## [1.4.1] - 2026-11-13
+
+### Segurança e Corrigido
+
+- Endurecimento na verificação de capturas legadas (não `html-message-v1`): arquivos extras fora do conjunto esperado passam a reprovar a captura tanto na verificação padrão quanto em `--verify-only` (fail-closed).
+- Bloqueio de diretório raiz caso seja NTFS junction ou link simbólico na CLI, na GUI e em `discover()` (`LinkOption.NOFOLLOW_LINKS` / `isLinkOrReparse`).
+- Relatório `integridade.html` protegido com `<meta http-equiv="Content-Security-Policy">` baseado em hash SHA-256 (`sha256Base64`), listeners DOM (`addEventListener`) no lugar de `onclick=` inline, escape de apóstrofo (`&#39;`) e serialização segura.
+- Cancelamento da busca inicial (`CancellationException`) passa a encerrar o processo silenciosamente com código `0`.
+
 ## [1.4.0] - 2026-11-13
 
 ### Melhorado e Corrigido

@@ -37,6 +37,15 @@ public final class SecurityRegressionTest {
             canonicalRecordHashVerifiesRegardlessOfKeyOrderAndPreservesLegacy(root);
             htmlAttributeEntityDecodingInCspAndHrefWorks();
             htmlReportBlocksAndPublicSummaryHashesMatch(root);
+            legacyCaptureExtraFileFailsVerificationAndCli(root);
+            junctionAtRootIsRejectedByDiscoverAndCli(root);
+            htmlReportHasCspNoInlineOnclickAndEscapesApostrophe(root);
+            verifyHistoryRejectsEmptyDuplicateAndDecoupledLastEventRoot(root);
+            htmlMessageV1RequiresCompleteArtifactsInventoryAndValidSchemaVersion(root);
+            htmlMessageCaptureFailsClosedOnCaptureRootHashMismatchAndCliSuffix(root);
+            writeReportsTreatsHtmlMessageAndReconciliationStatesAsHealthy(root);
+            validateRenderedCaptureHtmlRejectsCommentsCdataAndProcessingInstructions();
+            comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -920,6 +929,129 @@ public final class SecurityRegressionTest {
         assertValidateHtmlRejected(validate, entityObfuscatedHref, keys, 2);
     }
 
+    private static void legacyCaptureExtraFileFailsVerificationAndCli(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+
+        Path suiteRoot = Files.createDirectories(root.resolve("legacy-extra-suite"));
+        Path capDir = Files.createDirectories(suiteRoot.resolve("cap-legacy-extra"));
+        byte[] data = "sample-legacy-content".getBytes(StandardCharsets.UTF_8);
+        Files.write(capDir.resolve("a.txt"), data);
+        String sha = sha256Bytes(data);
+        JSONArray art = new JSONArray().put(new JSONObject().put("path", "a.txt").put("size", data.length).put("sha256", sha));
+        String rootHash = sha256Utf8("a.txt|" + data.length + "|" + sha + "\n");
+        JSONObject ev = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-13T17:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootHash)
+                .put("changes", new JSONArray().put(new JSONObject().put("action", "added").put("path", "a.txt").put("sha256", sha)));
+        ev.put("recordHash", sha256Utf8(ev.toString()));
+        JSONObject rec = new JSONObject().put("schemaVersion", 2).put("contentRootHash", rootHash).put("artifacts", art).put("events", new JSONArray().put(ev));
+        Files.write(capDir.resolve("integridade.json"), rec.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(capDir.resolve("manifest.json"), new JSONObject().put("artifacts", art).toString().getBytes(StandardCharsets.UTF_8));
+
+        Object capClean = newCapture(capDir);
+        verifyMethod.invoke(null, capClean);
+        if (!"consistente com registro local".equals(statusField.get(capClean))) {
+            throw new AssertionError("Expected clean legacy capture status, got: " + statusField.get(capClean));
+        }
+
+        Files.write(capDir.resolve("extra-nao-declarado.txt"), "extra".getBytes(StandardCharsets.UTF_8));
+        Object capDirty = newCapture(capDir);
+        verifyMethod.invoke(null, capDirty);
+        String dirtyStatus = (String) statusField.get(capDirty);
+        if (dirtyStatus == null || dirtyStatus.startsWith("consistente com registro local") || !dirtyStatus.contains("arquivos extras na captura: 1")) {
+            throw new AssertionError("Expected extra file failure status on legacy capture, got: " + dirtyStatus);
+        }
+
+        boolean verified = false;
+        try {
+            IntegrityVerifier.main(new String[]{"--verify-only", suiteRoot.toString()});
+            verified = true;
+        } catch (IOException expected) {
+            // expected fail-closed rejection
+        }
+        if (verified) {
+            throw new AssertionError("--verify-only must fail when a legacy capture contains extra files");
+        }
+    }
+
+    private static void junctionAtRootIsRejectedByDiscoverAndCli(Path root) throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path targetRoot = Files.createDirectories(root.resolve("root-junction-target"));
+        Path capDir = Files.createDirectories(targetRoot.resolve("cap-ok"));
+        createValidHtmlMessageCapture(capDir, "Clean");
+        Path junctionRoot = root.resolve("root-junction-link");
+        createWindowsJunction(junctionRoot, targetRoot);
+        try {
+            boolean discovered = false;
+            try {
+                IntegrityVerifier.discover(junctionRoot);
+                discovered = true;
+            } catch (IOException expected) {
+                // expected
+            }
+            if (discovered) {
+                throw new AssertionError("discover() must reject an NTFS junction root folder");
+            }
+            boolean verified = false;
+            try {
+                IntegrityVerifier.main(new String[]{"--verify-only", junctionRoot.toString()});
+                verified = true;
+            } catch (IOException expected) {
+                // expected
+            }
+            if (verified) {
+                throw new AssertionError("--verify-only must reject an NTFS junction root folder");
+            }
+        } finally {
+            Files.deleteIfExists(junctionRoot);
+        }
+    }
+
+    private static void htmlReportHasCspNoInlineOnclickAndEscapesApostrophe(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Method writeMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "writeReports", Path.class, List.class, String.class, String.class, String.class);
+        writeMethod.setAccessible(true);
+
+        Path scanRoot = Files.createDirectories(root.resolve("html-csp-test"));
+        String capName = "Cap'Test-20261113-190000";
+        Path capDir = Files.createDirectories(scanRoot.resolve(capName));
+        createValidHtmlMessageCapture(capDir, "Apostrophe test");
+
+        List<IntegrityVerifier.Capture> captures = IntegrityVerifier.discover(scanRoot);
+        if (captures.size() != 1) {
+            throw new AssertionError("Expected 1 capture, got: " + captures.size());
+        }
+        verifyMethod.invoke(null, captures.get(0));
+        writeMethod.invoke(null, scanRoot, captures, repeat('a', 64), "2026-11-13T19:00:00Z\"injected", "");
+
+        String html = new String(Files.readAllBytes(scanRoot.resolve("integridade.html")), StandardCharsets.UTF_8);
+        if (!html.contains("<meta http-equiv=\"Content-Security-Policy\"") || !html.contains("script-src 'sha256-")) {
+            throw new AssertionError("Missing CSP meta header in integridade.html");
+        }
+        if (html.contains("onclick=")) {
+            throw new AssertionError("Found disallowed inline onclick attribute in integridade.html");
+        }
+        if (!html.contains("Cap&#39;Test-20261113-190000") || html.contains("Cap'Test-20261113-190000")) {
+            throw new AssertionError("Apostrophe in capture name was not safely escaped as &#39; in integridade.html");
+        }
+
+        String reportJsonRaw = new String(Files.readAllBytes(scanRoot.resolve("integridade/verificacao-integridade.json")), StandardCharsets.UTF_8);
+        JSONObject reportJson = new JSONObject(reportJsonRaw);
+        if (!"2026-11-13T19:00:00Z\"injected".equals(reportJson.optString("generatedAt"))) {
+            throw new AssertionError("generatedAt in verificacao-integridade.json was not safely JSON-escaped");
+        }
+    }
+
     private static void htmlReportBlocksAndPublicSummaryHashesMatch(Path root) throws Exception {
         Path scanRoot = Files.createDirectories(root.resolve("html-report-blocks"));
         String[] names = { "João_São_Paulo-20261113-190000", "Maria_Cotia-20261113-190000" };
@@ -971,6 +1103,308 @@ public final class SecurityRegressionTest {
             if (!html.contains("data-block-full=\"" + fullSha + "\" data-block-public=\"" + pubSha + "\"")) {
                 throw new AssertionError("Missing block SHA-256 attributes for " + c.name);
             }
+        }
+    }
+
+    private static void verifyHistoryRejectsEmptyDuplicateAndDecoupledLastEventRoot(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Method canonicalJsonMethod = IntegrityVerifier.class.getDeclaredMethod("canonicalJson", Object.class);
+        canonicalJsonMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+
+        Path capEmpty = Files.createDirectories(root.resolve("history-empty-artifacts"));
+        JSONObject evEmpty = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-14T09:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", repeat('a', 64))
+                .put("recordHashFormat", "canonical-v1");
+        evEmpty.put("recordHash", sha256Utf8((String) canonicalJsonMethod.invoke(null, evEmpty)));
+        JSONObject recEmpty = new JSONObject().put("schemaVersion", 2).put("contentRootHash", repeat('a', 64))
+                .put("artifacts", new JSONArray()).put("events", new JSONArray().put(evEmpty));
+        Files.write(capEmpty.resolve("integridade.json"), recEmpty.toString().getBytes(StandardCharsets.UTF_8));
+        Files.write(capEmpty.resolve("manifest.json"), new JSONObject().put("artifacts", new JSONArray()).toString().getBytes(StandardCharsets.UTF_8));
+        Object emptyCap = newCapture(capEmpty);
+        verifyMethod.invoke(null, emptyCap);
+        String emptyStatus = (String) statusField.get(emptyCap);
+        if (!"registro incompleto".equals(emptyStatus)) {
+            throw new AssertionError("Empty artifacts array must fail verifyHistory, got: " + emptyStatus);
+        }
+
+        Path capDup = Files.createDirectories(root.resolve("history-dup-artifacts"));
+        byte[] sample = "dup".getBytes(StandardCharsets.UTF_8);
+        Files.write(capDup.resolve("a.txt"), sample);
+        String sha = sha256Bytes(sample);
+        JSONArray dupArt = new JSONArray()
+                .put(new JSONObject().put("path", "a.txt").put("size", sample.length).put("sha256", sha))
+                .put(new JSONObject().put("path", "A.TXT").put("size", sample.length).put("sha256", sha));
+        Method verifyHistoryMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "verifyHistory", Class.forName("IntegrityVerifier$Capture"), JSONObject.class);
+        verifyHistoryMethod.setAccessible(true);
+        Object dupCap = newCapture(capDup);
+        verifyHistoryMethod.invoke(null, dupCap, new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", repeat('b', 64))
+                .put("artifacts", dupArt)
+                .put("events", new JSONArray().put(evEmpty)));
+        String dupStatus = (String) statusField.get(dupCap);
+        if (!"inventário inválido".equals(dupStatus)) {
+            throw new AssertionError("Duplicate case-folded path in artifacts must fail verifyHistory, got: " + dupStatus);
+        }
+
+        Path capDecoupled = Files.createDirectories(root.resolve("history-decoupled-last-event"));
+        Files.write(capDecoupled.resolve("a.txt"), sample);
+        String rootHash = sha256Utf8("a.txt|" + sample.length + "|" + sha + "\n");
+        String wrongRoot = repeat('c', 64);
+        JSONArray cleanArt = new JSONArray().put(new JSONObject().put("path", "a.txt").put("size", sample.length).put("sha256", sha));
+        JSONObject ev1 = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-14T09:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", rootHash)
+                .put("recordHashFormat", "canonical-v1");
+        String h1 = sha256Utf8((String) canonicalJsonMethod.invoke(null, ev1));
+        ev1.put("recordHash", h1);
+        JSONObject ev2 = new JSONObject()
+                .put("sequence", 2)
+                .put("timestampUtc", "2026-11-14T09:01:00Z")
+                .put("action", "reextracted")
+                .put("previousRecordHash", h1)
+                .put("contentRootHash", wrongRoot)
+                .put("recordHashFormat", "canonical-v1");
+        ev2.put("recordHash", sha256Utf8((String) canonicalJsonMethod.invoke(null, ev2)));
+        JSONObject decoupledRec = new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", rootHash)
+                .put("artifacts", cleanArt)
+                .put("events", new JSONArray().put(ev1).put(ev2));
+        Object decoupledCap = newCapture(capDecoupled);
+        verifyHistoryMethod.invoke(null, decoupledCap, decoupledRec);
+        String decoupledStatus = (String) statusField.get(decoupledCap);
+        if (!"cadeia do histórico divergente do estado atual".equals(decoupledStatus)) {
+            throw new AssertionError("Mismatched last event contentRootHash must be rejected, got: " + decoupledStatus);
+        }
+    }
+
+    private static JSONObject buildLocalIntegrityRecordForFiles(Path capDir, String[] relPaths) throws Exception {
+        Method canonicalJsonMethod = IntegrityVerifier.class.getDeclaredMethod("canonicalJson", Object.class);
+        canonicalJsonMethod.setAccessible(true);
+        java.util.List<String> sorted = new ArrayList<>(java.util.Arrays.asList(relPaths));
+        java.util.Collections.sort(sorted);
+        JSONArray artifacts = new JSONArray();
+        StringBuilder rootLines = new StringBuilder();
+        JSONArray changes = new JSONArray();
+        for (String rel : sorted) {
+            byte[] bytes = Files.readAllBytes(capDir.resolve(rel));
+            String sha = sha256Bytes(bytes);
+            artifacts.put(new JSONObject().put("path", rel).put("size", bytes.length).put("sha256", sha));
+            rootLines.append(rel).append('|').append(bytes.length).append('|').append(sha).append('\n');
+            changes.put(new JSONObject().put("action", "added").put("path", rel).put("sha256", sha));
+        }
+        String contentRoot = sha256Utf8(rootLines.toString());
+        JSONObject ev = new JSONObject()
+                .put("sequence", 1)
+                .put("timestampUtc", "2026-11-14T09:00:00Z")
+                .put("action", "capture_created")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", contentRoot)
+                .put("recordHashFormat", "canonical-v1")
+                .put("changes", changes);
+        ev.put("recordHash", sha256Utf8((String) canonicalJsonMethod.invoke(null, ev)));
+        return new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", contentRoot)
+                .put("artifacts", artifacts)
+                .put("events", new JSONArray().put(ev));
+    }
+
+    private static void htmlMessageV1RequiresCompleteArtifactsInventoryAndValidSchemaVersion(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Field statusField = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusField.setAccessible(true);
+
+        Path suiteRoot = Files.createDirectories(root.resolve("html-incomplete-inv-suite"));
+        Path capDir = Files.createDirectories(suiteRoot.resolve("cap-subset-inv"));
+        createValidHtmlMessageCapture(capDir, "mensagem valida");
+        // Inventory lists only whatsapp.html, omitting messages.json
+        JSONObject subsetIntegrity = buildLocalIntegrityRecordForFiles(capDir, new String[]{"whatsapp.html"});
+        Files.write(capDir.resolve("integridade.json"), subsetIntegrity.toString().getBytes(StandardCharsets.UTF_8));
+
+        Object cap = newCapture(capDir);
+        verifyMethod.invoke(null, cap);
+        String status = (String) statusField.get(cap);
+        if (status == null || !status.contains("inventário incompleto na captura html-message-v1: messages.json")) {
+            throw new AssertionError("Expected incomplete html-message-v1 inventory rejection, got: " + status);
+        }
+        boolean cliPassed = false;
+        try {
+            IntegrityVerifier.main(new String[]{"--verify-only", suiteRoot.toString()});
+            cliPassed = true;
+        } catch (IOException expected) {
+            // expected fail-closed CLI rejection
+        }
+        if (cliPassed) {
+            throw new AssertionError("--verify-only must fail when html-message-v1 integridade.json omits messages.json");
+        }
+
+        Path capV1 = Files.createDirectories(root.resolve("html-schema-v1-integrity"));
+        createValidHtmlMessageCapture(capV1, "mensagem v1");
+        JSONObject v1Integrity = buildLocalIntegrityRecordForFiles(capV1, new String[]{"whatsapp.html", "messages.json"});
+        v1Integrity.put("schemaVersion", 1);
+        Files.write(capV1.resolve("integridade.json"), v1Integrity.toString().getBytes(StandardCharsets.UTF_8));
+        Object badSchemaCap = newCapture(capV1);
+        boolean rejected = false;
+        try {
+            verifyMethod.invoke(null, badSchemaCap);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof IOException) rejected = true;
+            else throw e;
+        }
+        if (!rejected) {
+            throw new AssertionError("html-message-v1 must reject integridade.json with schemaVersion < 2");
+        }
+    }
+
+    private static void htmlMessageCaptureFailsClosedOnCaptureRootHashMismatchAndCliSuffix(Path root) throws Exception {
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyMethod.setAccessible(true);
+        Method cliCheck = IntegrityVerifier.class.getDeclaredMethod("isConsistentLocalHistoryStatus", String.class);
+        cliCheck.setAccessible(true);
+
+        if ((Boolean) cliCheck.invoke(null, "consistente com registro local; manifesto de mensagens requer referência pública")) {
+            throw new AssertionError("CLI local status check must reject suffixed failure message");
+        }
+        if (!(Boolean) cliCheck.invoke(null, "consistente com registro local; consistente com registro local (manifesto de mensagens)")) {
+            throw new AssertionError("CLI local status check must accept dual consistent html-message-v1 status");
+        }
+
+        Path suiteDir = Files.createDirectories(root.resolve("html-roothash-mismatch-suite"));
+        Path capDir = Files.createDirectories(suiteDir.resolve("cap-mismatch"));
+        createValidHtmlMessageCapture(capDir, "oi");
+        JSONObject validIntegrity = buildLocalIntegrityRecordForFiles(capDir, new String[]{"whatsapp.html", "messages.json"});
+        Files.write(capDir.resolve("integridade.json"), validIntegrity.toString().getBytes(StandardCharsets.UTF_8));
+
+        String rawManifest = new String(Files.readAllBytes(capDir.resolve("manifest.json")), StandardCharsets.UTF_8);
+        JSONObject tamperedManifest = new JSONObject(rawManifest).put("captureRootHash", repeat('f', 64));
+        Files.write(capDir.resolve("manifest.json"), tamperedManifest.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        boolean rejected = false;
+        try {
+            verifyMethod.invoke(null, newCapture(capDir));
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof IOException) rejected = true;
+            else throw e;
+        }
+        if (!rejected) {
+            throw new AssertionError("verifyMessageCapture must throw on captureRootHash mismatch");
+        }
+    }
+
+    private static void writeReportsTreatsHtmlMessageAndReconciliationStatesAsHealthy(Path root) throws Exception {
+        Path scanRoot = Files.createDirectories(root.resolve("html-report-healthy-states"));
+        Path capDir = Files.createDirectories(scanRoot.resolve("cap-healthy"));
+        createValidHtmlMessageCapture(capDir, "mensagem saudavel");
+        JSONObject integrity = buildLocalIntegrityRecordForFiles(capDir, new String[]{"whatsapp.html", "messages.json"});
+        Files.write(capDir.resolve("integridade.json"), integrity.toString().getBytes(StandardCharsets.UTF_8));
+
+        List<IntegrityVerifier.Capture> captures = IntegrityVerifier.discover(scanRoot);
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+        verifyMethod.setAccessible(true);
+        for (IntegrityVerifier.Capture c : captures) verifyMethod.invoke(null, c);
+        Method setHashMethod = IntegrityVerifier.class.getDeclaredMethod("setHash", List.class);
+        setHashMethod.setAccessible(true);
+        String rootHash = (String) setHashMethod.invoke(null, captures);
+        Method historyMethod = IntegrityVerifier.class.getDeclaredMethod("historyReport", List.class, String.class);
+        historyMethod.setAccessible(true);
+        String fullHistory = (String) historyMethod.invoke(null, captures, rootHash);
+        Method writeMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "writeReports", Path.class, List.class, String.class, String.class, String.class);
+        writeMethod.setAccessible(true);
+        writeMethod.invoke(null, scanRoot, captures, rootHash, "2026-11-14T09:00:00Z", fullHistory);
+
+        String html = new String(Files.readAllBytes(scanRoot.resolve("integridade.html")), StandardCharsets.UTF_8);
+        if (!html.contains("class=\"ok\">mensagem estruturada</td>") || html.contains("class=\"bad\"")) {
+            throw new AssertionError("Healthy html-message-v1 states must render with class=ok in integridade.html");
+        }
+    }
+
+    private static void validateRenderedCaptureHtmlRejectsCommentsCdataAndProcessingInstructions() throws Exception {
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+
+        String key = sha256Utf8("msg-comment-test");
+        java.util.Set<String> keys = Collections.singleton(key);
+        String[] badTokens = {"<!--comment-->", "-->", "<![CDATA[x]]>", "<?xml version=\"1.0\"?>"};
+        for (String token : badTokens) {
+            String modern = "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                    + csp + "\"><style>body{}</style><style>.c{}</style></head><body>" + token
+                    + "<div data-capture-message-key=\"" + key + "\">ok</div><script>" + stopScript + "</script></body></html>";
+            assertValidateHtmlRejected(validate, modern, keys, 2);
+
+            String legacy = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + token
+                    + "<div data-capture-message-key=\"" + key + "\">ok</div></body></html>";
+            assertValidateHtmlRejected(validate, legacy, keys, 0);
+        }
+    }
+
+    private static void comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(Path root) throws Exception {
+        Path capDir = Files.createDirectories(root.resolve("public-manifest-key-check"));
+        createValidHtmlMessageCapture(capDir, "ola");
+        Path manifestPath = capDir.resolve("manifest.json");
+        JSONObject baseManifest = new JSONObject(new String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8));
+        JSONObject row = baseManifest.getJSONArray("messageHashes").getJSONObject(0);
+        String upperKey = row.getString("key").toUpperCase(java.util.Locale.ROOT);
+        String msgHash = row.getString("messageHash");
+
+        Method rootHashMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "htmlCaptureRootHash", JSONArray.class, String.class, String.class, String.class, JSONObject.class);
+        rootHashMethod.setAccessible(true);
+
+        // 1. Valid match across lowercase local vs uppercase reference key
+        JSONArray upperRows = new JSONArray().put(new JSONObject().put("domId", "101").put("key", upperKey).put("messageHash", msgHash));
+        JSONObject upperRef = new JSONObject(baseManifest.toString()).put("messageHashes", upperRows);
+        upperRef.put("captureRootHash", rootHashMethod.invoke(null, upperRows, upperRef.getString("htmlSha256"), "", "", upperRef));
+        String upperMatchReport = IntegrityVerifier.comparePublicMessageManifest(manifestPath, "cap", upperRef.toString());
+        if (!upperMatchReport.contains("101|integra") || !upperMatchReport.contains("Integras: 1 | divergentes: 0")) {
+            throw new AssertionError("Case-normalized key match should report 101|integra, got:\n" + upperMatchReport);
+        }
+
+        // 2. Duplicate case-variant key in publicManifestMap must be rejected
+        Method publicMapMethod = IntegrityVerifier.class.getDeclaredMethod("publicMessageMap", JSONArray.class);
+        publicMapMethod.setAccessible(true);
+        boolean dupRejected = false;
+        try {
+            publicMapMethod.invoke(null, new JSONArray()
+                    .put(new JSONObject().put("domId", "101").put("key", upperKey.toLowerCase(java.util.Locale.ROOT)).put("messageHash", msgHash))
+                    .put(new JSONObject().put("domId", "102").put("key", upperKey).put("messageHash", msgHash)));
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof IOException) dupRejected = true;
+            else throw e;
+        }
+        if (!dupRejected) {
+            throw new AssertionError("publicMessageMap must reject duplicate case-folded keys");
+        }
+
+        // 3. Matching domId + messageHash with mismatched key must be reported as chave_divergente
+        String wrongKey = sha256Utf8("forged-key");
+        JSONArray forgedRows = new JSONArray().put(new JSONObject().put("domId", "101").put("key", wrongKey).put("messageHash", msgHash));
+        JSONObject forgedRef = new JSONObject(baseManifest.toString()).put("messageHashes", forgedRows);
+        forgedRef.put("captureRootHash", rootHashMethod.invoke(null, forgedRows, forgedRef.getString("htmlSha256"), "", "", forgedRef));
+        String keyMismatchReport = IntegrityVerifier.comparePublicMessageManifest(manifestPath, "cap", forgedRef.toString());
+        if (!keyMismatchReport.contains("101|chave_divergente") || !keyMismatchReport.contains("Integras: 0 | divergentes: 1")) {
+            throw new AssertionError("Key mismatch for same domId must not report integra, got:\n" + keyMismatchReport);
         }
     }
 

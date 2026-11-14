@@ -1,5 +1,23 @@
 # Checksums
 
+## Build 2.6.7-beta / Verificador 1.4.2 (correções de segurança e robustez `F-01..F-10`; allowlist exclusiva 1.4.2)
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Observações |
+|---|---|---|---|
+| `instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip` | 96949777 | `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB` | Pacote completo de instalação (plugin `2.6.7-beta`, Verificador `1.4.2` JAR+EXE, dependências e script BAT) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.7-beta.jar` | 1516022 | `8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB` | Fat-JAR do plugin (`Implementation-Version: 2.6.7-beta`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 155216 | `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475` | Verificador `1.4.2` compilado em Java 8 (`F-01..F-05`, `F-07..F-09`) |
+| `verificador-integridade/integridade-verifier.exe` | 77868100 | `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105` | Executável Windows x64 autocontido do Verificador `1.4.2` (`F-06`, `F-10`; `--self-test` OK) |
+
+## Build 2.6.6-beta / Verificador 1.4.1 (correções de segurança e robustez `V-01..V-04` e `P-01..P-04`; allowlist exclusiva 1.4.1)
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Observações |
+|---|---|---|---|
+| `instalador-chat-captura-IPED-2.6.6-beta-verificador-1.4.1.zip` | 96101446 | `A3739FF8AF94A438272777DB0BDDF858A9553A653BB4E46FE73389F7E925B135` | Pacote completo de instalação (plugin `2.6.6-beta`, Verificador `1.4.1` JAR+EXE, dependências e script BAT) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.6-beta.jar` | 1515669 | `C0025DB803739F3C9509F4E24DDAC23C1C4E0D77CC751A5DE890102B1968E7A4` | Fat-JAR do plugin (`Implementation-Version: 2.6.6-beta`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 153719 | `CC2958812B0D56CF60B96641EE75F5776F463E0986503AC0FE15ABF82CE71345` | Verificador `1.4.1` compilado em Java 8 |
+| `verificador-integridade/integridade-verifier.exe` | 77864004 | `A7283005AF86ED5DD0E47C07619DCD1F3A6F4618B10DE3AC208B7F2A1549A29C` | Executável Windows x64 autocontido do Verificador `1.4.1` |
+
 ## Build 2.6.5-beta / Verificador 1.4.0 (fluxo direto no modo Público, barras de progresso, `alwaysOnTop`/EDT e `OK`/`FALHA` no `integridade.html`; allowlist exclusiva 1.4.0)
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Observações |

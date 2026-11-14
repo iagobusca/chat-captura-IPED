@@ -33,6 +33,10 @@ public final class CaptureIntegrityTest {
             pixelBombPngIsRejectedByBoundedReaderAndThumbnailCreation();
             failedMigrationBeforeBackupPreservesOriginalWhatsappHtml();
             integrityRecordUsesCanonicalFormatV1();
+            maliciousCoordinatesRejectedBeforeBackupAndHtmlWrite();
+            legacyWhatsappHtmlHasCspNoDoubleEscapeAndNoopener();
+            attachmentHandlerOpenAndSetSelectedAreNullSafeAndEscaped();
+            canonicalJsonEquivalenceAndVerifierHtmlEscaping();
             System.out.println("CaptureIntegrityTest: PASS");
             javafx.application.Platform.exit();
             System.exit(0);
@@ -458,7 +462,7 @@ public final class CaptureIntegrityTest {
         try {
             Path shots = Files.createDirectories(root.resolve("screenshots"));
             Files.writeString(shots.resolve("frame_0001.png"), "pngdata", StandardCharsets.UTF_8);
-            JSONObject record = CaptureIntegrity.integrityRecord(root, null, "capture-created", "2.6.5-beta");
+            JSONObject record = CaptureIntegrity.integrityRecord(root, null, "capture-created", "2.6.6-beta");
             JSONArray events = record.getJSONArray("events");
             equal(1, events.length(), "initial integrity record must have 1 event");
             JSONObject ev = events.getJSONObject(0);
@@ -476,6 +480,233 @@ public final class CaptureIntegrityTest {
         char[] chars = new char[count];
         java.util.Arrays.fill(chars, value);
         return new String(chars);
+    }
+
+    private static void maliciousCoordinatesRejectedBeforeBackupAndHtmlWrite() throws Exception {
+        Path root = Files.createTempDirectory("capture-p02-coords-");
+        try {
+            String originalSentinel = "<html><body>ORIGINAL_SENTINEL</body></html>";
+            Files.writeString(root.resolve("whatsapp.html"), originalSentinel, StandardCharsets.UTF_8);
+            Files.writeString(root.resolve("manifest.json"), "{\"version\":2}", StandardCharsets.UTF_8);
+
+            String[] badPayloads = new String[] {
+                    "{\"frames\":[{\"sequence\":1,\"image\":\"frames/f1.png\",\"width\":100,\"height\":100,"
+                            + "\"blocks\":[{\"id\":\"m1\",\"type\":\"file\",\"x\":0,\"y\":0,\"width\":10,\"height\":10,"
+                            + "\"file\":\"javascript:alert(1)\",\"text\":\"x\"}]}]}",
+                    "{\"frames\":[{\"sequence\":1,\"image\":\"frames/f1.png\",\"width\":100,\"height\":100,\"blocks\":[]}],"
+                            + "\"annotations\":{\"enabled\":true,\"items\":[{\"messageId\":\"m1\",\"links\":[{\"chatRefId\":\"ok1\",\"title\":\"Chat\","
+                            + "\"captureFolder\":\"../../evil\",\"hasCapture\":true}]}]}}",
+                    "{\"frames\":[{\"sequence\":1,\"image\":\"frames/f1.png\",\"width\":100,\"height\":100,\"blocks\":[]}],"
+                            + "\"annotations\":{\"enabled\":true,\"items\":[{\"messageId\":\"m1\",\"links\":[{\"chatRefId\":\"sub/dir\",\"title\":\"Chat\","
+                            + "\"captureFolder\":\"Cap1\",\"hasCapture\":true}]}]}}"
+            };
+
+            HtmlLinkViewer viewer = createHeadlessViewer();
+            java.lang.reflect.Method writeMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                    "writeWhatsAppHtml", Path.class, Path.class, String.class);
+            writeMethod.setAccessible(true);
+
+            for (String payload : badPayloads) {
+                Files.writeString(root.resolve("whatsapp-coordinates.json"), payload, StandardCharsets.UTF_8);
+                HtmlLinkViewer.RecaptureJob job = new HtmlLinkViewer.RecaptureJob();
+                job.folderPath = root;
+                job.folder = root.getFileName().toString();
+                boolean rejectedMigration = false;
+                try {
+                    viewer.regenerateWhatsAppHtmlFromSavedCoordinates(job);
+                } catch (java.io.IOException expected) {
+                    rejectedMigration = true;
+                }
+                check(rejectedMigration, "malicious coordinates must fail migration before backup");
+                equal(originalSentinel, Files.readString(root.resolve("whatsapp.html"), StandardCharsets.UTF_8),
+                        "original whatsapp.html must remain intact after rejected coordinates");
+
+                boolean rejectedWrite = false;
+                try {
+                    writeMethod.invoke(viewer, root, root.resolve("direct.html"), payload);
+                } catch (java.lang.reflect.InvocationTargetException expected) {
+                    if (expected.getCause() instanceof java.io.IOException) {
+                        rejectedWrite = true;
+                    } else {
+                        throw expected;
+                    }
+                }
+                check(rejectedWrite, "direct writeWhatsAppHtml must also reject malicious coordinates");
+                check(!Files.exists(root.resolve("direct.html")), "rejected writeWhatsAppHtml must not emit file");
+            }
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static void legacyWhatsappHtmlHasCspNoDoubleEscapeAndNoopener() throws Exception {
+        Path root = Files.createTempDirectory("capture-p02-p03-html-");
+        try {
+            String coords = "{\"frames\":[{\"sequence\":1,\"image\":\"frames/f1.png\",\"width\":100,\"height\":100,"
+                    + "\"blocks\":[{\"id\":\"m1\",\"type\":\"file\",\"x\":0,\"y\":0,\"width\":10,\"height\":10,\"file\":\"files/doc.pdf\",\"text\":\"Doc\"}]}],"
+                    + "\"annotations\":{\"enabled\":true,\"items\":[{\"messageId\":\"m1\",\"links\":[{\"chatRefId\":\"ref1\",\"title\":\"Chat A&B\","
+                    + "\"captureFolder\":\"Chat A&B-2026\",\"hasCapture\":true,\"excerptFile\":\"texto.txt\",\"frames\":[]}]}]}}";
+            HtmlLinkViewer viewer = createHeadlessViewer();
+            java.lang.reflect.Method writeMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                    "writeWhatsAppHtml", Path.class, Path.class, String.class);
+            writeMethod.setAccessible(true);
+            Path htmlFile = root.resolve("whatsapp.html");
+            writeMethod.invoke(viewer, root, htmlFile, coords);
+
+            String html = Files.readString(htmlFile, StandardCharsets.UTF_8);
+            check(html.contains("<meta http-equiv=\"Content-Security-Policy\""), "whatsapp.html must declare CSP meta");
+            check(html.contains("script-src 'sha256-"), "whatsapp.html CSP must restrict script-src by SHA-256");
+            check(html.contains("rel=\"noopener noreferrer\""), "target=_blank links in whatsapp.html must include noopener noreferrer");
+            check(!html.contains("onclick=\""), "whatsapp.html must not contain inline onclick= attributes");
+            check(html.contains("data-avatar=\"data:image/png;base64,"), "AVATAR must be stored in data-avatar attribute");
+            check(html.contains("function safeRelPath(p)"), "whatsapp.html must validate dynamic paths with safeRelPath");
+            check(!html.contains("'../'+esc(l.captureFolder)"), "excerptHtml must not double-escape base path");
+            check(html.contains("var cap=safeRelPath(l.captureFolder)") && html.contains("esc(base+ex)"),
+                    "excerptHtml must validate raw base path and escape once");
+
+            // Auxiliary HTML outputs (index.html, relatorio.htm raiz e relatorio.htm da captura)
+            Path capDir = Files.createDirectories(root.resolve("cap1"));
+            java.lang.reflect.Method interactiveMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                    "writeInteractiveCaptureReport", Path.class, Path.class, String.class, java.util.List.class, Map.class);
+            interactiveMethod.setAccessible(true);
+            Path capReport = capDir.resolve("relatorio.htm");
+            interactiveMethod.invoke(viewer, capDir, capReport, "OK", Collections.emptyList(), Collections.emptyMap());
+            String capReportHtml = Files.readString(capReport, StandardCharsets.UTF_8);
+            check(capReportHtml.contains("<meta http-equiv=\"Content-Security-Policy\"")
+                    && capReportHtml.contains("script-src 'sha256-"),
+                    "capture relatorio.htm must declare SHA-256 CSP");
+            check(!capReportHtml.contains("onclick=\""), "capture relatorio.htm must not contain inline onclick=");
+
+            HtmlLinkViewer.CaptureRootEntry entry = new HtmlLinkViewer.CaptureRootEntry();
+            entry.folder = "cap1";
+            entry.title = "Chat 1";
+            entry.chatId = "123";
+            entry.createdAt = "2026-11-13";
+            entry.chronologicalSortKey = "2026-11-13";
+            entry.folderHash = repeat('a', 64);
+            entry.status = "OK";
+            entry.linksWhatsapp = "cap1/whatsapp.html";
+            entry.linksReport = "cap1/relatorio.htm";
+            entry.linksText = "cap1/texto.txt";
+            entry.linksManifest = "cap1/manifest.json";
+
+            java.lang.reflect.Method rootIndexMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                    "writeCaptureRootIndexHtml", Path.class, Path.class, String.class, java.util.List.class);
+            rootIndexMethod.setAccessible(true);
+            Path rootIndex = root.resolve("index.html");
+            rootIndexMethod.invoke(viewer, rootIndex, root, repeat('b', 64), Collections.singletonList(entry));
+            String rootIndexHtml = Files.readString(rootIndex, StandardCharsets.UTF_8);
+            check(rootIndexHtml.contains("<meta http-equiv=\"Content-Security-Policy\"")
+                    && rootIndexHtml.contains("script-src 'sha256-"),
+                    "root index.html must declare SHA-256 CSP");
+            check(!rootIndexHtml.contains("onclick=\""), "root index.html must not contain inline onclick=");
+
+            java.lang.reflect.Method rootReportMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                    "writeCaptureRootReport", Path.class, Path.class, String.class, java.util.List.class);
+            rootReportMethod.setAccessible(true);
+            Path rootReport = root.resolve("relatorio.htm");
+            rootReportMethod.invoke(viewer, rootReport, root, repeat('b', 64), Collections.singletonList(entry));
+            String rootReportHtml = Files.readString(rootReport, StandardCharsets.UTF_8);
+            check(rootReportHtml.contains("<meta http-equiv=\"Content-Security-Policy\"")
+                    && rootReportHtml.contains("default-src 'none'"),
+                    "root relatorio.htm must declare CSP meta");
+            check(!rootReportHtml.contains("onclick=\""), "root relatorio.htm must not contain inline onclick=");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private static void attachmentHandlerOpenAndSetSelectedAreNullSafeAndEscaped() throws Exception {
+        final String trickyHash = "h\"+alert(1)+\\";
+        iped.viewers.api.AttachmentSearcher stubSearcher = (iped.viewers.api.AttachmentSearcher) java.lang.reflect.Proxy.newProxyInstance(
+                iped.viewers.api.AttachmentSearcher.class.getClassLoader(),
+                new Class<?>[] { iped.viewers.api.AttachmentSearcher.class },
+                (proxy, method, args) -> {
+                    if ("getHash".equals(method.getName())) {
+                        return args != null && args.length > 0 && args[0] != null ? trickyHash : null;
+                    }
+                    if ("isChecked".equals(method.getName()) || "openItem".equals(method.getName())) {
+                        return false;
+                    }
+                    if ("getItems".equals(method.getName())) {
+                        return Collections.emptyList();
+                    }
+                    if ("escapeQuery".equals(method.getName())) {
+                        return args != null && args.length > 0 && args[0] != null ? args[0].toString() : "";
+                    }
+                    return null;
+                });
+
+        final HtmlLinkViewer[] holder = new HtmlLinkViewer[1];
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            new javafx.embed.swing.JFXPanel();
+            holder[0] = new HtmlLinkViewer(stubSearcher);
+        });
+        HtmlLinkViewer viewer = holder[0];
+
+        java.lang.reflect.Method jsMethod = HtmlLinkViewer.class.getDeclaredMethod("js", String.class);
+        jsMethod.setAccessible(true);
+        equal("\"h\\\"+alert(1)+\\\\\"", jsMethod.invoke(viewer, trickyHash),
+                "js() helper must escape quotes and backslashes for setSelected");
+
+        java.awt.event.AWTEventListener autoCloseDialog = event -> {
+            if (event instanceof java.awt.event.WindowEvent
+                    && event.getID() == java.awt.event.WindowEvent.WINDOW_OPENED
+                    && event.getSource() instanceof javax.swing.JDialog) {
+                ((java.awt.Window) event.getSource()).dispose();
+            }
+        };
+        java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(autoCloseDialog, java.awt.AWTEvent.WINDOW_EVENT_MASK);
+        try {
+            HtmlLinkViewer.AttachmentHandler handler = viewer.new AttachmentHandler();
+            handler.open(null);
+            handler.open("   ");
+            handler.open("hash:nao-encontrado");
+
+            java.lang.reflect.Field mediaField = HtmlLinkViewer.class.getDeclaredField("mediaHashesInView");
+            mediaField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Set<String> mediaHashes = (java.util.Set<String>) mediaField.get(viewer);
+            mediaHashes.add(trickyHash);
+
+            viewer.setSelected(null, true);
+
+            iped.data.IItemId itemId = (iped.data.IItemId) java.lang.reflect.Proxy.newProxyInstance(
+                    iped.data.IItemId.class.getClassLoader(),
+                    new Class<?>[] { iped.data.IItemId.class },
+                    (proxy, method, args) -> "compareTo".equals(method.getName()) ? 0 : 1);
+            viewer.setSelected(itemId, true);
+
+            java.util.concurrent.CountDownLatch fxLatch = new java.util.concurrent.CountDownLatch(1);
+            javafx.application.Platform.runLater(fxLatch::countDown);
+            check(fxLatch.await(5, java.util.concurrent.TimeUnit.SECONDS), "FX thread should flush setSelected script");
+        } finally {
+            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(autoCloseDialog);
+        }
+    }
+
+    private static void canonicalJsonEquivalenceAndVerifierHtmlEscaping() throws Exception {
+        JSONObject left = new JSONObject();
+        left.put("sourceType", "legacy");
+        left.put("legacyAnnotationsPreserved", true);
+        left.put("migratedAt", "2026-11-14T09:00:00Z");
+
+        JSONObject rightSameOrderDiff = new JSONObject();
+        rightSameOrderDiff.put("migratedAt", "2026-11-14T09:00:00Z");
+        rightSameOrderDiff.put("legacyAnnotationsPreserved", true);
+        rightSameOrderDiff.put("sourceType", "legacy");
+
+        JSONObject modified = new JSONObject(rightSameOrderDiff.toString());
+        modified.put("legacyAnnotationsPreserved", false);
+
+        equal(CaptureIntegrity.canonicalJson(left), CaptureIntegrity.canonicalJson(rightSameOrderDiff),
+                "canonicalJson must normalize key order for equivalent migration records");
+        check(!CaptureIntegrity.canonicalJson(left).equals(CaptureIntegrity.canonicalJson(modified)),
+                "canonicalJson must detect changed migration field values");
+
+        equal("&lt;img src=x onerror=&#39;alert(1)&#39;&gt;&amp;&quot;",
+                VerifierIntegrity.htmlEscape("<img src=x onerror='alert(1)'>&\""),
+                "VerifierIntegrity.htmlEscape must escape all HTML metacharacters");
     }
 
     private static void deleteTree(Path root) throws Exception {

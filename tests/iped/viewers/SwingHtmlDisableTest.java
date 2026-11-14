@@ -25,11 +25,18 @@ public final class SwingHtmlDisableTest {
                 verifyChatAnnotationActionDialog();
                 verifyLinkedChatPickerDialog();
                 verifySavedChatPickerDialog();
+                verifyChatNoteDialog();
+                verifyChatPreflightDialog();
+                verifyChatCaptureLinkedWindow();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
         System.out.println("SwingHtmlDisableTest: PASS");
+        try {
+            javafx.application.Platform.exit();
+        } catch (Throwable ignored) {
+        }
     }
 
     private static void verifyChatCapturePanel() throws Exception {
@@ -108,6 +115,51 @@ public final class SwingHtmlDisableTest {
                     "SavedChatPickerDialog list renderer must disable HTML rendering");
         } finally {
             dialog.dispose();
+        }
+    }
+
+    private static void verifyChatNoteDialog() {
+        ChatNoteDialog dialog = new ChatNoteDialog(null, "nota", "<html><b>autor</b>", "<html><img src=x>");
+        try {
+            verifyNonHtmlLabelsDisabled(dialog.getContentPane(), null);
+        } finally {
+            dialog.dispose();
+        }
+    }
+
+    private static void verifyChatPreflightDialog() {
+        AnnotationPreflight preflight = new AnnotationPreflight();
+        preflight.add(new ChatAnnotation("101"), 0);
+        ChatPreflightDialog dialog = new ChatPreflightDialog(null, preflight, "1-1", "<html><img src=x>");
+        try {
+            verifyNonHtmlLabelsDisabled(dialog.getContentPane(), null);
+        } finally {
+            dialog.dispose();
+        }
+    }
+
+    private static void verifyChatCaptureLinkedWindow() throws Exception {
+        new javafx.embed.swing.JFXPanel();
+        iped.viewers.api.AttachmentSearcher stubSearcher = (iped.viewers.api.AttachmentSearcher) java.lang.reflect.Proxy.newProxyInstance(
+                iped.viewers.api.AttachmentSearcher.class.getClassLoader(),
+                new Class<?>[] { iped.viewers.api.AttachmentSearcher.class },
+                (proxy, method, args) -> {
+                    if ("getItems".equals(method.getName())) return Collections.emptyList();
+                    if ("isChecked".equals(method.getName()) || "openItem".equals(method.getName())) return false;
+                    return "";
+                });
+        ChatCaptureLinkedWindow window = new ChatCaptureLinkedWindow(
+                null, stubSearcher, null, "<html><img src=x>", new java.io.File("."), "linked-test");
+        try {
+            Field viewerField = ChatCaptureLinkedWindow.class.getDeclaredField("linkedViewer");
+            viewerField.setAccessible(true);
+            HtmlLinkViewer innerViewer = (HtmlLinkViewer) viewerField.get(window);
+            Field linkedDestField = ChatCapturePanel.class.getDeclaredField("linkedDestinationLabel");
+            linkedDestField.setAccessible(true);
+            Object linkedDest = linkedDestField.get(innerViewer.getChatCapturePanel());
+            verifyNonHtmlLabelsDisabled(window.getContentPane(), linkedDest);
+        } finally {
+            window.dispose();
         }
     }
 

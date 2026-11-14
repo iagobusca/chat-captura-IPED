@@ -39,7 +39,7 @@ class ChatNoteDialog extends JDialog {
 
         JPanel form = new JPanel(new GridLayout(3, 1, 4, 4));
         JPanel previewPanel = new JPanel(new BorderLayout(4, 4));
-        previewPanel.add(new JLabel(Messages.getString("ChatNoteDialog.Preview")), BorderLayout.NORTH); //$NON-NLS-1$
+        previewPanel.add(ChatCapturePanel.plainLabel(Messages.getString("ChatNoteDialog.Preview")), BorderLayout.NORTH); //$NON-NLS-1$
         JTextArea preview = new JTextArea(messagePreview == null ? "" : messagePreview); //$NON-NLS-1$
         preview.setEditable(false);
         preview.setLineWrap(true);
@@ -53,12 +53,12 @@ class ChatNoteDialog extends JDialog {
         noteArea.setLineWrap(true);
         noteArea.setWrapStyleWord(true);
         JPanel notePanel = new JPanel(new BorderLayout(4, 4));
-        notePanel.add(new JLabel(Messages.getString("ChatNoteDialog.Message")), BorderLayout.NORTH); //$NON-NLS-1$
+        notePanel.add(ChatCapturePanel.plainLabel(Messages.getString("ChatNoteDialog.Message")), BorderLayout.NORTH); //$NON-NLS-1$
         notePanel.add(new JScrollPane(noteArea), BorderLayout.CENTER);
         form.add(notePanel);
 
         JPanel authorPanel = new JPanel(new BorderLayout(4, 4));
-        authorPanel.add(new JLabel(Messages.getString("ChatNoteDialog.Author")), BorderLayout.WEST); //$NON-NLS-1$
+        authorPanel.add(ChatCapturePanel.plainLabel(Messages.getString("ChatNoteDialog.Author")), BorderLayout.WEST); //$NON-NLS-1$
         authorField.setText(initialAuthor == null ? "" : initialAuthor); //$NON-NLS-1$
         authorPanel.add(authorField, BorderLayout.CENTER);
         form.add(authorPanel);

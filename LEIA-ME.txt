@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.5-beta - Verificador de Integridade 1.4.0
+Pacote Chat Captura IPED 2.6.7-beta - Verificador de Integridade 1.4.2
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,8 +7,31 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.4.0 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.4.2 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
+
+Novidades desta versão (2.6.7-beta / Verificador 1.4.2):
+- Verificador 1.4.2 (segurança F-01..F-10):
+  * F-01: verifyHistory exige artifacts não vazio, rejeita caminhos duplicados (case-insensitive) e vincula contentRootHash do último evento ao estado atual; capturas html-message-v1 exigem que todo arquivo de conteúdo esperado esteja no inventário de integridade.json;
+  * F-02: verifyMessageCapture passa a falhar em modo fail-closed quando captureRootHash diverge; --verify-only valida igualdade estrita de status consistentes locais;
+  * F-03: writeReports passa a classificar corretamente os estados válidos de html-message-v1 e reconciliação como íntegros (isHealthyVerifierItemState);
+  * F-04/F-05: desabilita interpretação HTML nos componentes JLabel/JCheckBox do verificador (html.disable) e rejeita comentários HTML, CDATA e instruções de processamento (<!--, -->, <![CDATA[, <?) em validateRenderedCaptureHtml;
+  * F-07/F-08: comparePublicMessageManifest normaliza chaves hexadecimal em minúsculas e valida correspondência completa (domId, key, messageHash); rejeita integridade.json com schemaVersion < 2 em capturas html-message-v1;
+  * F-09/F-06/F-10: carrega verificador-icon.png somente via classpath empacotado (ignora arquivos soltos no diretório de trabalho); launcher EXE adiciona janela de tolerância de 2 min para limpeza de diretórios sem lock, evita seguir reparse points/junctions na exclusão recursiva e valida entrada ZIP de 0 bytes no --self-test.
+- Plugin 2.6.7-beta (segurança e consistência):
+  * F-04/F-08/F-09: aplica html.disable nos diálogos/labels não-HTML (HtmlLinkViewer, ChatNoteDialog, ChatPreflightDialog, ChatCaptureLinkedWindow), compara migration.json usando CaptureIntegrity.canonicalJson() independente da ordem das chaves e escapa nomes de arquivos e hashes em VerifierIntegrity.showAlertIfNeeded;
+  * Incrementa versão para 2.6.7-beta e atualiza allowlist exclusiva (VerifierIntegrity + instalador) para aceitar somente os binários oficiais do Verificador 1.4.2 (versões <= 1.4.1 rejeitadas).
+
+Novidades desta versão (2.6.6-beta / Verificador 1.4.1):
+- Verificador 1.4.1 (segurança e fluxo):
+  * Detecta e falha (status + --verify-only) quando capturas legadas não-html-message-v1 contêm arquivos extras não inventariados (checagem fail-closed);
+  * Bloqueia diretório raiz que seja junção NTFS ou link simbólico em CLI (--verify-only / --export-history), fluxo GUI e discover();
+  * Trata o cancelamento da busca inicial ("procurando capturas") encerrando silenciosamente com código 0 (sem modal de erro);
+  * Endurece integridade.html com Content-Security-Policy por hash SHA-256, remoção de handlers onclick inline, escape de apóstrofo (&#39;) em esc() e escape JSON seguro em generatedAt.
+- Plugin 2.6.6-beta (segurança e robustez):
+  * Incrementa a versão para 2.6.6-beta e atualiza a allowlist exclusiva (VerifierIntegrity + instalador) para aceitar somente os binários oficiais do Verificador 1.4.1 (versões <= 1.4.0 rejeitadas);
+  * Adiciona guardas contra null/vazio em AttachmentHandler.open e escaping via js(hash) em HtmlLinkViewer.setSelected;
+  * Valida estritamente caminhos relativos de whatsapp-coordinates.json em Java antes de gravar/migrar whatsapp.html, aplica safeRelPath() e rel="noopener noreferrer" no JS, corrige double-escaping em excerptHtml() e adiciona <meta http-equiv="Content-Security-Policy"> em whatsapp.html, index.html e relatorio.htm.
 
 Novidades desta versão (2.6.5-beta / Verificador 1.4.0):
 - Verificador 1.4.0 (UI e fluxo):
@@ -75,9 +98,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.4.0:
-JAR 9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5
-EXE 11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809
+SHA-256 do Verificador 1.4.2:
+JAR 08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475
+EXE 4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105
 
-SHA-256 do plugin 2.6.5-beta:
-JAR 32044F09D1299D787061B76F2150DF0ED82590C5C01E9123377005DE8407170B
+SHA-256 do plugin 2.6.7-beta:
+JAR 8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB
