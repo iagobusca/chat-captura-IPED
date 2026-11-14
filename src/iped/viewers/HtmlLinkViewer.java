@@ -3096,7 +3096,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
     private CaptureRunResult runHtmlMessageCapture(Path outputRoot, Path captureDir) throws Exception {
         String script = "(function(startId,endId){var all=[].slice.call(document.querySelectorAll('div.linha[id]')).filter(function(n){return /^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(n.id)}),theme=document.querySelector('style'),top=document.getElementById('topbar'),header=top&&top.cloneNode(true);if(!theme||!header||theme.textContent.length>2097152)return JSON.stringify({error:'theme_unavailable'});header.id='capture-topbar';[header].concat([].slice.call(header.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(a){var k=a.name.toLowerCase(),v=a.value||'';if(k.indexOf('on')===0||k==='style'||k==='href'||k==='srcset'||k==='srcdoc'||k==='action'||k==='formaction'||(k==='id'&&n!==header)||(k==='src'&&!/^data:image\\/(png|jpe?g|gif|webp);base64,/i.test(v)))n.removeAttribute(a.name);});});" //$NON-NLS-1$
                 + "var ids=all.map(function(n){return n.id}),startMatches=ids.filter(function(x){return x===startId}).length;if(startMatches===0)return JSON.stringify({error:'start_marker_missing'});if(startMatches!==1)return JSON.stringify({error:'start_marker_ambiguous'});var endMatches=ids.filter(function(x){return x===endId}).length;if(endMatches===0)return JSON.stringify({error:'end_marker_missing'});if(endMatches!==1)return JSON.stringify({error:'end_marker_ambiguous'});" //$NON-NLS-1$
-                + "var resolvedStart=startId,a=ids.indexOf(startId),b=ids.indexOf(endId);if(a>b)return JSON.stringify({error:'marker_order_invalid'});if(b-a+1>" + MAX_HTML_MESSAGE_COUNT + ")return JSON.stringify({error:'message_count_limit'});var rows=[],payloadBytes=0;" //$NON-NLS-1$ //$NON-NLS-2$
+                + "var resolvedStart=startId,a=ids.indexOf(startId),b=ids.indexOf(endId);if(a>b)return JSON.stringify({error:'marker_order_invalid'});if(b-a+1>" + MAX_HTML_MESSAGE_COUNT + ")return JSON.stringify({error:'message_count_limit'});var rows=[],payloadBytes=0,seenMedia={};" //$NON-NLS-1$ //$NON-NLS-2$
                 + "for(var i=a;i<=b;i++){var src=all[i],clone=src.cloneNode(true),resources=[],resourceByHash={},media=[],resourceError='';" //$NON-NLS-1$
                 + "[].slice.call(clone.querySelectorAll('a[onclick]')).forEach(function(link){var click=link.getAttribute('onclick')||'';if(click.indexOf('app.open')<0)return;var match=click.match(/(?:sha-256|hash):([0-9a-f]{64})/i);if(!match){resourceError='';return;}var hash=match[1].toLowerCase(),token=resourceByHash[hash];if(!token){token='r'+resources.length;resourceByHash[hash]=token;resources.push({token:token,sha256:hash,label:(link.innerText||link.textContent||'').replace(/\\s+/g,' ').trim().substring(0,512)});}link.setAttribute('data-capture-link-token',token);});" //$NON-NLS-1$
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});" //$NON-NLS-1$
@@ -3104,7 +3104,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink){/* unsupported attachment skipped, continue capture */}" //$NON-NLS-1$
                 + "clone.querySelectorAll('script,template,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
                 + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
-                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
+                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){if(seenMedia[x])return n;seenMedia[x]=1;return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
                 + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
         Object raw = executeScriptAndWait(script);
         if (!(raw instanceof String)) throw new IOException("Falha ao extrair mensagens do DOM do IPED."); //$NON-NLS-1$
@@ -3148,6 +3148,10 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         String conversationIdentity = safe(sourceMetadata.name) + "\n" + safe(sourceMetadata.path) + "\n" + safe(currentChatTitle()); //$NON-NLS-1$
         String conversationKey = CaptureIntegrity.sha256Text(conversationIdentity);
         long aggregateAttachmentBytes = 0;
+        final long maxAggregateAttachmentBytes = MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 6L;
+        Set<String> uniqueAttachmentPaths = new HashSet<>();
+        Map<String, DecodedHtmlAttachment> resolvedCaseAttachments = new HashMap<>();
+        Set<String> skippedCaseAttachments = new HashSet<>();
         String annotations = migrationJob != null && migrationJob.migrateLegacyToHtml ? "" : buildAnnotationsJson(); //$NON-NLS-1$
         Map<String, JSONObject> annotationsByMessage = new HashMap<>();
         if (!annotations.isBlank()) {
@@ -3178,13 +3182,28 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             Map<String, String[]> tokenResources = new LinkedHashMap<>();
             if (media != null) for (int mediaIndex = 0; mediaIndex < media.length(); mediaIndex++) {
                 String dataUri = media.optString(mediaIndex); //$NON-NLS-1$
-                DecodedHtmlAttachment attachment = decodeHtmlAttachment(dataUri);
-                aggregateAttachmentBytes += attachment.size;
-                if (aggregateAttachmentBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) throw new IOException("Anexos do intervalo excedem o limite total de 64 MiB."); //$NON-NLS-1$
+                DecodedHtmlAttachment attachment;
+                try {
+                    attachment = decodeHtmlAttachment(dataUri);
+                } catch (IOException skipped) {
+                    dataUriToRelative.put(dataUri, ""); //$NON-NLS-1$
+                    LOGGER.warn("Anexo inline ignorado na mensagem {}: {}", domId, skipped.getMessage()); //$NON-NLS-1$
+                    continue;
+                }
                 String relative = "attachments/" + attachment.sha256 + "." + attachment.extension; //$NON-NLS-1$ //$NON-NLS-2$
+                boolean alreadyCounted = uniqueAttachmentPaths.contains(relative);
+                if (!alreadyCounted && (aggregateAttachmentBytes + attachment.size > maxAggregateAttachmentBytes
+                        || rows.length() + uniqueAttachmentPaths.size() + 1L > MAX_HTML_MESSAGE_COUNT)) {
+                    dataUriToRelative.put(dataUri, ""); //$NON-NLS-1$
+                    LOGGER.warn("Anexo inline ignorado na mensagem {} por limite total da captura: {}", domId, relative); //$NON-NLS-1$
+                    continue;
+                }
+                if (!alreadyCounted) {
+                    uniqueAttachmentPaths.add(relative);
+                    aggregateAttachmentBytes += attachment.size;
+                }
                 if (isCensoredAttachment(censor, attachment, relative, staging, censorVerdicts)) messageCensoredSha.add(attachment.sha256);
                 if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
-                if (i + 1L + attachments.size() + (migrationJob == null ? 0 : migrationJob.stagedReusableAttachmentPaths.size()) > 25000L) throw new IOException("Mensagens e anexos ultrapassam o limite global de 25.000 itens."); //$NON-NLS-1$
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
                         .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
                 dataUriToRelative.put(dataUri, relative);
@@ -3199,13 +3218,39 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 String token = resource.optString("token", ""); //$NON-NLS-1$
                 String sha256 = resource.optString("sha256", ""); //$NON-NLS-1$
                 if (!token.matches("r[0-9]{1,5}") || !sha256.matches("(?i)[0-9a-f]{64}")) throw new IOException("Referência/hash de anexo inválido na mensagem " + domId); //$NON-NLS-1$ //$NON-NLS-2$
-                DecodedHtmlAttachment attachment = resolveCaseAttachment(sha256);
-                aggregateAttachmentBytes += attachment.size;
-                if (aggregateAttachmentBytes > MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 8L) throw new IOException("Anexos do intervalo excedem o limite total de 64 MiB."); //$NON-NLS-1$
+                String normalizedSha256 = sha256.toLowerCase(Locale.ROOT);
+                if (skippedCaseAttachments.contains(normalizedSha256)) {
+                    continue;
+                }
+                DecodedHtmlAttachment attachment = resolvedCaseAttachments.get(normalizedSha256);
+                if (attachment == null) {
+                    try {
+                        attachment = resolveCaseAttachment(normalizedSha256);
+                        resolvedCaseAttachments.put(normalizedSha256, attachment);
+                    } catch (IOException skipped) {
+                        skippedCaseAttachments.add(normalizedSha256);
+                        LOGGER.warn("Anexo relacionado ignorado na mensagem {} (sha256={}): {}", domId, normalizedSha256, skipped.getMessage()); //$NON-NLS-1$
+                        continue;
+                    }
+                }
                 String relative = "attachments/" + attachment.sha256 + "." + attachment.extension; //$NON-NLS-1$ //$NON-NLS-2$
+                boolean alreadyCounted = uniqueAttachmentPaths.contains(relative);
+                if (!alreadyCounted && (aggregateAttachmentBytes + attachment.size > maxAggregateAttachmentBytes
+                        || rows.length() + uniqueAttachmentPaths.size() + 1L > MAX_HTML_MESSAGE_COUNT)) {
+                    if (migrationJob != null && migrationJob.stagedReusableAttachmentPaths.remove(relative)) {
+                        Files.deleteIfExists(staging.resolve(relative));
+                    }
+                    resolvedCaseAttachments.remove(normalizedSha256);
+                    skippedCaseAttachments.add(normalizedSha256);
+                    LOGGER.warn("Anexo relacionado ignorado na mensagem {} por limite total da captura: {}", domId, relative); //$NON-NLS-1$
+                    continue;
+                }
+                if (!alreadyCounted) {
+                    uniqueAttachmentPaths.add(relative);
+                    aggregateAttachmentBytes += attachment.size;
+                }
                 if (isCensoredAttachment(censor, attachment, relative, staging, censorVerdicts)) messageCensoredSha.add(attachment.sha256);
                 if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
-                if (i + 1L + attachments.size() + (migrationJob == null ? 0 : migrationJob.stagedReusableAttachmentPaths.size()) > 25000L) throw new IOException("Mensagens e anexos ultrapassam o limite global de 25.000 itens."); //$NON-NLS-1$
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
                         .put("size", attachment.size).put("sha256", attachment.sha256)); //$NON-NLS-1$ //$NON-NLS-2$
                 String label = safeAttachmentName(resource.optString("label", ""), attachment.name); //$NON-NLS-1$
@@ -3883,6 +3928,13 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             if (!rootKeyInjected && cleanAttrs.containsKey("data-capture-message-key")) { //$NON-NLS-1$
                 rootKeyInjected = true;
             }
+            if ("img".equals(tag) && !cleanAttrs.containsKey("src") //$NON-NLS-1$ //$NON-NLS-2$
+                    && (rawAttrs.containsKey("data-capture-src-token") //$NON-NLS-1$
+                            || (dataUriToRelative != null && rawAttrs.containsKey("src") //$NON-NLS-1$
+                                    && dataUriToRelative.containsKey(rawAttrs.get("src"))))) { //$NON-NLS-1$
+                i = tagEnd + 1;
+                continue;
+            }
             out.append('<').append(tag);
             for (Map.Entry<String, String> attr : cleanAttrs.entrySet()) {
                 out.append(' ').append(attr.getKey()).append("=\"") //$NON-NLS-1$
@@ -4054,8 +4106,8 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                     String mapped = dataUriToRelative.get(entry.getValue());
                     if (isSafeCaptureAttachmentRelativePath(mapped)) {
                         clean.put("src", mapped.trim()); //$NON-NLS-1$
-                        continue;
                     }
+                    continue;
                 }
                 if (isSafeCaptureMessageMediaSrc(tag, val)) {
                     clean.put("src", val.trim()); //$NON-NLS-1$

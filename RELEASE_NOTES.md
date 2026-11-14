@@ -14,7 +14,7 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 - [instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip) (`96.949.777` bytes | SHA-256: `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB`)
 - [integridade-verifier-1.4.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.exe) (`77.868.100` bytes | SHA-256: `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105`)
 - [integridade-verifier-1.4.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.jar) (`155.216` bytes | SHA-256: `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475`)
-- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.516.022` bytes | SHA-256: `8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB`)
+- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.506.206` bytes | SHA-256: `2A1E409C6B2229425178E8528D47AE0D001C85B8DFD272ABB54D1574452E3327`)
 
 ### Segurança e Corrigido (`F-01..F-10`)
 
@@ -29,6 +29,7 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
   - `F-04`: `html.disable` em diálogos/janelas (`HtmlLinkViewer`, `ChatNoteDialog`, `ChatPreflightDialog`, `ChatCaptureLinkedWindow`).
   - `F-08`: comparação de `migration.json` via `CaptureIntegrity.canonicalJson()`.
   - `F-09`: escape HTML em `VerifierIntegrity.showAlertIfNeeded` e allowlist exclusiva sincronizada com o Verificador `1.4.2`, rejeitando `<= 1.4.1`.
+  - Tolerância a anexos acima do limite individual de `8 MiB` (ex.: vídeos grandes como `VID-*.mp4`), ausentes no caso ou que ultrapassem o orçamento acumulado da captura em `runHtmlMessageCapture`, ignorando apenas o anexo excedente com `WARN` e preservando a mensagem e a criação da pasta final da captura.
 
 ---
 

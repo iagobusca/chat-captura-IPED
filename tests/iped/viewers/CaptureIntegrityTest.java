@@ -355,6 +355,20 @@ public final class CaptureIntegrityTest {
                 "src token attribute must resolve to contained relative path: " + sanitized);
         check(sanitized.contains("data-capture-message-key=\"msg-key-1\""),
                 "root message element must receive data-capture-message-key: " + sanitized);
+
+        Map<String, String> skippedDataUriMap = new HashMap<>();
+        String skippedDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        skippedDataUriMap.put(skippedDataUri, "");
+        String rawWithSkipped = "<div class=\"linha\">"
+                + "<a data-capture-link-token=\"r1\"><img data-capture-src-token=\"r1\" alt=\"skipped-token\">VID-20251205-WA0003.mp4</a>"
+                + "<img src=\"" + skippedDataUri + "\" alt=\"skipped-inline\">"
+                + "</div>";
+        String sanitizedSkipped = HtmlLinkViewer.sanitizeCaptureMessageFragment(
+                rawWithSkipped, tokenResources, skippedDataUriMap, "msg-key-2");
+        check(!sanitizedSkipped.contains("#preview-") && !sanitizedSkipped.contains("<img"),
+                "skipped oversized/missing attachment tokens and inline data URIs must not leave broken img or preview links: " + sanitizedSkipped);
+        check(sanitizedSkipped.contains("VID-20251205-WA0003.mp4"),
+                "message text/label for skipped attachment must still be preserved: " + sanitizedSkipped);
     }
 
     private static void pixelBombPngIsRejectedByBoundedReaderAndThumbnailCreation() throws Exception {

@@ -20,6 +20,7 @@ Mudanças relevantes do plugin.
   - `F-08`: comparação de `migration.json` via `CaptureIntegrity.canonicalJson()` (independente da ordem de chaves JSON).
   - `F-09`: escape HTML em `VerifierIntegrity.showAlertIfNeeded` para nomes de arquivos e hashes exibidos no `JTextPane`.
   - Incremento de versão para `2.6.7-beta` e allowlist exclusiva de `VerifierIntegrity` atualizada para os binários oficiais do Verificador `1.4.2` (`08877EFF...` / `4859980D...`), rejeitando `<= 1.4.1`.
+  - Correção em `runHtmlMessageCapture` e `sanitizeCaptureMessageFragment` para não abortar a captura inteira (nem remover a pasta temporária `.__html_capture_<uuid>` sem criar a pasta final) quando uma conversa contém anexos relacionados acima de `8 MiB`, ausentes no caso ou que excedam o orçamento acumulado, contabilizando tamanho único por SHA-256 e ignorando de forma segura apenas o anexo excedente.
 
 ---
 

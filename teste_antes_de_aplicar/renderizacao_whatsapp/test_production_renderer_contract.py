@@ -62,9 +62,10 @@ class ProductionRendererContract(unittest.TestCase):
         self.assertIn("Fechar", modal)
 
     def test_compiled_plugin_jar_contains_the_updated_renderer(self) -> None:
+        plugin_version = java_string(PLUGIN_SOURCE, "CHAT_CAPTURE_PLUGIN_VERSION")
         with zipfile.ZipFile(PLUGIN_JAR) as jar:
             manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
-            self.assertIn("Implementation-Version: 2.6.2-beta", manifest)
+            self.assertIn(f"Implementation-Version: {plugin_version}", manifest)
             self.assertIn("iped/viewers/HtmlLinkViewer.class", jar.namelist())
             self.assertIn("iped/viewers/CaptureCensorship.class", jar.namelist())
             self.assertIn("iped/viewers/VerifierIntegrity.class", jar.namelist())

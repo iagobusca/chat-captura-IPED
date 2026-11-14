@@ -176,7 +176,7 @@ Substituída a modelagem antiga de `comparePublicMessageManifest` / `publicMessa
 3. **Allowlist exclusiva SHA-256 em [VerifierIntegrity.java](src/iped/viewers/VerifierIntegrity.java#L21-L22)**:
    - Política estrita de versão única: `VALID_JAR_HASHES` e `VALID_EXE_HASHES` aceitam **exclusivamente** os hashes da versão `1.4.2` (binários `<= 1.4.1` rejeitados).
 4. **Build do Plugin `2.6.7-beta` e Pacote de Distribuição**:
-   - Empacotados `instalar_captura_chat_zap\iped-viewers-impl-4.3.1-2.6.7-beta.jar` e `instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar` (Java 11 bytecode `major=55`, `1.516.022` bytes, SHA-256 `8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB`).
+   - Empacotados `instalar_captura_chat_zap\iped-viewers-impl-4.3.1-2.6.7-beta.jar` e `instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar` (Java 11 bytecode `major=55`, `1.506.206` bytes, SHA-256 `2A1E409C6B2229425178E8528D47AE0D001C85B8DFD272ABB54D1574452E3327`).
    - Atualizado [instalar_captura_chat_zap.bat](instalar_captura_chat_zap/instalar_captura_chat_zap.bat) e gerado `instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip` (`96.949.777` bytes, SHA-256 `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB`).
 5. **Documentação de Versão e Hashes**:
    - Atualizados [CHECKSUMS.md](CHECKSUMS.md), [versao_hash.md](versao_hash.md), [CHANGELOG.md](CHANGELOG.md), [LEIA-ME.txt](LEIA-ME.txt), [README.md](README.md), [verificador-integridade\README.md](verificador-integridade/README.md), [verificador-integridade\doc.md](verificador-integridade/doc.md) e [verificador-integridade\CHANGELOG.md](verificador-integridade/CHANGELOG.md).

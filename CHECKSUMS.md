@@ -5,7 +5,7 @@
 | Arquivo | Tamanho (bytes) | SHA-256 | Observações |
 |---|---|---|---|
 | `instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip` | 96949777 | `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB` | Pacote completo de instalação (plugin `2.6.7-beta`, Verificador `1.4.2` JAR+EXE, dependências e script BAT) |
-| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.7-beta.jar` | 1516022 | `8B7E1432992C6DD41C41E805A2B3A492AF9E13D689EA49063B78C6AB580F7FDB` | Fat-JAR do plugin (`Implementation-Version: 2.6.7-beta`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.7-beta.jar` | 1506206 | `2A1E409C6B2229425178E8528D47AE0D001C85B8DFD272ABB54D1574452E3327` | Fat-JAR do plugin (`Implementation-Version: 2.6.7-beta`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
 | `verificador-integridade/integridade-verifier.jar` | 155216 | `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475` | Verificador `1.4.2` compilado em Java 8 (`F-01..F-05`, `F-07..F-09`) |
 | `verificador-integridade/integridade-verifier.exe` | 77868100 | `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105` | Executável Windows x64 autocontido do Verificador `1.4.2` (`F-06`, `F-10`; `--self-test` OK) |
 
