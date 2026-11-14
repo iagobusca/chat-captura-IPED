@@ -5,6 +5,25 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 
 ---
 
+## v2.6.8 (Estável / `main`) / Verificador 1.4.3
+
+- **Tag**: [v2.6.8](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.8) (Release estável na branch `main`)
+
+### Downloads
+
+- [instalador-chat-captura-IPED-2.6.8-verificador-1.4.3.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8/instalador-chat-captura-IPED-2.6.8-verificador-1.4.3.zip) (`96.948.861` bytes | SHA-256: `A6F69393A73E036BEE73E53AE5F45C03005A9BBE6376825EF23AA19AF7640D24`)
+- [integridade-verifier-1.4.3.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8/integridade-verifier-1.4.3.exe) (`77.867.588` bytes | SHA-256: `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581`)
+- [integridade-verifier-1.4.3.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8/integridade-verifier-1.4.3.jar) (`154.638` bytes | SHA-256: `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D`)
+- [iped-viewers-impl-4.3.1-2.6.8.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.8/iped-viewers-impl-4.3.1-2.6.8.jar) (`1.506.187` bytes | SHA-256: `AB6B8A5F8E1D5B4A00E4C86A825FBA871BB4E3550E3EFC76734CA8A952F50ED5`)
+
+### Novidades e Correções
+
+- Promoção da build `2.6.8-beta` validada para a branch `main` como versão estável **`2.6.8`** (sem sufixo `-beta`), acompanhando o **Verificador de Integridade `1.4.3`**.
+- **Verificador `1.4.3`**: remoção do limite de caracteres estimado de relatório (`enforceReportBudget` / `4.194.304`), do limite de `16 MiB` em `atomic` / `atomicBatch` e dos tetos cumulativos entre capturas em `verifyAllBounded` / `--verify-only`.
+- **Plugin `2.6.8`**: tolerância a anexos individuais acima de `8 MiB`, ausentes no caso ou que ultrapassem o orçamento acumulado em `runHtmlMessageCapture`, ignorando com segurança apenas o anexo excedente (`WARN`) sem abortar a captura; allowlist exclusiva sincronizada com o Verificador `1.4.3`.
+
+---
+
 ## v2.6.8-beta / Verificador 1.4.3
 
 - **Tag**: [v2.6.8-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.8-beta) (Pre-Release)

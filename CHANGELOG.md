@@ -4,6 +4,15 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.8] - 2026-11-14
+
+### Estável (`main`)
+
+- Promoção da release `2.6.8-beta` validada para a branch `main` como versão estável **`2.6.8`** (sem sufixo `-beta`), mantendo o **Verificador de Integridade `1.4.3`** (`8CB04812...` / `723DD750...`) e todas as correções de captura, segurança (`F-01..F-10`) e relatórios sem limite de tamanho.
+- Plugin recompilado (`iped-viewers-impl-4.3.1-2.6.8.jar` / `Implementation-Version: 2.6.8`, SHA-256 `AB6B8A5F...`).
+
+---
+
 ## [2.6.8-beta] - 2026-11-14
 
 ### Corrigido e Melhorado

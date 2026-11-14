@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.8-beta - Verificador de Integridade 1.4.3
+Pacote Chat Captura IPED 2.6.8 - Verificador de Integridade 1.4.3
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -10,12 +10,13 @@ O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260
 opencv_java4120.dll e o Verificador de Integridade 1.4.3 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.6.8-beta / Verificador 1.4.3):
+Novidades desta versão (2.6.8 / Verificador 1.4.3 — versão estável):
 - Verificador 1.4.3:
   * Remove o limite de tamanho estimado de relatório (enforceReportBudget / 4.194.304 caracteres), o limite de 16 MiB na gravação de relatórios (atomic / atomicBatch) e os tetos cumulativos entre capturas em verifyAllBounded e --verify-only, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem falha de orçamento.
-- Plugin 2.6.8-beta:
+- Plugin 2.6.8:
+  * Promoção da versão 2.6.8-beta validada para a branch estável main sem sufixo -beta;
   * Tolerância a anexos acima de 8 MiB (ex.: vídeos grandes), ausentes no caso ou que excedam o orçamento acumulado em runHtmlMessageCapture, ignorando apenas o anexo excedente com WARN e preservando a mensagem e a criação da pasta final da captura;
-  * Allowlist exclusiva (VerifierIntegrity + instalador) atualizada para os binários oficiais do Verificador 1.4.3 (versões <= 1.4.2 rejeitadas).
+  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.4.3 (versões <= 1.4.2 rejeitadas).
 
 Novidades desta versão (2.6.7-beta / Verificador 1.4.2):
 - Verificador 1.4.2 (segurança F-01..F-10):
@@ -109,5 +110,5 @@ SHA-256 do Verificador 1.4.3:
 JAR 8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D
 EXE 723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581
 
-SHA-256 do plugin 2.6.8-beta:
-JAR 8BD552C41AFD9A3D63A57F06A21FB0AD4A8ECA016FAD1F3A3CADABF3272CFFB3
+SHA-256 do plugin 2.6.8:
+JAR AB6B8A5F8E1D5B4A00E4C86A825FBA871BB4E3550E3EFC76734CA8A952F50ED5

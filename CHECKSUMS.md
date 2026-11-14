@@ -1,5 +1,14 @@
 # Checksums
 
+## Build 2.6.8 (Estável / `main`) / Verificador 1.4.3
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Observações |
+|---|---|---|---|
+| `instalador-chat-captura-IPED-2.6.8-verificador-1.4.3.zip` | 96948861 | `A6F69393A73E036BEE73E53AE5F45C03005A9BBE6376825EF23AA19AF7640D24` | Pacote completo de instalação estável (plugin `2.6.8`, Verificador `1.4.3` JAR+EXE, dependências e script BAT) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.8.jar` | 1506187 | `AB6B8A5F8E1D5B4A00E4C86A825FBA871BB4E3550E3EFC76734CA8A952F50ED5` | Fat-JAR do plugin (`Implementation-Version: 2.6.8`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 154638 | `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D` | Verificador `1.4.3` compilado em Java 8 (sem limite de tamanho de relatório e sem tetos cumulativos entre capturas) |
+| `verificador-integridade/integridade-verifier.exe` | 77867588 | `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581` | Executável Windows x64 autocontido do Verificador `1.4.3` (`--self-test` OK) |
+
 ## Build 2.6.8-beta / Verificador 1.4.3 (tolerância a anexos > 8 MiB e remoção do limite de tamanho de relatório; allowlist exclusiva 1.4.3)
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Observações |

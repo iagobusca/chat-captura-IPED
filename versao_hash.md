@@ -1,13 +1,13 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.3 acompanha a release `v2.6.8-beta` e passa a ser a única aceita pelo plugin (versões `<= 1.4.2` foram abandonadas). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.3 acompanha as releases `v2.6.8` (estável em `main`) e `v2.6.8-beta` e passa a ser a única aceita pelo plugin (versões `<= 1.4.2` foram abandonadas). Compare o hash do arquivo antes de executá-lo.
 
 ## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
-| 1.4.3 (release v2.6.8-beta) | `integridade-verifier.jar` | `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D` | Build com JDK 8; bytecode 52; 154.638 bytes; remoção do limite de tamanho estimado de relatório (`enforceReportBudget`), do limite de `16 MiB` na gravação de relatórios (`atomic`/`atomicBatch`) e dos tetos cumulativos entre capturas |
-| 1.4.3 (release v2.6.8-beta) | `integridade-verifier.exe` | `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0 (`SELF_TEST_OK 1.4.3`); 77.867.588 bytes |
+| 1.4.3 (release v2.6.8 / v2.6.8-beta) | `integridade-verifier.jar` | `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D` | Build com JDK 8; bytecode 52; 154.638 bytes; remoção do limite de tamanho estimado de relatório (`enforceReportBudget`), do limite de `16 MiB` na gravação de relatórios (`atomic`/`atomicBatch`) e dos tetos cumulativos entre capturas |
+| 1.4.3 (release v2.6.8 / v2.6.8-beta) | `integridade-verifier.exe` | `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0 (`SELF_TEST_OK 1.4.3`); 77.867.588 bytes |
 | 1.4.2 (release v2.6.7-beta) | `integridade-verifier.jar` | `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475` | Build com JDK 8; bytecode 52; 155.216 bytes; correções `F-01`..`F-10` |
 | 1.4.2 (release v2.6.7-beta) | `integridade-verifier.exe` | `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0; 77.868.100 bytes |
 | 1.4.1 (release v2.6.6-beta) | `integridade-verifier.jar` | `CC2958812B0D56CF60B96641EE75F5776F463E0986503AC0FE15ABF82CE71345` | Build com JDK 8; bytecode 52; 153.719 bytes; bloqueio de extras em capturas legadas, junction na raiz, cancelamento limpo e CSP SHA-256/`&#39;`/JSON escape no HTML |
