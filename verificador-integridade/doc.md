@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.4.2
+# Verificador de Integridade 1.4.3
 
-**Versão:** 1.4.2 | Data: 14/11/2026.
+**Versão:** 1.4.3 | Data: 14/11/2026.
 
 > **Novidades da versão 1.4.2 (F-01 a F-10):** carregamento exclusivo do ícone pelo classpath (`F-09`), `html.disable` em `JLabel`/`JCheckBox` (`F-04`), bloqueio de comentários/PIs/CDATA no HTML renderizado (`F-05`), validação obrigatória de `integridade.json` esquema >= 2 e inventário completo em `html-message-v1` (`F-01`, `F-08`), erro fechado para divergência de `captureRootHash` e histórico no CLI (`F-02`), normalização/rejeição de duplicatas na comparação pública por mensagem (`F-07`), consolidação consistente nos relatórios (`F-03`) e endurecimento do launcher para entradas de 0 bytes e limpeza temporária (`F-06`, `F-10`).
 

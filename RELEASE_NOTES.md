@@ -5,6 +5,24 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 
 ---
 
+## v2.6.8-beta / Verificador 1.4.3
+
+### Downloads
+
+- `integridade-verifier.exe` 1.4.3 (`77.867.588` bytes | SHA-256: `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581`)
+- `integridade-verifier.jar` 1.4.3 (`154.638` bytes | SHA-256: `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D`)
+- `iped-viewers-impl-4.3.1-2.6.8-beta.jar` (`1.506.195` bytes | SHA-256: `8BD552C41AFD9A3D63A57F06A21FB0AD4A8ECA016FAD1F3A3CADABF3272CFFB3`)
+
+### Corrigido e Melhorado
+
+- **Verificador `1.4.3`**:
+  - Remoção do limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4.194.304` caracteres), do limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e dos tetos cumulativos entre capturas em `verifyAllBounded` / `--verify-only`, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem falha de orçamento.
+- **Plugin `2.6.8-beta`**:
+  - Tolerância a anexos acima do limite individual de `8 MiB` (ex.: vídeos grandes como `VID-*.mp4`), ausentes no caso ou que ultrapassem o orçamento acumulado da captura em `runHtmlMessageCapture`, ignorando apenas o anexo excedente com `WARN` e preservando a mensagem e a criação da pasta final da captura.
+  - Allowlist exclusiva sincronizada com o Verificador `1.4.3`, rejeitando `<= 1.4.2`.
+
+---
+
 ## v2.6.7-beta / Verificador 1.4.2
 
 - **Tag**: [v2.6.7-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.7-beta) (Pre-Release)

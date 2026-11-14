@@ -4,6 +4,12 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.4.3] - 2026-11-14
+
+### Corrigido e Melhorado
+
+- Remoção do limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4.194.304` caracteres), do limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e dos tetos cumulativos entre capturas em `verifyAllBounded` e `--verify-only`, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem erro de orçamento.
+
 ## [1.4.2] - 2026-11-14
 
 ### Segurança e Corrigido
@@ -14,7 +20,6 @@ Mudanças relevantes do Verificador de Integridade.
 - `F-04`/`F-05`: aplica `html.disable` nos `JLabel`/`JCheckBox` da GUI e rejeita comentários HTML, `<![CDATA[` e instruções `<?` em `validateRenderedCaptureHtml` (versões de apresentação `0` e `2`).
 - `F-07`/`F-08`: `comparePublicMessageManifest` normaliza chaves em minúsculas e verifica correspondência entre `domId`, `key` e `messageHash`; capturas `html-message-v1` rejeitam `integridade.json` com `schemaVersion < 2`.
 - `F-09`/`F-06`/`F-10`: `verifierIcon()` carrega somente recursos do classpath empacotado (ignora diretório de trabalho); launcher EXE protege limpeza temporária com tolerância de 2 minutos sem lock, exclusão segura contra junctions/reparse points e autoteste ZIP com entrada de 0 bytes no `--self-test`.
-- Remoção do limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4.194.304` caracteres), do limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e dos tetos cumulativos entre capturas em `verifyAllBounded` e `--verify-only`, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem erro de orçamento.
 
 ## [1.4.1] - 2026-11-13
 

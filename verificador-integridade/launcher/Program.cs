@@ -1,4 +1,4 @@
-// Versão 1.4.2 — endurecimento F-06/F-10: limpeza segura de diretórios temporários (grace window + anti-junction) e teste ZIP de 0 bytes.
+// Versão 1.4.3 — endurecimento F-06/F-10 e remoção de tetos de relatório: limpeza segura de diretórios temporários (grace window + anti-junction) e teste ZIP de 0 bytes.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
