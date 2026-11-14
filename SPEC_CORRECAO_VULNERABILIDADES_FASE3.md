@@ -171,12 +171,12 @@ Substituída a modelagem antiga de `comparePublicMessageManifest` / `publicMessa
    - `IntegrityVerifier.VERIFIER_VERSION = "1.4.2"` (`#L38`)
    - `HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION = "2.6.7-beta"` (`#L150`)
 2. **Build do Verificador `1.4.2`**:
-   - Compilado `verificador-integridade\integridade-verifier.jar` via `verificador-integridade\build.bat` (JDK 8, `155.216` bytes, SHA-256 `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475`) e copiado para `instalar_captura_chat_zap\integridade-verifier.jar`.
-   - Compilado `verificador-integridade\integridade-verifier.exe` via `verificador-integridade\build-single-exe.ps1 -OfflineBuild` (`77.868.100` bytes, SHA-256 `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105`) e copiado para `instalar_captura_chat_zap\integridade-verifier.exe`; validado com `--version` e `--self-test`.
+   - Compilado `verificador-integridade\integridade-verifier.jar` via `verificador-integridade\build.bat` (JDK 8, `154.638` bytes, SHA-256 `D4454E0F344CB6BF5E16729545A9404C455C7AB45382DA1AC40AE7ABCEB022EA`) e copiado para `instalar_captura_chat_zap\integridade-verifier.jar`.
+   - Compilado `verificador-integridade\integridade-verifier.exe` via `verificador-integridade\build-single-exe.ps1 -OfflineBuild` (`77.867.588` bytes, SHA-256 `9E3C237FADC01811BB96C4B0D62EDEEDF86DF428EBBE7273F340C93E26815876`) e copiado para `instalar_captura_chat_zap\integridade-verifier.exe`; validado com `--version` e `--self-test`.
 3. **Allowlist exclusiva SHA-256 em [VerifierIntegrity.java](src/iped/viewers/VerifierIntegrity.java#L21-L22)**:
    - Política estrita de versão única: `VALID_JAR_HASHES` e `VALID_EXE_HASHES` aceitam **exclusivamente** os hashes da versão `1.4.2` (binários `<= 1.4.1` rejeitados).
 4. **Build do Plugin `2.6.7-beta` e Pacote de Distribuição**:
-   - Empacotados `instalar_captura_chat_zap\iped-viewers-impl-4.3.1-2.6.7-beta.jar` e `instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar` (Java 11 bytecode `major=55`, `1.506.206` bytes, SHA-256 `2A1E409C6B2229425178E8528D47AE0D001C85B8DFD272ABB54D1574452E3327`).
+   - Empacotados `instalar_captura_chat_zap\iped-viewers-impl-4.3.1-2.6.7-beta.jar` e `instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar` (Java 11 bytecode `major=55`, `1.506.119` bytes, SHA-256 `F6E3474CCD1F5ED2342FDB61AD7A688393B6FC41948BD4640ABCDA0AE155C2AE`).
    - Atualizado [instalar_captura_chat_zap.bat](instalar_captura_chat_zap/instalar_captura_chat_zap.bat) e gerado `instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip` (`96.949.777` bytes, SHA-256 `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB`).
 5. **Documentação de Versão e Hashes**:
    - Atualizados [CHECKSUMS.md](CHECKSUMS.md), [versao_hash.md](versao_hash.md), [CHANGELOG.md](CHANGELOG.md), [LEIA-ME.txt](LEIA-ME.txt), [README.md](README.md), [verificador-integridade\README.md](verificador-integridade/README.md), [verificador-integridade\doc.md](verificador-integridade/doc.md) e [verificador-integridade\CHANGELOG.md](verificador-integridade/CHANGELOG.md).

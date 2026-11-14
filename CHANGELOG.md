@@ -15,11 +15,12 @@ Mudanças relevantes do plugin.
   - `F-04`/`F-05`: `html.disable` em todos os `JLabel`/`JCheckBox` do verificador e bloqueio de comentários HTML, CDATA e instruções `<?` em `validateRenderedCaptureHtml`.
   - `F-06`/`F-10`: launcher C# com exclusão segura sem seguir junctions/reparse points, janela de tolerância de 2 min na limpeza de diretórios sem lock e autoteste de entrada ZIP de 0 bytes no `--self-test`.
   - `F-07`/`F-08`/`F-09`: comparação pública com normalização de chaves e vínculo `(domId, key, messageHash)`, rejeição de `integridade.json` com `schemaVersion < 2` em `html-message-v1` e carregamento exclusivo de ícone pelo classpath.
+  - Remoção do limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4194304` caracteres), do limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e dos tetos cumulativos entre capturas em `verifyAllBounded` / `--verify-only`, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem falha de orçamento.
 - **Plugin `2.6.7-beta` (`HtmlLinkViewer` / `VerifierIntegrity` / Swing / instalador)**:
   - `F-04`: `html.disable` nos diálogos e visualizadores (`HtmlLinkViewer`, `ChatNoteDialog`, `ChatPreflightDialog`, `ChatCaptureLinkedWindow`).
   - `F-08`: comparação de `migration.json` via `CaptureIntegrity.canonicalJson()` (independente da ordem de chaves JSON).
   - `F-09`: escape HTML em `VerifierIntegrity.showAlertIfNeeded` para nomes de arquivos e hashes exibidos no `JTextPane`.
-  - Incremento de versão para `2.6.7-beta` e allowlist exclusiva de `VerifierIntegrity` atualizada para os binários oficiais do Verificador `1.4.2` (`08877EFF...` / `4859980D...`), rejeitando `<= 1.4.1`.
+  - Incremento de versão para `2.6.7-beta` e allowlist exclusiva de `VerifierIntegrity` atualizada para os binários oficiais do Verificador `1.4.2` (`D4454E0F...` / `9E3C237F...`), rejeitando `<= 1.4.1`.
   - Correção em `runHtmlMessageCapture` e `sanitizeCaptureMessageFragment` para não abortar a captura inteira (nem remover a pasta temporária `.__html_capture_<uuid>` sem criar a pasta final) quando uma conversa contém anexos relacionados acima de `8 MiB`, ausentes no caso ou que excedam o orçamento acumulado, contabilizando tamanho único por SHA-256 e ignorando de forma segura apenas o anexo excedente.
 
 ---

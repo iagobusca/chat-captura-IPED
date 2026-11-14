@@ -142,12 +142,7 @@ public final class SecurityRegressionTest {
         for (int i = 0; i < 1200; i++) { Object item = itemConstructor.newInstance(); path.set(item, longPath); rows.add(item); }
         items.set(capture, rows);
         Method budget = IntegrityVerifier.class.getDeclaredMethod("enforceReportBudget", List.class); budget.setAccessible(true);
-        try {
-            budget.invoke(null, Collections.singletonList(capture));
-            throw new AssertionError("Oversized report estimate was accepted");
-        } catch (InvocationTargetException e) {
-            if (!(e.getCause() instanceof IOException)) throw e;
-        }
+        budget.invoke(null, Collections.singletonList(capture));
     }
 
     private static void batchFailurePreservesPreviousReports() throws Exception {
@@ -156,20 +151,22 @@ public final class SecurityRegressionTest {
             Path previous = root.resolve("previous.txt");
             Path newFile = root.resolve("new.txt");
             Files.write(previous, "old-report".getBytes(StandardCharsets.UTF_8));
+            Files.createDirectory(newFile);
             Map<Path, String> reports = new LinkedHashMap<>();
             reports.put(previous, "replacement-report");
-            reports.put(newFile, repeat('x', 16 * 1024 * 1024 + 1));
+            reports.put(newFile, "unwritable-target-is-directory");
             Method batch = IntegrityVerifier.class.getDeclaredMethod("atomicBatch", Map.class);
             batch.setAccessible(true);
             try {
                 batch.invoke(null, reports);
-                throw new AssertionError("Oversized report batch was accepted");
+                throw new AssertionError("Invalid report batch was accepted");
             } catch (InvocationTargetException e) {
                 if (!(e.getCause() instanceof IOException)) throw e;
             }
             String actual = new String(Files.readAllBytes(previous), StandardCharsets.UTF_8);
             if (!"old-report".equals(actual)) throw new AssertionError("Previous report was changed after batch rejection");
-            if (Files.exists(newFile)) throw new AssertionError("Partial report was promoted after batch rejection");
+            if (!Files.isDirectory(newFile)) throw new AssertionError("Directory target was altered after batch rejection");
+            Files.delete(newFile);
             try (java.util.stream.Stream<Path> children = Files.list(root)) {
                 if (children.count() != 1) throw new AssertionError("Temporary report files were not cleaned up");
             }

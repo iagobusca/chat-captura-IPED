@@ -12,9 +12,9 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 ### Downloads
 
 - [instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/instalador-chat-captura-IPED-2.6.7-beta-verificador-1.4.2.zip) (`96.949.777` bytes | SHA-256: `6996BC8F01D514B586C5C5B0680EC548FBDAF348B609178E614E2CA018A286DB`)
-- [integridade-verifier-1.4.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.exe) (`77.868.100` bytes | SHA-256: `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105`)
-- [integridade-verifier-1.4.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.jar) (`155.216` bytes | SHA-256: `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475`)
-- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.506.206` bytes | SHA-256: `2A1E409C6B2229425178E8528D47AE0D001C85B8DFD272ABB54D1574452E3327`)
+- [integridade-verifier-1.4.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.exe) (`77.867.588` bytes | SHA-256: `9E3C237FADC01811BB96C4B0D62EDEEDF86DF428EBBE7273F340C93E26815876`)
+- [integridade-verifier-1.4.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/integridade-verifier-1.4.2.jar) (`154.638` bytes | SHA-256: `D4454E0F344CB6BF5E16729545A9404C455C7AB45382DA1AC40AE7ABCEB022EA`)
+- [iped-viewers-impl-4.3.1-2.6.7-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.6.7-beta/iped-viewers-impl-4.3.1-2.6.7-beta.jar) (`1.506.119` bytes | SHA-256: `F6E3474CCD1F5ED2342FDB61AD7A688393B6FC41948BD4640ABCDA0AE155C2AE`)
 
 ### Segurança e Corrigido (`F-01..F-10`)
 
@@ -25,6 +25,7 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
   - `F-04`/`F-05`: `html.disable` em todos os `JLabel`/`JCheckBox` do verificador e bloqueio de comentários HTML, CDATA e instruções `<?` em `validateRenderedCaptureHtml`.
   - `F-06`/`F-10`: launcher C# com exclusão segura sem seguir junctions/reparse points, janela de tolerância de 2 min na limpeza de diretórios sem lock e autoteste de entrada ZIP de 0 bytes no `--self-test`.
   - `F-07`/`F-08`/`F-09`: comparação pública com normalização de chaves e vínculo `(domId, key, messageHash)`, rejeição de `integridade.json` com `schemaVersion < 2` em `html-message-v1` e carregamento exclusivo de ícone pelo classpath.
+  - Remoção do limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4.194.304` caracteres), do limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e dos tetos cumulativos entre capturas em `verifyAllBounded` / `--verify-only`, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem falha de orçamento.
 - **Plugin `2.6.7-beta`**:
   - `F-04`: `html.disable` em diálogos/janelas (`HtmlLinkViewer`, `ChatNoteDialog`, `ChatPreflightDialog`, `ChatCaptureLinkedWindow`).
   - `F-08`: comparação de `migration.json` via `CaptureIntegrity.canonicalJson()`.

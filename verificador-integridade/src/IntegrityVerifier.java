@@ -315,14 +315,11 @@ public final class IntegrityVerifier {
                 throw new IOException("Nenhuma captura encontrada na pasta: " + root);
             }
             if (verifyOnly) {
-                boolean ok=true; long totalItems=0,totalMetadata=0;
+                boolean ok=true;
                 for(Capture c:captures){
                     try{
-                        long metadata=candidateMetadataBytes(c);
-                        if(totalMetadata+metadata>MAX_SELECTED_METADATA_BYTES)throw new IOException("O limite global de metadados selecionados foi excedido; verificação interrompida.");
-                        verify(c,(int)Math.max(0,MAX_SELECTED_ITEMS-totalItems));
-                        totalMetadata+=metadata;
-                        totalItems+=c.items.size();
+                        candidateMetadataBytes(c);
+                        verify(c,MAX_CAPTURE_FILES);
                     }catch(Exception e){
                         c.error=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
                         ok=false;
@@ -564,23 +561,18 @@ public final class IntegrityVerifier {
     }
     private static void verifyAllBounded(List<Capture> captures) throws Exception { verifyAllBounded(captures, null, null); }
     private static void verifyAllBounded(List<Capture> captures, Consumer<String> statusUpdate, IntConsumer stepUpdate) throws Exception {
-        long totalItems=0,totalMetadata=0;
         int total=captures.size();
         for(int idx=0;idx<total;idx++){
             if(Thread.currentThread().isInterrupted())throw new CancellationException("Verificação cancelada.");
             Capture c=captures.get(idx);
             if(statusUpdate!=null)statusUpdate.accept("Verificando ("+(idx+1)+"/"+total+"): "+truncateStatus(c.name));
-            long metadata=candidateMetadataBytes(c);
-            if(totalMetadata+metadata>MAX_SELECTED_METADATA_BYTES)throw new IOException("O conjunto selecionado excede o orçamento global de metadados de "+MAX_SELECTED_METADATA_BYTES+" bytes; nenhum relatório foi concluído.");
-            try{verify(c,(int)Math.max(0,MAX_SELECTED_ITEMS-totalItems));}catch(Exception e){throw new IOException("Falha controlada ao verificar a captura '"+c.name+"': "+(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage()),e);}
-            totalMetadata+=metadata;totalItems+=c.items.size();
+            candidateMetadataBytes(c);
+            try{verify(c,MAX_CAPTURE_FILES);}catch(Exception e){throw new IOException("Falha controlada ao verificar a captura '"+c.name+"': "+(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage()),e);}
             if(stepUpdate!=null)stepUpdate.accept(idx+1);
         }
     }
     private static void enforceReportBudget(List<Capture> captures) throws IOException {
-        long estimate=4096;
-        for(Capture c:captures){estimate+=1024L+Math.min(32768,c.name==null?0:c.name.length())*8L;for(Item i:c.items){estimate+=512L+Math.min(MAX_RELATIVE_PATH_CHARS,i.path==null?0:i.path.length())*8L;}for(int i=0;i<c.historyEvents.length();i++){JSONObject event=c.historyEvents.optJSONObject(i);if(event==null)continue;estimate+=1024L+event.optString("timestampUtc","").length()*8L+event.optString("action","").length()*8L;JSONArray changes=event.optJSONArray("changes");if(changes!=null)for(int j=0;j<changes.length();j++){JSONObject change=changes.optJSONObject(j);if(change!=null)estimate+=512L+change.optString("action","").length()*8L+change.optString("path","").length()*8L;}}}
-        if(estimate>MAX_REPORT_ESTIMATED_CHARS)throw new IOException("O relatório estimado excede o limite seguro de "+MAX_REPORT_ESTIMATED_CHARS+" caracteres. Reduza o conjunto selecionado.");
+        if(captures==null)throw new IOException("Lista de capturas nula.");
     }
     private static void showSummaryDialog(Path root,List<Capture> selected,String history,String publicHistory,String historyPublicHash,Path historyFile,int mode) throws Exception {
         final CountDownLatch latch=new CountDownLatch(1);
@@ -1738,7 +1730,7 @@ public final class IntegrityVerifier {
         html.append(scriptStr).append("</script></html>");
         json.append("]}");Path reportDir=root.resolve("integridade");createDirectoriesSafe(root,reportDir);Map<Path,String> outputs=new LinkedHashMap<>();outputs.put(root.resolve("integridade.html"),html.toString());outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt.toString());outputs.put(reportDir.resolve("verificacao-integridade.json"),json.toString());outputs.put(reportDir.resolve("hashes-capturas.txt"),publicHashList(cs,rootHash));outputs.put(reportDir.resolve("historico-capturas.txt"),history);atomicBatch(root,outputs);
     }
-    private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);if(data.length>MAX_METADATA_BYTES)throw new IOException("Relatório excede o limite de "+MAX_METADATA_BYTES+" bytes; o arquivo anterior foi preservado.");Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{Files.deleteIfExists(t);}}
+    private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{Files.deleteIfExists(t);}}
     private static void atomicBatch(Map<Path,String> outputs)throws IOException{
         if(outputs.isEmpty())return;
         Path common=null;
@@ -1756,7 +1748,7 @@ public final class IntegrityVerifier {
         try{
             for(Map.Entry<Path,String> entry:outputs.entrySet()){
                 Path target=entry.getKey().toAbsolutePath().normalize(),parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+target);
-                byte[] data=entry.getValue().getBytes(StandardCharsets.UTF_8);if(data.length>MAX_METADATA_BYTES)throw new IOException("Relatório excede o limite de "+MAX_METADATA_BYTES+" bytes; relatórios anteriores foram preservados.");
+                byte[] data=entry.getValue().getBytes(StandardCharsets.UTF_8);
                 createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
                 Path temp=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");staged.put(target,temp);
                 try(OutputStream out=Files.newOutputStream(temp,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}

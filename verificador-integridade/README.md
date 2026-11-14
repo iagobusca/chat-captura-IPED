@@ -15,13 +15,13 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.4.2: JAR `08877EFF5F2FA0A1E2F64AD0072490F9400AAA26E51ACD8E18C4D2DEE5F59475`; EXE `4859980DC532340427EEF2983B62EA4596BC6B8FA1D6F80462BB76CF03278105`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.4.2: JAR `D4454E0F344CB6BF5E16729545A9404C455C7AB45382DA1AC40AE7ABCEB022EA`; EXE `9E3C237FADC01811BB96C4B0D62EDEEDF86DF428EBBE7273F340C93E26815876`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 
 No formato `html-message-v1`, a verificação local valida os hashes de cada mensagem e anexo, a raiz do manifesto, os caminhos e as referências do HTML. Também lê a cadeia de `integridade.json` e, quando a captura foi migrada, confere o vínculo de `migration.json` e `legacy-annotations.json` ao inventário. A comparação pública aceita um manifesto `html-message-v1` correspondente à mesma conversa e versão IPED. Tipos MIME e assinaturas reconhecidos: imagens, áudio, vídeo, PDF, ZIP/OOXML, Office legado, RAR, 7z, texto/CSV e conteúdo genérico `.bin`.
 
-O JAR limita cada JSON a 16 MiB, profundidade a 64 níveis, caminho a 4.096 caracteres e cada captura a 25.010 arquivos. A seleção inteira tem limite de 10.000 capturas, 25.000 itens e 32 MiB de metadados. A estimativa de relatórios é limitada a 4 Mi caracteres; exceder um limite produz erro controlado sem promover relatórios parciais. A busca de capturas ocorre em segundo plano, atualiza a contagem e pode ser cancelada.
+O JAR limita cada JSON a 16 MiB, profundidade a 64 níveis, caminho a 4.096 caracteres e cada captura a 25.010 arquivos. A seleção inteira tem limite de 10.000 capturas, sem limite artificial de tamanho de relatório; exceder um limite estrutural produz erro controlado sem promover relatórios parciais. A busca de capturas ocorre em segundo plano, atualiza a contagem e pode ser cancelada.
 
 ## Usage
 
