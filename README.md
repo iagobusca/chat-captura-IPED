@@ -13,6 +13,8 @@ Veja abaixo o resultado completo ao usar o plugin: abertura do `index.html`, nav
 
 ![Demonstração do resultado offline do Chat Captura IPED e auditoria no Verificador de Integridade](imagens_doc/edit/resultado_e_verificador-integridade.gif)
 
+O guia completo de como usar o plugin + verificador de integridade está em [GUIA_DE_USO.md](GUIA_DE_USO.md).
+
 <p align="center">
   <a href="GUIA_DE_USO.md"><kbd>&nbsp;&nbsp;&nbsp;<b>📖 Abrir Guia de Uso Completo — Passo a Passo com Imagens (GUIA_DE_USO.md)</b>&nbsp;&nbsp;&nbsp;</kbd></a>
 </p>
