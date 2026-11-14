@@ -7,6 +7,16 @@ Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstala
 Versao atual do plugin: **2.6.7-beta**
 Verificador de Integridade: **1.4.2**
 
+## Demonstração do Resultado e Verificador de Integridade
+
+Veja abaixo o resultado completo ao usar o plugin: abertura do `index.html`, navegação offline em `whatsapp.html` (com modal de anexos) e conferência criptográfica nos modos **Integridade Local** e **Integridade Público** com o **Verificador de Integridade 1.4.2**.
+
+![Demonstração do resultado offline do Chat Captura IPED e auditoria no Verificador de Integridade](imagens_doc/edit/resultado_e_verificador-integridade.gif)
+
+<p align="center">
+  <a href="GUIA_DE_USO.md"><kbd>&nbsp;&nbsp;&nbsp;<b>📖 Abrir Guia de Uso Completo — Passo a Passo com Imagens (GUIA_DE_USO.md)</b>&nbsp;&nbsp;&nbsp;</kbd></a>
+</p>
+
 ## About
 
 Plugin Java para IPED 4.3.1 que captura intervalos de conversas WhatsApp e gera HTML offline, manifesto por mensagem e anexo, anotações, inventários e hashes para revisão forense. Capturas anteriores baseadas em screenshots continuam compatíveis.
@@ -21,7 +31,7 @@ Feche o IPED, extraia o ZIP do instalador e execute `instalar_captura_chat_zap/i
 
 ## Usage
 
-Marque o início e o fim do trecho pelo menu de contexto, escolha a pasta de saída e inicie a captura. Um separador de data pode marcar o início e será resolvido para a próxima mensagem; o fim precisa ser uma mensagem. O plugin valida os dois limites antes de começar. Novas capturas usam `html-message-v1`, com mensagens e anexos preservados localmente. Para instruções detalhadas, consulte [doc.md](doc.md), [SPEC_CAPTURA_HTML_POR_MENSAGEM.md](SPEC_CAPTURA_HTML_POR_MENSAGEM.md) e [SPEC_RENDERIZACAO_WHATSAPP_HTML.md](SPEC_RENDERIZACAO_WHATSAPP_HTML.md).
+Marque o início e o fim do trecho pelo menu de contexto, escolha a pasta de saída e inicie a captura. Um separador de data pode marcar o início e será resolvido para a próxima mensagem; o fim precisa ser uma mensagem. O plugin valida os dois limites antes de começar. Novas capturas usam `html-message-v1`, com mensagens e anexos preservados localmente. Para o passo a passo ilustrado de uso, consulte [GUIA_DE_USO.md](GUIA_DE_USO.md). Para referências técnicas e especificações, consulte [doc.md](doc.md), [SPEC_CAPTURA_HTML_POR_MENSAGEM.md](SPEC_CAPTURA_HTML_POR_MENSAGEM.md) e [SPEC_RENDERIZACAO_WHATSAPP_HTML.md](SPEC_RENDERIZACAO_WHATSAPP_HTML.md).
 
 ## License
 
