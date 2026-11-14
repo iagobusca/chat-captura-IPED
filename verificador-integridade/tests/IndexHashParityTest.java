@@ -21,14 +21,20 @@ public final class IndexHashParityTest {
             String expected=pluginRootHash(root,captures);
             if(!expected.equals(actual))throw new AssertionError("Verifier root hash differs from index formula: expected="+expected+" actual="+actual);
             Method write=IntegrityVerifier.class.getDeclaredMethod("writeReports",Path.class,List.class,String.class,String.class,String.class);write.setAccessible(true);
-            write.invoke(null,root,captures,actual,"2026-10-31T12:00:00Z","HISTORICO_PUBLICO_V1\nSHA256|"+actual+"\n");
+            String fullHistory="HISTORICO_PUBLICO_V1\nSHA256|"+actual+"\n";
+            write.invoke(null,root,captures,actual,"2026-10-31T12:00:00Z",fullHistory);
+            Method pubHistMethod=IntegrityVerifier.class.getDeclaredMethod("publicHistoryReport",List.class,String.class);pubHistMethod.setAccessible(true);
+            String pubHistory=(String)pubHistMethod.invoke(null,captures,actual);
+            String pubHash=sha((pubHistory.replace("\r\n","\n").replaceAll("\n+$","")+"\n").getBytes(StandardCharsets.UTF_8));
             String html=new String(Files.readAllBytes(root.resolve("integridade.html")),StandardCharsets.UTF_8);
-            for(String expectedText:new String[]{"Diverge do hash geral calculado.","Diverge do hash da captura calculado.","#8b0000","TODAS_AS_CAPTURAS","compareList()","function copyValue","data-capture=","out=row.querySelector('.cmp')"})
+            for(String expectedText:new String[]{"Hash geral Público:",pubHash,"compareHash()","compareHistory()","sha256Utf8","function copyValue","data-capture=","data-block-full=","data-block-public=","out=row.querySelector('.cmp')","#8b0000","#006400"})
                 if(!html.contains(expectedText))throw new AssertionError("Missing HTML behavior/text: "+expectedText);
-            if(html.contains("list-cmp"))throw new AssertionError("A second per-capture status is still rendered.");
+            for(String forbidden:new String[]{"list-cmp","Comparar hash desta captura","capture-hash","Hash geral das capturas selecionadas"})
+                if(html.contains(forbidden))throw new AssertionError("Forbidden legacy HTML element still rendered: "+forbidden);
             if(!Files.isRegularFile(root.resolve("integridade/verificacao-integridade.json"))
                     ||!Files.isRegularFile(root.resolve("integridade/verificacao-integridade.txt"))
-                    ||!Files.isRegularFile(root.resolve("integridade/hashes-capturas.txt")))
+                    ||!Files.isRegularFile(root.resolve("integridade/hashes-capturas.txt"))
+                    ||!Files.isRegularFile(root.resolve("integridade/historico-capturas.txt")))
                 throw new AssertionError("Expected verifier outputs were not written under integridade/.");
             @SuppressWarnings("unchecked") List<Object> after=(List<Object>)discover.invoke(null,root);
             if(after.size()!=captures.size())throw new AssertionError("The integridade/ output folder was misdetected as a capture.");

@@ -458,7 +458,7 @@ public final class CaptureIntegrityTest {
         try {
             Path shots = Files.createDirectories(root.resolve("screenshots"));
             Files.writeString(shots.resolve("frame_0001.png"), "pngdata", StandardCharsets.UTF_8);
-            JSONObject record = CaptureIntegrity.integrityRecord(root, null, "capture-created", "2.6.3-beta");
+            JSONObject record = CaptureIntegrity.integrityRecord(root, null, "capture-created", "2.6.5-beta");
             JSONArray events = record.getJSONArray("events");
             equal(1, events.length(), "initial integrity record must have 1 event");
             JSONObject ev = events.getJSONObject(0);

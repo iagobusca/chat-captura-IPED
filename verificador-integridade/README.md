@@ -1,21 +1,21 @@
-# Verificador de Integridade 1.3.8
+# Verificador de Integridade 1.4.0
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.3.8 endurece a validação estrutural de JSON malformado (`"registro inválido"` em `integridade.json`), HTML legado e normalização CSS/SVG (bloqueando comentários/escapes CSS e elementos SVG `<style>`, `<animate*>`, `<set>`, `<mpath>`), além de verificar `recordHash` canônico (`canonical-v1`) mantendo compatibilidade somente-leitura para capturas legadas existentes; no launcher Windows `.exe`, corrige a limpeza de diretórios temporários e a extração de arquivos vazios (0 bytes). O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.4.0 aprimora a interface e o relatório HTML: adiciona janela de carregamento em barra de progresso ao confirmar capturas no modo **Integridade Local**, remove **Selecione as capturas** no modo **Integridade Público** com carregamento único automático de todas as pastas, simplifica o resumo **Resultado** (mantendo o foco no histórico público), reformula `integridade.html` para exibir **Hash geral Público** e validar capturas por histórico completo normal ou anonimizado com status **OK**/**FALHA**, e corrige o comportamento sempre no topo (`alwaysOnTop`) + Swing EDT em todos os diálogos e alertas de erro. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
 
 ## Getting Started
 
 1. Copie `integridade-verifier.exe` para a pasta que contém `index.html` e as capturas; ou execute `integridade-verifier.jar` com Java 8 ou superior.
 2. Abra o verificador. Selecione **Integridade Local** ou **Integridade Público**.
-3. Marque as capturas que deseja verificar e clique em **OK**.
+3. No modo Local, marque as capturas que deseja verificar, clique em **Confirmar** e acompanhe o carregamento; no modo Público, todas as capturas são selecionadas e verificadas automaticamente durante o carregamento.
 4. Consulte os hashes e use os botões destacados para copiar ou comparar as referências.
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.3.8: JAR `556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6`; EXE `B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.4.0: JAR `9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5`; EXE `11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 
@@ -37,9 +37,15 @@ Execute o verificador e selecione o tipo de conferência.
 
 ![Janela inicial e opções Local/Público](<imagem doc/001.png>)
 
-### 2. Selecionar capturas
+### 2. Selecionar capturas (somente modo Integridade Local)
 
-Marque as capturas que deseja incluir e confirme em **OK**.
+No modo **Integridade Local**, marque as capturas que deseja incluir e clique em **Confirmar** — uma janela modal de carregamento exibirá o progresso da validação antes de abrir o resumo.
+
+No modo **Integridade Público**, a tela de seleção de capturas não é exibida: uma única janela de carregamento descobre todas as capturas válidas, executa a verificação e abre diretamente a tela **Integridade Público**.
+
+### 3. Resultado do modo Local
+
+Consulte os hashes do conjunto, abra o relatório `integridade.html` (que valida a referência pública e marca cada captura como **OK** ou **FALHA**) ou exporte `historico-capturas.txt` e o resumo público anonimizado (`SHA-256 do histórico completo público`).
 
 ![Seleção das capturas](<imagem doc/002.png>)
 

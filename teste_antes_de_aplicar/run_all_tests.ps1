@@ -25,11 +25,9 @@ $jsonJar = Join-Path $repo 'instalar_captura_chat_zap\dependencies\json-20260719
 $pluginTestClasses = Join-Path $repo 'tmp\plugin-integrity-tests'
 New-Item -ItemType Directory -Force -Path $pluginTestClasses | Out-Null
 $pluginTestCp = "$pluginJar;$jsonJar"
-& 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\javac.exe' -encoding UTF-8 -cp $pluginTestCp -d $pluginTestClasses (Join-Path $repo 'src\iped\viewers\CaptureIntegrity.java') (Join-Path $repo 'src\iped\viewers\CaptureCensorship.java') (Join-Path $repo 'src\iped\viewers\CaptureBoundaryResolver.java') (Join-Path $repo 'src\iped\viewers\VerifierIntegrity.java') (Join-Path $repo 'tests\iped\viewers\CaptureBoundaryResolverTest.java') (Join-Path $repo 'tests\iped\viewers\CaptureIntegrityTest.java') (Join-Path $repo 'tests\iped\viewers\CaptureCensorshipTest.java') (Join-Path $repo 'tests\iped\viewers\VerifierIntegrityHashTest.java') (Join-Path $repo 'tests\iped\viewers\MigrationIntegrityHistoryHarness.java')
+& 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\javac.exe' -encoding UTF-8 -cp $pluginTestCp -d $pluginTestClasses (Join-Path $repo 'src\iped\viewers\CaptureIntegrity.java') (Join-Path $repo 'src\iped\viewers\CaptureCensorship.java') (Join-Path $repo 'src\iped\viewers\CaptureBoundaryResolver.java') (Join-Path $repo 'src\iped\viewers\VerifierIntegrity.java') (Join-Path $repo 'tests\iped\viewers\CaptureBoundaryResolverTest.java') (Join-Path $repo 'tests\iped\viewers\CaptureCensorshipTest.java') (Join-Path $repo 'tests\iped\viewers\VerifierIntegrityHashTest.java') (Join-Path $repo 'tests\iped\viewers\MigrationIntegrityHistoryHarness.java')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $pluginRuntimeCp = "$pluginTestClasses;$pluginTestCp"
-& 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\java.exe' -cp $pluginRuntimeCp iped.viewers.CaptureIntegrityTest
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\java.exe' -cp $pluginRuntimeCp iped.viewers.CaptureCensorshipTest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & 'C:\Program Files\Eclipse Adoptium\jdk-26.0.2.101-hotspot\bin\java.exe' -cp $pluginRuntimeCp iped.viewers.CaptureBoundaryResolverTest
@@ -60,6 +58,7 @@ $phase2Sources = @(Get-ChildItem (Join-Path $repo 'src\iped\viewers') -Filter '*
     (Join-Path $repo 'tests\iped\viewers\JsonParsingRegressionTest.java') `
     (Join-Path $repo 'tests\iped\viewers\UiAndAuxFolderRegressionTest.java') `
     (Join-Path $repo 'tests\iped\viewers\OpenCvLoaderTest.java') `
+    (Join-Path $repo 'tests\iped\viewers\CaptureIntegrityTest.java') `
     (Join-Path $repo 'tests\iped\viewers\VerifierIntegrityHashTest.java')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $phase2RuntimeCp = "$phase2Classes;$phase2CompileCp"
@@ -72,6 +71,7 @@ foreach ($cls in @(
     'iped.viewers.ChatAnnotationActionDialogTest',
     'iped.viewers.JsonParsingRegressionTest',
     'iped.viewers.UiAndAuxFolderRegressionTest',
+    'iped.viewers.CaptureIntegrityTest',
     'iped.viewers.VerifierIntegrityHashTest'
 )) {
     & $java26 --module-path $javaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $phase2RuntimeCp $cls

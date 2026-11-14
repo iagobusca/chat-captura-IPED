@@ -147,7 +147,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.3-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.5-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -2230,7 +2230,7 @@ private void clearChatCaptureMarks() {
         }
         if (Files.size(htmlPath) > MAX_HTML_MESSAGE_CAPTURE_BYTES
                 || !containsUtf8(htmlPath, "Content-Security-Policy") //$NON-NLS-1$
-                || !containsUtf8(htmlPath, html(CAPTURE_CSP))
+                || !containsUtf8(htmlPath, CAPTURE_CSP)
                 || !containsUtf8(htmlPath, CAPTURE_MEDIA_STOP_SCRIPT)) {
             throw new IOException("O HTML da candidata não passou na verificação de estrutura e política local."); //$NON-NLS-1$
         }
@@ -3158,7 +3158,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         }
         StringBuilder page = new StringBuilder(128 * 1024);
         page.append("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"") //$NON-NLS-1$
-                .append(html(CAPTURE_CSP)).append("\"><title>WhatsApp</title><style>").append(themeCss) //$NON-NLS-1$
+                .append(CAPTURE_CSP).append("\"><title>WhatsApp</title><style>").append(themeCss) //$NON-NLS-1$
                 .append("</style><style>").append(captureViewerCss()); //$NON-NLS-1$
         final int viewerCssEnd = page.length();
         page.append("</style></head><body>") //$NON-NLS-1$

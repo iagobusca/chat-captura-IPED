@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.3-beta - Verificador de Integridade 1.3.8
+Pacote Chat Captura IPED 2.6.5-beta - Verificador de Integridade 1.4.0
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,8 +7,21 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.3.8 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.4.0 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
+
+Novidades desta versão (2.6.5-beta / Verificador 1.4.0):
+- Verificador 1.4.0 (UI e fluxo):
+  * No modo Integridade Local, exibe janela de carregamento sempre no topo com barra de progresso ao clicar em Confirmar;
+  * No modo Integridade Público, remove a janela "Selecione as capturas" e executa carregamento único escolhendo todas as pastas antes de abrir direto "Integridade Público" (aceitando apenas os 3 formatos: SHA-256 completo/público e historico-capturas.txt normal ou anonimizado *-YYYYMMDD-HHMMSS);
+  * Na janela final Resultado, remove "Hash geral do conjunto", "SHA-256 do histórico completo" e "Copiar lista de hashes";
+  * Em integridade.html, substitui "Hash geral das capturas selecionadas" por "Hash geral Público" (aceitando ambos os SHA-256 na comparação superior), remove "Comparar hash desta captura" e valida as capturas pelo histórico completo ou público colado exibindo OK (verde) ou FALHA (vermelho);
+  * Corrige o comportamento "sempre no topo" (alwaysOnTop) e execução na Swing EDT para "Selecione as capturas" e todas as mensagens/janelas de erro ou aviso.
+- Plugin 2.6.5-beta: atualiza a versão para 2.6.5-beta e a allowlist exclusiva (VerifierIntegrity + instalador) para aceitar somente os binários oficiais do Verificador 1.4.0 (versões <= 1.3.9 rejeitadas).
+
+Novidades desta versão (2.6.4-beta / Verificador 1.3.9):
+- Verificador 1.3.9: decodifica entidades HTML no parser de atributos (parseHtmlAttributes), validando corretamente a política CSP tanto em capturas já migradas pela 2.6.3-beta (que saíram com &#39;) quanto no formato canônico direto, e reforçando a detecção de URLs ofuscadas com entidades;
+- Plugin 2.6.4-beta: emite CAPTURE_CSP literalmente na meta tag de whatsapp.html (sem converter ' em &#39;) e atualiza a allowlist exclusiva para aceitar somente o Verificador 1.3.9 (versões <= 1.3.8 rejeitadas).
 
 Novidades desta versão (2.6.3-beta / Verificador 1.3.8) - correções de segurança e consistência (fase 3):
 - Plugin & Verificador (política estrita): versões antigas do Verificador (<= 1.3.7) foram abandonadas; o plugin 2.6.3-beta aceita exclusivamente o Verificador 1.3.8;
@@ -62,9 +75,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.3.8:
-JAR 556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6
-EXE B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2
+SHA-256 do Verificador 1.4.0:
+JAR 9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5
+EXE 11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809
 
-SHA-256 do plugin 2.6.3-beta:
-JAR CED5CCFE4C5F1C8A15C52D32E891468B9836F620BB3E3FFBC47198FE41C3AC60
+SHA-256 do plugin 2.6.5-beta:
+JAR 32044F09D1299D787061B76F2150DF0ED82590C5C01E9123377005DE8407170B

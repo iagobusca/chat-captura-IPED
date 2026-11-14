@@ -1,5 +1,24 @@
 # Checksums
 
+## Build 2.6.5-beta / Verificador 1.4.0 (fluxo direto no modo Público, barras de progresso, `alwaysOnTop`/EDT e `OK`/`FALHA` no `integridade.html`; allowlist exclusiva 1.4.0)
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Observações |
+|---|---|---|---|
+| `instalador-chat-captura-IPED-2.6.5-beta-verificador-1.4.0.zip` | 96095058 | `237BF525B55DEE59AD9C7534E19D7C2B0F6583047C70CA9606034ED97CFF7BF7` | Pacote completo de instalação (plugin `2.6.5-beta`, Verificador `1.4.0` JAR+EXE, dependências e script BAT) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.5-beta.jar` | 1513355 | `32044F09D1299D787061B76F2150DF0ED82590C5C01E9123377005DE8407170B` | Fat-JAR do plugin (`Implementation-Version: 2.6.5-beta`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 152916 | `9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5` | Verificador `1.4.0` compilado em Java 8 (`release-assets/integridade-verifier-1.4.0.jar`) |
+| `verificador-integridade/integridade-verifier.exe` | 77862980 | `11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809` | Executável Windows x64 autocontido do Verificador `1.4.0` (`release-assets/integridade-verifier-1.4.0.exe`) |
+
+## Build 2.6.4-beta / Verificador 1.3.9 (compatibilidade CSP com entidades HTML em atributos; allowlist exclusiva 1.3.9)
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.4-beta.jar` | 1.513.352 | `5C69E3548B937DE8FF8085F91C91D07B38E7F5657F415E41F516E1B55302B817` |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 1.513.352 | `5C69E3548B937DE8FF8085F91C91D07B38E7F5657F415E41F516E1B55302B817` |
+| `instalador-chat-captura-IPED-2.6.4-beta-verificador-1.3.9.zip` | 94.640.895 | `1EC278138D3FC4C47003CC9C24B5E731619B32BA806B10B173A4E8205CC03CC8` |
+| `verificador-integridade/integridade-verifier.jar` | 142.687 | `043AFEC21D79B4DF3C8A3DDB42F49CF5CB9467CECD11397E724091DFA310E2A7` |
+| `verificador-integridade/integridade-verifier.exe` | 77.853.252 | `FF06525056E008A91AABF49D9B98B3E0CEE55CCED3846A89AA76D7B39BC6BC85` |
+
 ## Build 2.6.3-beta / Verificador 1.3.8 (correções de segurança e integridade — Pacotes A–E; allowlist exclusiva 1.3.8)
 
 | Arquivo | Bytes | SHA-256 |

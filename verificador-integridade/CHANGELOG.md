@@ -4,6 +4,15 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.4.0] - 2026-11-13
+
+### Melhorado e Corrigido
+
+- Fluxo GUI reorganizado (`Opção A`): no modo **Integridade Local**, exibe janela de carregamento (`SwingWorker` + `JProgressBar`) ao clicar em **Confirmar** em **Selecione as capturas**; no modo **Integridade Público**, remove **Selecione as capturas** e executa carregamento único automático de todas as capturas antes de abrir direto **Integridade Público** (`Continuar para o resumo` mantido para abrir **Resultado**).
+- Janela **Resultado** simplificada com remoção de **Hash geral do conjunto**, **SHA-256 do histórico completo** e botão **Copiar lista de hashes**.
+- `integridade.html` reformulado: exibe **Hash geral Público**, aceita ambos os SHA-256 no campo de comparação superior, substitui a lista `captura|hash` por colagem de histórico completo (`historico-capturas.txt` normal ou anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS`), remove o campo **Comparar hash desta captura** e exibe **OK** (verde) ou **FALHA** (vermelho) por captura de forma offline sem `crypto.subtle`.
+- Correção global de `alwaysOnTop`, ícone, `toFront()` e execução na Swing EDT para **Selecione as capturas**, avisos, erros do `main` e `MessageBox` topmost no launcher C#.
+
 ## [1.3.7] - 2026-11-13
 
 ### Segurança e Compatibilidade

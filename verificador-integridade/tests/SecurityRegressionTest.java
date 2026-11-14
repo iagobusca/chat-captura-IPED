@@ -35,6 +35,8 @@ public final class SecurityRegressionTest {
             legacyHtmlSlashEventAndBodyStyleAreRejected();
             cssEscapesCommentsAndSvgActiveOrQuotedUrlsAreRejected();
             canonicalRecordHashVerifiesRegardlessOfKeyOrderAndPreservesLegacy(root);
+            htmlAttributeEntityDecodingInCspAndHrefWorks();
+            htmlReportBlocksAndPublicSummaryHashesMatch(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -886,6 +888,89 @@ public final class SecurityRegressionTest {
         verifyMethod.invoke(null, capLegacy);
         if (!"consistente com registro local".equals(statusField.get(capLegacy))) {
             throw new AssertionError("Legacy recordHash without recordHashFormat should still verify, got: " + statusField.get(capLegacy));
+        }
+    }
+
+    private static void htmlAttributeEntityDecodingInCspAndHrefWorks() throws Exception {
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+
+        String msgKey = repeat('b', 64);
+        java.util.Set<String> keys = Collections.singleton(msgKey);
+        String escapedCsp = csp.replace("'", "&#39;");
+        String okEscapedCsp = "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                + escapedCsp + "\"><title>WhatsApp</title><style>body{background:#eee}</style><style>.capture-modal{display:none}</style></head><body>"
+                + "<div id=\"capture-topbar\">Conversa</div><div id=\"capture-conversation\"><div class=\"linha\" data-capture-message-key=\""
+                + msgKey + "\">Ola</div></div><script>" + stopScript + "</script></body></html>";
+        validate.invoke(null, okEscapedCsp, Collections.emptySet(), Collections.emptyMap(), keys, 2);
+
+        String doubleEscapedCsp = okEscapedCsp.replace("&#39;", "&amp;#39;");
+        assertValidateHtmlRejected(validate, doubleEscapedCsp, keys, 2);
+
+        String entityObfuscatedHref = okEscapedCsp.replace(
+                ">Ola</div>",
+                "><a href=\"&#106;avascript:alert(1)\" class=\"capture-media-link\">link</a></div>");
+        assertValidateHtmlRejected(validate, entityObfuscatedHref, keys, 2);
+    }
+
+    private static void htmlReportBlocksAndPublicSummaryHashesMatch(Path root) throws Exception {
+        Path scanRoot = Files.createDirectories(root.resolve("html-report-blocks"));
+        String[] names = { "João_São_Paulo-20261113-190000", "Maria_Cotia-20261113-190000" };
+        for (int idx = 0; idx < names.length; idx++) {
+            Path capDir = Files.createDirectories(scanRoot.resolve(names[idx]));
+            byte[] payload = ("conteudo-" + idx).getBytes(StandardCharsets.UTF_8);
+            Files.write(capDir.resolve("dados.txt"), payload);
+            String fSha = sha256Utf8("conteudo-" + idx);
+            JSONArray arts = new JSONArray().put(new JSONObject().put("path", "dados.txt").put("size", payload.length).put("sha256", fSha));
+            Files.write(capDir.resolve("manifest.json"), new JSONObject().put("artifacts", arts).toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(capDir.resolve("integridade.json"), new JSONObject().put("artifacts", arts).toString().getBytes(StandardCharsets.UTF_8));
+        }
+
+        List<IntegrityVerifier.Capture> captures = IntegrityVerifier.discover(scanRoot);
+        if (captures.size() != 2) throw new AssertionError("Expected 2 discovered captures");
+        Method verifyMethod = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+        verifyMethod.setAccessible(true);
+        for (IntegrityVerifier.Capture c : captures) verifyMethod.invoke(null, c);
+
+        Method setHashMethod = IntegrityVerifier.class.getDeclaredMethod("setHash", List.class);
+        setHashMethod.setAccessible(true);
+        String rootHash = (String) setHashMethod.invoke(null, captures);
+        Method historyMethod = IntegrityVerifier.class.getDeclaredMethod("historyReport", List.class, String.class);
+        historyMethod.setAccessible(true);
+        String fullHistory = (String) historyMethod.invoke(null, captures, rootHash);
+        String pubHistory = IntegrityVerifier.publicHistoryReport(captures, rootHash);
+
+        Method writeMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "writeReports", Path.class, List.class, String.class, String.class, String.class);
+        writeMethod.setAccessible(true);
+        writeMethod.invoke(null, scanRoot, captures, rootHash, "2026-11-13T19:00:00Z", fullHistory);
+
+        String html = new String(Files.readAllBytes(scanRoot.resolve("integridade.html")), StandardCharsets.UTF_8);
+        String expectedPubHash = sha256Utf8(pubHistory.replace("\r\n", "\n").replaceAll("\n+$", "") + "\n");
+        if (!html.contains("Hash geral Público: <code id=\"publicSummaryHash\">" + expectedPubHash + "</code>")) {
+            throw new AssertionError("Missing public summary hash in integridade.html");
+        }
+        for (IntegrityVerifier.Capture c : captures) {
+            String fullBlock = IntegrityVerifier.captureHistoryBlock(c, false);
+            String pubBlock = IntegrityVerifier.captureHistoryBlock(c, true);
+            if (!fullHistory.contains("\n" + fullBlock + "\n")) {
+                throw new AssertionError("captureHistoryBlock(full) must match historyReport block verbatim");
+            }
+            if (!pubHistory.contains("\n" + pubBlock + "\n")) {
+                throw new AssertionError("captureHistoryBlock(public) must match publicHistoryReport block verbatim");
+            }
+            String fullSha = sha256Utf8(fullBlock);
+            String pubSha = sha256Utf8(pubBlock);
+            if (!html.contains("data-block-full=\"" + fullSha + "\" data-block-public=\"" + pubSha + "\"")) {
+                throw new AssertionError("Missing block SHA-256 attributes for " + c.name);
+            }
         }
     }
 

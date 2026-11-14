@@ -1,6 +1,6 @@
-# Verificador de Integridade 1.3.7
+# Verificador de Integridade 1.4.0
 
-**Versão:** 1.3.7 | Data: 13/11/2026.
+**Versão:** 1.4.0 | Data: 13/11/2026.
 
 ## Índice
 
@@ -16,7 +16,7 @@
 
 ## Visao geral
 
-Ao iniciar, o verificador oferece **Integridade Local** (compara conteúdo ao registro local) ou **Integridade Público** (compara com hash público ou histórico completo recebido externamente). A descoberta ocorre em worker cancelável e exibe a contagem atualizada sem manter a Event Dispatch Thread ocupada. Depois, lê metadados quando necessários, recalcula hashes e grava relatórios. O JAR foi compilado para Java 8 (1.8) ou superior. O EXE Windows de arquivo único contém o runtime Java 11 e .NET 10.0.14; o usuário não precisa instalar Java ou .NET.
+Ao iniciar, o verificador apresenta primeiro a escolha entre **Integridade Local** e **Integridade Público**. Em **Integridade Local**, o usuário escolhe as capturas desejadas e clica em **Confirmar**, exibindo uma janela de carregamento enquanto os hashes são recalculados e os relatórios são gerados antes do resumo final (**Resultado**). Em **Integridade Público**, a seleção manual de capturas é pulada: uma única janela de carregamento descobre e seleciona todas as capturas válidas, executa a verificação e abre diretamente a tela **Integridade Público** (aceitando SHA-256 do histórico completo, SHA-256 do histórico público anonimizado ou texto completo de `historico-capturas.txt` normal/anonimizado) antes de prosseguir para o resumo. O JAR foi compilado para Java 8 (1.8) ou superior. O EXE Windows de arquivo único contém o runtime Java 11 e .NET 10.0.14; o usuário não precisa instalar Java ou .NET.
 
 A versão 1.3.5 acrescenta no resumo final o **SHA-256 do histórico completo público** e o botão **Copiar histórico completo público**, gerando linhas anonimizadas no formato `CAPTURA|*-YYYYMMDD-HHMMSS ...` (ou `CAPTURA|*`) para compartilhamento público sem expor nomes das pastas de conversa; no modo **Integridade Público**, aceita de forma dual tanto o formato completo original (`CAPTURA|<pasta>`) quanto o anonimizado (`CAPTURA|*`) e ambos os hashes SHA-256. Mantém toda a validação da cadeia local da 1.3.4 em capturas `html-message-v1` (incluindo vínculo de `migration.json` e `legacy-annotations.json` ao inventário), validação de IDs de chamada (`_call:<hex>`) e carved/removidos (`-?<id>_<id>`), script fixo de preview (`whatsapp.html`) e compatibilidade legada `data:image/jpg` com assinatura PNG. O plugin 2.5.5-beta e versões posteriores gravam as capturas migradas com esse registro de proveniência.
 
@@ -47,7 +47,9 @@ Cada execução cria uma pasta `instance-<pid>-<id>` dentro de `%TEMP%\Avilla\In
 
 ## Janelas e controles
 
-As telas de seleção de modo, seleção de capturas, resultado e comparação pública são `JFrame` nativos. Por isso, aparecem na barra de tarefas, podem ser minimizadas pelo botão nativo da barra de título e restauradas pelo clique na barra de tarefas. Todas permanecem fixas sobre as demais janelas (`always-on-top`), sem botão para alternar esse comportamento.
+As telas de seleção de modo, resultado e comparação pública são `JFrame` nativos (e a janela **Selecione as capturas**, no modo Local, utiliza `JDialog` modal com `alwaysOnTop`), assim como as janelas modais de carregamento (`SwingWorker` + `JProgressBar`) e todos os diálogos de erro/aviso (`showTopMessage`), que executam na Event Dispatch Thread com `alwaysOnTop = true`, ícone do verificador e `toFront()`. As telas principais aparecem na barra de tarefas, podem ser minimizadas pelo botão nativo da barra de título e restauradas pelo clique na barra de tarefas, permanecendo fixas sobre as demais janelas sem botão para alternar esse comportamento.
+
+No resumo final (**Resultado**), permanecem **SHA-256 do histórico completo público**, **Copiar histórico completo**, **Copiar histórico completo público**, **Abrir histórico**, **Abrir relatório HTML** e **Fechar**. No relatório `integridade.html`, o cabeçalho exibe **Hash geral Público** (campo superior aceitando ambos os hashes SHA-256) e a validação por captura é feita em JS puro offline (sem `crypto.subtle`) contra `historico-capturas.txt` colado (normal ou anonimizado), exibindo **OK** (verde) ou **FALHA** (vermelho). Os arquivos auxiliares em `integridade/` e as saídas CLI (`--export-history`) permanecem inalterados para compatibilidade.
 
 O ícone do verificador é embutido no JAR e aplicado a todas as janelas, inclusive quando o EXE extrai o aplicativo para uma pasta temporária. Fechar pelo **X** ou por **Cancelar** encerra o processo Java de forma controlada, permitindo que o lançador aguarde o término e remova a pasta temporária. Na tela de resultado, **Fechar** libera o fluxo e o processo termina normalmente; o aviso de "Nenhuma captura" também encerra o processo ao ser fechado.
 

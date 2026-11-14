@@ -1,4 +1,4 @@
-// Versão 1.3.7 — compatibilidade de descoberta com pastas auxiliares de recaptura do plugin e hardening de segurança fase 2.
+// Versão 1.4.0 — janelas alwaysOnTop, carregamento em fluxo Local/Público, resumo simplificado e HTML OK/FALHA.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
@@ -113,8 +113,13 @@ internal static class Program
             Console.Error.WriteLine("ERRO: " + ex.Message);
             if (!isCliMode && !selfTest)
             {
-                try { MessageBox.Show("Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
-                    "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+                try
+                {
+                    using var topOwner = new Form { TopMost = true, ShowInTaskbar = false, StartPosition = FormStartPosition.CenterScreen };
+                    MessageBox.Show(topOwner, "Não foi possível preparar o verificador. Nenhum Java instalado é necessário; o runtime vem dentro deste EXE.\n\n" + ex.Message,
+                        "Erro no verificador de integridade", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                catch { }
             }
             return 1;
         }

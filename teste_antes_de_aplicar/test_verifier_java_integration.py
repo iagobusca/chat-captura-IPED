@@ -464,6 +464,189 @@ class JavaVerifierIntegration(unittest.TestCase):
         self.assertIn("SHA-256 do histórico completo público", source)
         self.assertIn("Continuar para o resumo", source)
 
+    def test_v140_gui_flow_and_html_report_behavior(self):
+        source = (ROOT / "verificador-integridade" / "src" / "IntegrityVerifier.java").read_text(encoding="utf-8")
+        # Modo Público pula escolha de capturas e usa loading único
+        public_branch_start = source.index("if (mode == 0) {")
+        summary_call = source.index("showSummaryDialog(", public_branch_start)
+        gui_body = source[public_branch_start:summary_call]
+        self.assertNotIn("chooseCaptures", gui_body.split("} else {")[1])
+        self.assertIn("runVerificationWithProgress(root, selected", gui_body)
+        self.assertIn("runVerificationWithProgress(root, null", gui_body)
+
+        # Janela Resultado simplificada (sem Hash geral do conjunto, SHA-256 completo e Copiar lista de hashes)
+        summary_start = source.index("private static void showSummaryDialog(")
+        summary_end = source.index("private static JPanel hashValueRow(", summary_start)
+        summary_body = source[summary_start:summary_end]
+        self.assertNotIn("Hash geral do conjunto", summary_body)
+        self.assertNotIn("SHA-256 do histórico completo\"", summary_body)
+        self.assertNotIn("Copiar lista de hashes", summary_body)
+        self.assertIn("SHA-256 do histórico completo público", summary_body)
+
+        # AlwaysOnTop + EDT centralizados em chooseCaptures e showTopMessage
+        self.assertIn("applyWindowDefaults(dialog);", source)
+        self.assertNotIn("JOptionPane.showOptionDialog(", source)
+        self.assertNotIn("JOptionPane.showMessageDialog(", source)
+
+        # Gera HTML real com 2 capturas (mesmo timestamp para testar ausência de colisão anonimizada + UTF-8) e executa o JS no Node
+        with tempfile.TemporaryDirectory() as td:
+            import json as _json
+            root = Path(td)
+            cap_root = root / "html_eval"
+            cap_root.mkdir()
+            for cname, content_txt in (
+                ("João_São_Paulo-20261113-190000", "Conteúdo A — café"),
+                ("Maria_Cotia-20261113-190000", "Conteúdo B — pão"),
+            ):
+                cdir = cap_root / cname
+                cdir.mkdir()
+                data = content_txt.encode("utf-8")
+                (cdir / "arquivo.txt").write_bytes(data)
+                art = [{"path": "arquivo.txt", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]
+                (cdir / "manifest.json").write_text(_json.dumps({"artifacts": art}), encoding="utf-8")
+                (cdir / "integridade.json").write_text(_json.dumps({"artifacts": art}), encoding="utf-8")
+
+            export = subprocess.run(
+                [str(JAVA), "-jar", str(VERIFIER_JAR), "--export-history", str(cap_root)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            self.assertEqual(export.returncode, 0, export.stdout + export.stderr)
+            full_hist = (cap_root / "integridade" / "historico-capturas.txt").read_text(encoding="utf-8")
+
+            harness_dir = root / "html_harness"
+            harness_dir.mkdir()
+            harness_java = harness_dir / "HtmlGenHarness.java"
+            harness_java.write_text(
+                """
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.security.MessageDigest;
+import java.util.*;
+
+public final class HtmlGenHarness {
+    public static void main(String[] args) throws Exception {
+        Path root = Paths.get(args[0]);
+        List<IntegrityVerifier.Capture> caps = IntegrityVerifier.discover(root);
+        Method v = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+        v.setAccessible(true);
+        for (IntegrityVerifier.Capture c : caps) v.invoke(null, c);
+        Method sh = IntegrityVerifier.class.getDeclaredMethod("setHash", List.class);
+        sh.setAccessible(true);
+        String rh = (String) sh.invoke(null, caps);
+        String fullHist = new String(Files.readAllBytes(root.resolve("integridade/historico-capturas.txt")), StandardCharsets.UTF_8);
+        String pubHist = IntegrityVerifier.publicHistoryReport(caps, rh);
+        Method wr = IntegrityVerifier.class.getDeclaredMethod("writeReports", Path.class, List.class, String.class, String.class, String.class);
+        wr.setAccessible(true);
+        wr.invoke(null, root, caps, rh, "2026-11-13T19:00:00Z", fullHist);
+        Files.write(root.resolve("pub-history.txt"), pubHist.getBytes(StandardCharsets.UTF_8));
+        System.out.println("FULL_SHA=" + sha(fullHist));
+        System.out.println("PUB_SHA=" + sha(pubHist));
+    }
+    private static String sha(String s) throws Exception {
+        String n = s.replace("\\r\\n", "\\n").replace("\\r", "\\n").replaceAll("\\n+$", "") + "\\n";
+        byte[] d = MessageDigest.getInstance("SHA-256").digest(n.getBytes(StandardCharsets.UTF_8));
+        StringBuilder out = new StringBuilder();
+        for (byte b : d) out.append(String.format("%02x", b & 255));
+        return out.toString();
+    }
+}
+                """,
+                encoding="utf-8",
+            )
+            javac = JAVA.with_name("javac.exe")
+            cp = f"{VERIFIER_JAR};{harness_dir}"
+            comp = subprocess.run([str(javac), "-encoding", "UTF-8", "-cp", str(VERIFIER_JAR), "-d", str(harness_dir), str(harness_java)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(comp.returncode, 0, comp.stdout + comp.stderr)
+            gen = subprocess.run([str(JAVA), "-cp", cp, "HtmlGenHarness", str(cap_root)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(gen.returncode, 0, gen.stdout + gen.stderr)
+            full_sha = [line.split("=", 1)[1] for line in gen.stdout.splitlines() if line.startswith("FULL_SHA=")][0]
+            pub_sha = [line.split("=", 1)[1] for line in gen.stdout.splitlines() if line.startswith("PUB_SHA=")][0]
+            html = (cap_root / "integridade.html").read_text(encoding="utf-8")
+            self.assertIn("Hash geral Público:", html)
+            self.assertNotIn("Comparar hash desta captura", html)
+            self.assertNotIn("Hash geral das capturas selecionadas", html)
+
+            node_script = r"""
+const fs = require('fs');
+const path = process.argv[1];
+const html = fs.readFileSync(path + '/integridade.html', 'utf8');
+const fullHist = fs.readFileSync(path + '/integridade/historico-capturas.txt', 'utf8');
+const pubHist = fs.readFileSync(path + '/pub-history.txt', 'utf8');
+const fullSha = process.argv[2], pubSha = process.argv[3];
+
+const mScript = html.match(/<script>([\s\S]*?)<\/script>/);
+if (!mScript) throw new Error('missing script');
+const rows = [];
+const rowRe = /data-capture="([^"]*)"\s+data-block-full="([^"]*)"\s+data-block-public="([^"]*)"/g;
+let rm;
+while ((rm = rowRe.exec(html)) !== null) {
+  const cmpSpan = { className: 'cmp', textContent: 'Não comparado' };
+  rows.push({
+    attrs: { 'data-capture': rm[1], 'data-block-full': rm[2], 'data-block-public': rm[3] },
+    getAttribute(k) { return this.attrs[k]; },
+    querySelector(s) { return s === '.cmp' ? cmpSpan : null; },
+    cmp: cmpSpan,
+  });
+}
+if (rows.length !== 2) throw new Error('expected 2 rows, got ' + rows.length);
+
+const elements = {
+  publicHash: { value: '' },
+  comparison: { className: '', textContent: '' },
+  historyInput: { value: '' },
+  historyResult: { className: '', textContent: '' },
+};
+const document = {
+  getElementById(id) { return elements[id]; },
+  querySelectorAll(sel) {
+    if (sel === '.capture-row') return rows;
+    if (sel === '.capture-row .cmp') return rows.map(r => r.cmp);
+    return [];
+  },
+  createElement() { return { value: '', select(){}, remove(){} }; },
+  body: { appendChild(){} },
+  execCommand() {},
+};
+eval(mScript[1]);
+
+function assert(cond, msg) { if (!cond) throw new Error(msg); }
+
+elements.publicHash.value = pubSha; compareHash();
+assert(elements.comparison.className === 'match', 'pubSha should match');
+elements.publicHash.value = fullSha; compareHash();
+assert(elements.comparison.className === 'match', 'fullSha should match');
+elements.publicHash.value = '0'.repeat(64); compareHash();
+assert(elements.comparison.className === 'diverge', 'zero hash should diverge');
+
+elements.historyInput.value = fullHist; compareHistory();
+assert(elements.historyResult.className === 'match', 'full history overall match: ' + elements.historyResult.textContent);
+assert(rows.every(r => r.cmp.textContent === 'OK' && r.cmp.className === 'cmp match'), 'all rows OK for full history');
+
+elements.historyInput.value = pubHist; compareHistory();
+assert(elements.historyResult.className === 'match', 'public history overall match: ' + elements.historyResult.textContent);
+assert(rows.every(r => r.cmp.textContent === 'OK' && r.cmp.className === 'cmp match'), 'all rows OK for anonymized history');
+
+// Omit second capture block -> first OK, second FALHA
+const cutIdx = fullHist.indexOf('\nCAPTURA|Maria_Cotia-20261113-190000');
+const partialHist = fullHist.slice(0, cutIdx) + '\nNota|fim\n';
+elements.historyInput.value = partialHist; compareHistory();
+assert(rows[0].cmp.textContent === 'OK' && rows[0].cmp.className === 'cmp match', 'present capture OK');
+assert(rows[1].cmp.textContent === 'FALHA' && rows[1].cmp.className === 'cmp diverge', 'missing capture FALHA');
+assert(elements.historyResult.className === 'diverge', 'partial history overall diverge');
+
+// Tamper byte inside first capture block -> first FALHA, second OK
+const tamperedHist = fullHist.replace('ARQUIVO|arquivo.txt|', 'ARQUIVO|adulterado.txt|');
+elements.historyInput.value = tamperedHist; compareHistory();
+assert(rows[0].cmp.textContent === 'FALHA' && rows[0].cmp.className === 'cmp diverge', 'tampered capture FALHA');
+assert(rows[1].cmp.textContent === 'OK' && rows[1].cmp.className === 'cmp match', 'untampered capture still OK');
+
+console.log('NODE_HTML_JS_OK');
+"""
+            node_run = subprocess.run(["node", "-e", node_script, str(cap_root), full_sha, pub_sha], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(node_run.returncode, 0, node_run.stdout + node_run.stderr)
+            self.assertIn("NODE_HTML_JS_OK", node_run.stdout)
+
     def test_public_anonymized_history_export_and_dual_verification(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

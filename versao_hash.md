@@ -1,11 +1,15 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.3.8 acompanha a release `v2.6.3-beta` e passa a ser a única aceita pelo plugin (versões `<= 1.3.7` foram abandonadas). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.0 acompanha a release `v2.6.5-beta` e passa a ser a única aceita pelo plugin (versões `<= 1.3.9` foram abandonadas). Compare o hash do arquivo antes de executá-lo.
 
 ## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.4.0 (release v2.6.5-beta) | `integridade-verifier.jar` | `9CA17D7BA2EC50808D333495716D277F4DA963BBBC946C3EF7F765079F48A6E5` | Build com JDK 8; bytecode 52; 152.916 bytes; carregamento Local/Público, resumo simplificado, HTML `OK`/`FALHA` e `alwaysOnTop`/EDT |
+| 1.4.0 (release v2.6.5-beta) | `integridade-verifier.exe` | `11094FA3CCE812AF3421490FF1BC2F3B8100C9B5D7551DBBA7F05F78C8136809` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0; 77.862.980 bytes |
+| 1.3.9 (release v2.6.4-beta) | `integridade-verifier.jar` | `043AFEC21D79B4DF3C8A3DDB42F49CF5CB9467CECD11397E724091DFA310E2A7` | Build com JDK 8; bytecode 52; 142.687 bytes; decodificação de entidades HTML em atributos (`&#39;` na CSP e links/fontes) |
+| 1.3.9 (release v2.6.4-beta) | `integridade-verifier.exe` | `FF06525056E008A91AABF49D9B98B3E0CEE55CCED3846A89AA76D7B39BC6BC85` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0; 77.853.252 bytes |
 | 1.3.8 (release v2.6.3-beta) | `integridade-verifier.jar` | `556B1A652183A343B168057029CCF10006361D8CB53526BA610E81A4D76532B6` | Build com JDK 8; bytecode 52; 142.154 bytes; hardening JSON malformado/HTML legado/CSS/SVG e verificação `canonical-v1` |
 | 1.3.8 (release v2.6.3-beta) | `integridade-verifier.exe` | `B9D77A7F88F7D87D3697B855191427C3CE790EFA827830DEABE263E4E2962DD2` | Build Windows x64 autocontido (`java.base,java.datatransfer,java.desktop,java.xml`); `--self-test` código 0; 77.852.740 bytes |
 | 1.3.7 (release v2.6.2-beta) | `integridade-verifier.jar` | `7A137AE3286231246AF335380C3E8716B17A6696552096474563169DB4F5F2EE` | Build com JDK 8; bytecode 52; 139.632 bytes; pastas auxiliares de recaptura ignoradas em `discover` e hardening fase 2 |
@@ -49,4 +53,4 @@ Os arquivos preservados para as versões 1.2.1 e 1.2.2 são pacotes de código-f
 | 1.2.2 | `src-integridade-verifier-1.2.2.zip` (código-fonte) | `8C5413C833093136DDAA2A080B8339FE464CCF19E3F4A7DCF98BAC9ED80529BA` |
 | 1.2.3 | `src-integridade-verifier-1.2.3.zip` (código-fonte) | `83CD34A66C46C1ED0EF6D34C0E6A5B1E54EB3376B500D60F56F0668569D674EF` |
 
-A versão atual é 1.3.8; o JAR foi compilado para Java 8. Os hashes das versões anteriores (já abandonadas pelo plugin 2.6.3-beta) são mantidos abaixo apenas para consulta histórica.
+A versão atual é 1.4.0; o JAR foi compilado para Java 8. Os hashes das versões anteriores (já abandonadas pelo plugin 2.6.5-beta) são mantidos abaixo apenas para consulta histórica.

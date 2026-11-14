@@ -4,6 +4,28 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.5-beta] - 2026-11-13
+
+### Melhorado e Corrigido
+
+- **Verificador `1.4.0` (`IntegrityVerifier` e launcher `.exe`)**:
+  - Escolha de modo (`Escolha a referência`) movida para o início do fluxo GUI (`Opção A`): no modo **Integridade Local**, passa a exibir janela de carregamento com barra de progresso ao clicar em **Confirmar** em **Selecione as capturas**; no modo **Integridade Público**, remove **Selecione as capturas** e executa janela única de carregamento selecionando e verificando todas as capturas antes de abrir direto **Integridade Público**.
+  - Na janela **Resultado**, removidos **Hash geral do conjunto**, **SHA-256 do histórico completo** e botão **Copiar lista de hashes**, preservando **SHA-256 do histórico completo público**, cópias/aberturas de histórico, relatório HTML e Fechar (e gravações auxiliares em `integridade/` + `--export-history` inalterados).
+  - Relatório `integridade.html` atualizado para exibir **Hash geral Público** (campo superior aceitando SHA-256 do histórico público anonimizado e do histórico completo), remover **Comparar hash desta captura** e validar as capturas diretamente contra o `historico-capturas.txt` colado (normal ou anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS`) via SHA-256 offline em JS puro, exibindo **OK** (verde) ou **FALHA** (vermelho).
+  - Correção global de `alwaysOnTop`, foco e execução na Swing EDT para **Selecione as capturas**, diálogos de carregamento, alertas e erros de verificação/launcher.
+- **Plugin `2.6.5-beta` (`HtmlLinkViewer` / `VerifierIntegrity` / instalador)**: incremento de versão para `2.6.5-beta` e atualização da allowlist exclusiva para aceitar somente os binários oficiais do Verificador `1.4.0` (`9CA17D7B...` / `11094FA3...`), rejeitando versões `<= 1.3.9`.
+
+---
+
+## [2.6.4-beta] - 2026-11-13
+
+### Corrigido
+
+- **Verificador `1.3.9` (`IntegrityVerifier`)**: adicionada decodificação de entidades HTML em passagem única em `parseHtmlAttributes` (`&#39;`, `&#x27;`, `&apos;`, `&quot;`, `&lt;`, `&gt;`, `&amp;` e numéricas), corrigindo o falso erro `Política CSP ausente ou não canônica.` nas capturas migradas/geradas pela `2.6.3-beta` e bloqueando atributos com esquemas perigosos ofuscados por entidades HTML.
+- **Plugin `2.6.4-beta` (`HtmlLinkViewer` / `VerifierIntegrity` / instalador)**: emissão direta de `CAPTURE_CSP` canônico no `<meta http-equiv="Content-Security-Policy">` (sem escapar `'` para `&#39;`) e atualização da allowlist exclusiva para aceitar somente os binários oficiais do Verificador `1.3.9` (`043AFEC2...` / `FF065250...`), rejeitando versões `<= 1.3.8`.
+
+---
+
 ## [2.6.3-beta] - 2026-11-13
 
 ### Segurança e Correções
