@@ -33,7 +33,7 @@ Feche o IPED, extraia o ZIP do instalador e execute `instalar_captura_chat_zap/i
 
 ## Usage
 
-Marque o início e o fim do trecho pelo menu de contexto, escolha a pasta de saída e inicie a captura. Um separador de data pode marcar o início e será resolvido para a próxima mensagem; o fim precisa ser uma mensagem. O plugin valida os dois limites antes de começar. Novas capturas usam `html-message-v1`, com mensagens e anexos preservados localmente. Para o passo a passo ilustrado de uso, consulte [GUIA_DE_USO.md](GUIA_DE_USO.md). Para referências técnicas e especificações, consulte [doc.md](doc.md), [SPEC_CAPTURA_HTML_POR_MENSAGEM.md](SPEC_CAPTURA_HTML_POR_MENSAGEM.md) e [SPEC_RENDERIZACAO_WHATSAPP_HTML.md](SPEC_RENDERIZACAO_WHATSAPP_HTML.md).
+Marque o início e o fim do trecho pelo menu de contexto, escolha a pasta de saída e inicie a captura. Um separador de data pode marcar o início e será resolvido para a próxima mensagem; o fim precisa ser uma mensagem. O plugin valida os dois limites antes de começar. Novas capturas usam `html-message-v1`, com mensagens e anexos preservados localmente. Para o passo a passo ilustrado de uso, consulte [GUIA_DE_USO.md](GUIA_DE_USO.md). Para referências técnicas e especificações, consulte [doc.md](doc.md) e [espec.md](espec.md).
 
 ## License
 
@@ -72,7 +72,7 @@ instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar
 Especificacao tecnica completa:
 
 ```text
-ESPEC_UNICA_CHAT_CAPTURE_IPED.md
+espec.md
 ```
 
 As capturas novas da versão 2.5.6-beta incluem:
@@ -270,7 +270,7 @@ isolada. Nada e gravado dentro do caso.
 chat-captura IPED/
   README.md
   CHECKSUMS.md
-  ESPEC_UNICA_CHAT_CAPTURE_IPED.md
+  espec.md
   src/
     iped/
       viewers/
@@ -310,8 +310,7 @@ Os artefatos publicados para a versão 2.6.0-beta são:
 | `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.0-beta.jar` | Fat-JAR compilado do plugin para instalação manual |
 | `verificador-integridade/integridade-verifier.jar` | Verificador independente com Java 8 (1.8) ou superior |
 | `verificador-integridade/integridade-verifier.exe` | Mesmo verificador para Windows x64, sem Java ou .NET instalados |
-| `SPEC_CAPTURA_HTML_POR_MENSAGEM.md e SPEC_RENDERIZACAO_WHATSAPP_HTML.md` | Contrato, formato de captura, limites, testes e validação automatizada no IPED |
-| `SPEC_MIGRACAO_REEXTRACAO_LEGADA_HTML.md` | Regras da migração legada, transação, proveniência, testes e critérios de aceite |
+| [espec.md](espec.md) | Especificação técnica única consolidada (contrato, formato, segurança, removidos/ignorados e guia de build) |
 
 Os SHA-256 estão documentados em [CHECKSUMS.md](CHECKSUMS.md).
 
@@ -528,4 +527,4 @@ O manifesto registra a versao do plugin, versao dos geradores, fingerprint da ca
 
 Se somente whatsapp.html estiver ausente/alterado ou seu gerador precisar de atualizacao, o viewer pode recria-lo usando whatsapp-coordinates.json valido. Para arquivos de origem, frames, anexos e demais divergencias sem migracao especifica, Re-Extrair usa o fluxo completo e registra no reextracao-auditoria.jsonl os hashes esperados e recuperados. Transcricoes de IA nao entram na identidade de audio/video; sem hash da midia original a assinatura fica incompleta e nao autoriza ignorar a captura.
 
-A especificacao e o plano detalhado estao em ESPEC_UNICA_CHAT_CAPTURE_IPED.md.
+A especificacao e o plano detalhado estao em [espec.md](espec.md).

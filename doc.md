@@ -139,7 +139,7 @@ Limites do novo formato: 25.000 mensagens, 8 MiB por anexo, 64 MiB em anexos por
 - Artefato do plugin: `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar`.
 - O script `validate-plugin-jar.ps1` confere classes e bundles necessários.
 - A suíte automatizada (`run_all_tests.ps1`, contrato de produção e `--verify-only` nas capturas de teste) passou após a compilação final de `2.6.0-beta` / Verificador `1.3.5`; a validação visual manual no WebView do IPED 4.3.1 fica a cargo do operador.
-- A especificação consolidada está em `ESPEC_UNICA_CHAT_CAPTURE_IPED.md`; a migração está detalhada em `SPEC_MIGRACAO_REEXTRACAO_LEGADA_HTML.md`, que também registra requisitos parciais ou ainda não entregues.
+- A especificação única consolidada (incluindo itens removidos, ignorados, não aplicados e o que/como aplicar) está em [espec.md](espec.md).
 
 ## Limitações conhecidas
 
