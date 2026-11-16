@@ -234,14 +234,12 @@ jobs:
             -cp $compileCp -d $classesDir $sources
           if ($LASTEXITCODE -ne 0) { throw "javac plugin falhou: $LASTEXITCODE" }
 
-          # Monta fat-JAR sobre o iped-viewers-impl-4.3.1.jar oficial do IPED 4.3.1 + org/opencv/** + i18n
+          # Monta fat-JAR preservando a base Avilla/IPED (inclui MultiViewer$1..$5 e org/opencv/**) com nossas 19 classes recompiladas
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $officialViewerJar = Join-Path $env:IPED_HOME 'lib\iped-viewers-impl-4.3.1.jar'
-          [IO.Compression.ZipFile]::ExtractToDirectory($officialViewerJar, $stageDir)
-          [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path 'instalar_captura_chat_zap\dependencies\opencv-4120.jar').Path, $ocvDir)
-          Copy-Item -Path (Join-Path $ocvDir 'org') -Destination $stageDir -Recurse -Force
+          $baseFatJar = (Resolve-Path 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar').Path
+          [IO.Compression.ZipFile]::ExtractToDirectory($baseFatJar, $stageDir)
 
-          # Remove classes HtmlLinkViewer antigas da base oficial e sobrescreve todas as classes do plugin compiladas do fonte
+          # Remove classes do plugin da base e sobrescreve todas as classes compiladas do fonte contra o IPED 4.3.1 oficial
           Get-ChildItem (Join-Path $stageDir 'iped\viewers') -Filter 'HtmlLinkViewer*.class' -ErrorAction SilentlyContinue | Remove-Item -Force
           foreach ($src in $sources) {
             $stem = [IO.Path]::GetFileNameWithoutExtension($src)
