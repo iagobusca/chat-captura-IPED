@@ -1,0 +1,419 @@
+name: Compilar, Verificar e Publicar Release (GiteaRunner)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publicar ou atualizar release no Gitea apos validar hashes e testes'
+        required: false
+        default: 'true'
+      release_tag:
+        description: 'Tag de release no Gitea quando acionado manualmente (ex.: v2.7.0)'
+        required: false
+        default: 'v2.7.0'
+
+jobs:
+  reproducible-build-verify-and-release:
+    if: github.server_url != 'https://github.com'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repositorio local Gitea
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoUrl = "http://127.0.0.1:3000/$($env:GITHUB_REPOSITORY).git"
+          if (!(Test-Path .git)) {
+            git init .
+            git remote add origin $repoUrl
+          } else {
+            git remote set-url origin $repoUrl
+          }
+          git fetch --depth 1 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git fetch failed ($LASTEXITCODE)" }
+          git checkout --force FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git checkout failed ($LASTEXITCODE)" }
+          git clean -fdx
+          Write-Host "CHECKOUT_SHA=$(git rev-parse HEAD)"
+          Write-Host "GITHUB_REF=$($env:GITHUB_REF)"
+          Write-Host "GITHUB_EVENT_NAME=$($env:GITHUB_EVENT_NAME)"
+
+      - name: Configurar SDKs deterministicos e caminhos IPED/JavaFX
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\tests\resolve_test_env.ps1
+
+          $jdk8 = Resolve-JdkHome -EnvNames @('JAVA8_HOME', 'JAVA_HOME') -MajorVersions @(8) -RequiredTool 'bin\javac.exe'
+          $jdk11 = Resolve-JdkHome -EnvNames @('JAVA11_HOME', 'JAVA_HOME') -MajorVersions @(11) -RequiredTool 'bin\jar.exe'
+          $jdk21 = Resolve-JdkHome -Explicit $(if (Test-Path -LiteralPath 'C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot\bin\javac.exe') { 'C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot' } else { '' }) -EnvNames @('JAVA21_HOME', 'JAVA_HOME') -MajorVersions @(21) -RequiredTool 'bin\javac.exe'
+
+          $ipedHome = if ($env:IPED_HOME -and (Test-Path -LiteralPath (Join-Path $env:IPED_HOME 'lib'))) {
+            $env:IPED_HOME
+          } elseif (Test-Path -LiteralPath 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\lib') {
+            'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1'
+          } else {
+            Resolve-WorkspaceIpedRoot -RepoRoot (Get-Location).Path
+          }
+
+          $reproCache = 'C:\Avilla-Forensics-Free\repro-cache'
+          $cachedJfxLib = Join-Path $reproCache 'openjfx-21.0.5-windows-x64\javafx-sdk-21.0.5\lib'
+          $jfxLib = if (Test-Path -LiteralPath (Join-Path $cachedJfxLib 'javafx.web.jar')) {
+            $cachedJfxLib
+          } else {
+            ''
+          }
+
+          @(
+            "JDK8_HOME=$jdk8",
+            "JDK11_HOME=$jdk11",
+            "JDK21_HOME=$jdk21",
+            "IPED_HOME=$ipedHome",
+            "REPRO_CACHE=$reproCache",
+            "JAVAFX_LIB=$jfxLib"
+          ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
+
+          Write-Host "JDK8_HOME=$jdk8"
+          Write-Host "JDK11_HOME=$jdk11"
+          Write-Host "JDK21_HOME=$jdk21"
+          Write-Host "IPED_HOME=$ipedHome"
+          Write-Host "REPRO_CACHE=$reproCache"
+          Write-Host "JAVAFX_LIB=$jfxLib"
+          Write-Host "DOTNET=$(& dotnet --version)"
+
+      - name: Compilacao deterministica dupla e autotestes (build-reproducible.ps1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $outDir = Join-Path $repo 'out\reproducible'
+
+          $buildArgs = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', (Join-Path $repo 'build-reproducible.ps1'),
+            '-Target', 'full',
+            '-PinTemurin',
+            '-VerifyReproducibility',
+            '-RunTests',
+            '-JdkHome', $env:JDK21_HOME,
+            '-IpedHome', $env:IPED_HOME,
+            '-CacheDir', $env:REPRO_CACHE,
+            '-OutDir', $outDir
+          )
+          $cachedJfx = Join-Path $env:REPRO_CACHE 'openjfx-21.0.5-windows-x64\javafx-sdk-21.0.5\lib\javafx.web.jar'
+          if (Test-Path -LiteralPath $cachedJfx) {
+            $buildArgs += '-Offline'
+          } else {
+            $buildArgs += '-DownloadDeps'
+          }
+
+          & powershell @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw "build-reproducible.ps1 falhou ($LASTEXITCODE)" }
+
+          $htmlViewerText = [IO.File]::ReadAllText((Join-Path $repo 'src\iped\viewers\HtmlLinkViewer.java'))
+          if ($htmlViewerText -notmatch 'CHAT_CAPTURE_PLUGIN_VERSION\s*=\s*"([^"]+)"') {
+            throw 'CHAT_CAPTURE_PLUGIN_VERSION nao encontrado'
+          }
+          $pluginVer = $Matches[1]
+          $verifierVer = (Get-Content -LiteralPath (Join-Path $repo 'verificador-integridade\VERSION') -Raw).Trim()
+
+          $jarPath = Join-Path $outDir 'integridade-verifier.jar'
+          $exePath = Join-Path $outDir 'integridade-verifier.exe'
+          $pluginPath = Join-Path $outDir 'iped-viewers-impl-4.3.1.jar'
+          $zipPath = Join-Path $outDir "instalador-chat-captura-IPED-$pluginVer-verificador-$verifierVer.zip"
+
+          foreach ($p in @($jarPath, $exePath, $pluginPath, $zipPath)) {
+            if (!(Test-Path -LiteralPath $p -PathType Leaf)) { throw "Artefato ausente: $p" }
+          }
+
+          $jarSha = (Get-FileHash -LiteralPath $jarPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $exeSha = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $pluginSha = (Get-FileHash -LiteralPath $pluginPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $zipSha = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
+
+          $jarBytes = (Get-Item -LiteralPath $jarPath).Length
+          $exeBytes = (Get-Item -LiteralPath $exePath).Length
+          $pluginBytes = (Get-Item -LiteralPath $pluginPath).Length
+          $zipBytes = (Get-Item -LiteralPath $zipPath).Length
+
+          $resolvedJfxLib = if ($env:JAVAFX_LIB -and (Test-Path -LiteralPath (Join-Path $env:JAVAFX_LIB 'javafx.web.jar'))) {
+            $env:JAVAFX_LIB
+          } else {
+            (Split-Path -Parent (Get-ChildItem -LiteralPath $env:REPRO_CACHE -Filter 'javafx.web.jar' -Recurse -File | Select-Object -First 1).FullName)
+          }
+
+          @(
+            "PLUGIN_VER=$pluginVer",
+            "VERIFIER_VER=$verifierVer",
+            "JAR_PATH=$jarPath",
+            "EXE_PATH=$exePath",
+            "PLUGIN_PATH=$pluginPath",
+            "ZIP_PATH=$zipPath",
+            "JAR_SHA=$jarSha",
+            "EXE_SHA=$exeSha",
+            "PLUGIN_SHA=$pluginSha",
+            "ZIP_SHA=$zipSha",
+            "JAR_BYTES=$jarBytes",
+            "EXE_BYTES=$exeBytes",
+            "PLUGIN_BYTES=$pluginBytes",
+            "ZIP_BYTES=$zipBytes",
+            "JAVAFX_LIB=$resolvedJfxLib"
+          ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
+
+          Write-Host "CI_VERIFIER_JAR: $jarBytes bytes | $jarSha"
+          Write-Host "CI_VERIFIER_EXE: $exeBytes bytes | $exeSha"
+          Write-Host "CI_PLUGIN_JAR:   $pluginBytes bytes | $pluginSha"
+          Write-Host "CI_INSTALL_ZIP:  $zipBytes bytes | $zipSha"
+
+      - name: Conferencia bit a bit com allowlists, script e CHECKSUMS.md
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+
+          $viSrc = [IO.File]::ReadAllText((Join-Path $repo 'src\iped\viewers\VerifierIntegrity.java'))
+          if ($viSrc -notmatch 'VALID_JAR_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') {
+            throw 'VALID_JAR_HASHES nao encontrado em VerifierIntegrity.java'
+          }
+          $srcJarHash = $Matches[1]
+          if ($viSrc -notmatch 'VALID_EXE_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') {
+            throw 'VALID_EXE_HASHES nao encontrado em VerifierIntegrity.java'
+          }
+          $srcExeHash = $Matches[1]
+
+          if ($env:JAR_SHA -ne $srcJarHash) {
+            throw "DIVERGENCIA Verifier JAR vs VerifierIntegrity.java: CI=$($env:JAR_SHA) != SRC=$srcJarHash"
+          }
+          if ($env:EXE_SHA -ne $srcExeHash) {
+            throw "DIVERGENCIA Verifier EXE vs VerifierIntegrity.java: CI=$($env:EXE_SHA) != SRC=$srcExeHash"
+          }
+
+          $batText = [IO.File]::ReadAllText((Join-Path $repo 'instalar_captura_chat_zap\instalar_captura_chat_zap.bat'))
+          if ($batText -notmatch 'EXPECTED_PLUGIN_SHA256=([A-F0-9]{64})') { throw 'EXPECTED_PLUGIN_SHA256 ausente no .bat' }
+          if ($env:PLUGIN_SHA -ne $Matches[1]) {
+            throw "DIVERGENCIA Plugin JAR vs .bat: CI=$($env:PLUGIN_SHA) != BAT=$($Matches[1])"
+          }
+          if ($batText -notmatch 'EXPECTED_VERIFIER_JAR_SHA256=([A-F0-9]{64})') { throw 'EXPECTED_VERIFIER_JAR_SHA256 ausente no .bat' }
+          if ($env:JAR_SHA -ne $Matches[1]) {
+            throw "DIVERGENCIA Verifier JAR vs .bat: CI=$($env:JAR_SHA) != BAT=$($Matches[1])"
+          }
+          if ($batText -notmatch 'EXPECTED_VERIFIER_EXE_SHA256=([A-F0-9]{64})') { throw 'EXPECTED_VERIFIER_EXE_SHA256 ausente no .bat' }
+          if ($env:EXE_SHA -ne $Matches[1]) {
+            throw "DIVERGENCIA Verifier EXE vs .bat: CI=$($env:EXE_SHA) != BAT=$($Matches[1])"
+          }
+
+          $checksumsText = [IO.File]::ReadAllText((Join-Path $repo 'CHECKSUMS.md'))
+          $zipNameEsc = [Regex]::Escape("instalador-chat-captura-IPED-$($env:PLUGIN_VER)-verificador-$($env:VERIFIER_VER).zip")
+          $checksumPattern = $zipNameEsc + '`\s*\|\s*(\d+)\s*\|\s*`([A-F0-9]{64})`'
+          if ($checksumsText -match $checksumPattern) {
+            if ([long]$env:ZIP_BYTES -ne [long]$Matches[1] -or $env:ZIP_SHA -ne $Matches[2]) {
+              throw "DIVERGENCIA ZIP vs CHECKSUMS.md: CI=$($env:ZIP_BYTES)/$($env:ZIP_SHA) != DOC=$($Matches[1])/$($Matches[2])"
+            }
+          } else {
+            throw "Entrada de CHECKSUMS.md ausente para $zipNameEsc"
+          }
+
+          foreach ($pair in @(
+            @{ Ci = $env:JAR_SHA; Repo = (Get-FileHash -LiteralPath (Join-Path $repo 'verificador-integridade\integridade-verifier.jar') -Algorithm SHA256).Hash; Label = 'verificador-integridade/integridade-verifier.jar' },
+            @{ Ci = $env:EXE_SHA; Repo = (Get-FileHash -LiteralPath (Join-Path $repo 'verificador-integridade\integridade-verifier.exe') -Algorithm SHA256).Hash; Label = 'verificador-integridade/integridade-verifier.exe' },
+            @{ Ci = $env:JAR_SHA; Repo = (Get-FileHash -LiteralPath (Join-Path $repo 'instalar_captura_chat_zap\integridade-verifier.jar') -Algorithm SHA256).Hash; Label = 'instalar_captura_chat_zap/integridade-verifier.jar' },
+            @{ Ci = $env:EXE_SHA; Repo = (Get-FileHash -LiteralPath (Join-Path $repo 'instalar_captura_chat_zap\integridade-verifier.exe') -Algorithm SHA256).Hash; Label = 'instalar_captura_chat_zap/integridade-verifier.exe' },
+            @{ Ci = $env:PLUGIN_SHA; Repo = (Get-FileHash -LiteralPath (Join-Path $repo 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar') -Algorithm SHA256).Hash; Label = 'instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar' }
+          )) {
+            if ($pair.Ci -ne $pair.Repo.ToUpperInvariant()) {
+              throw "DIVERGENCIA binario versionado ($($pair.Label)): CI=$($pair.Ci) != REPO=$($pair.Repo)"
+            }
+          }
+          Write-Host 'BIT_FOR_BIT_HASH_MATCH=PASS'
+
+      - name: Validar ZIP instalador extraido e suites completas de teste
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+
+          $zipStageTest = Join-Path ([IO.Path]::GetTempPath()) ('giteaci-zip-' + [Guid]::NewGuid().ToString('N'))
+          try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [IO.Compression.ZipFile]::ExtractToDirectory($env:ZIP_PATH, $zipStageTest)
+            $instFolder = Join-Path $zipStageTest 'instalar_captura_chat_zap'
+            foreach ($req in @(
+              (Join-Path $zipStageTest 'LEIA-ME.txt'),
+              (Join-Path $instFolder 'instalar_captura_chat_zap.bat'),
+              (Join-Path $instFolder 'install-localization.ps1'),
+              (Join-Path $instFolder 'validate-plugin-jar.ps1'),
+              (Join-Path $instFolder 'iped-viewers-impl-4.3.1.jar'),
+              (Join-Path $instFolder 'integridade-verifier.jar'),
+              (Join-Path $instFolder 'integridade-verifier.exe'),
+              (Join-Path $instFolder 'opencv_java4120.dll'),
+              (Join-Path $instFolder 'dependencies\json-20260719.jar'),
+              (Join-Path $instFolder 'dependencies\opencv-4120.jar')
+            )) {
+              if (!(Test-Path -LiteralPath $req -PathType Leaf)) { throw "Conteudo ausente no ZIP: $req" }
+            }
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $instFolder 'validate-plugin-jar.ps1') -Jar (Join-Path $instFolder 'iped-viewers-impl-4.3.1.jar') -ExpectedSha256 $env:PLUGIN_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'validate-plugin-jar no ZIP falhou' }
+            $exeProc = Start-Process -FilePath (Join-Path $instFolder 'integridade-verifier.exe') -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
+            if ($exeProc.ExitCode -ne 0) { throw "EXE extraido do ZIP falhou no --self-test ($($exeProc.ExitCode))" }
+          } finally {
+            Remove-Item -LiteralPath $zipStageTest -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          $env:TEST_VERIFIER_EXE = $env:EXE_PATH
+          $env:TEST_VERIFIER_JAR = $env:JAR_PATH
+          $env:TEST_PLUGIN_JAR = $env:PLUGIN_PATH
+
+          & powershell -NoProfile -ExecutionPolicy Bypass -File "verificador-integridade\prototype\test-security-spec.ps1"
+          if ($LASTEXITCODE -ne 0) { throw "test-security-spec.ps1 falhou ($LASTEXITCODE)" }
+
+          & powershell -NoProfile -ExecutionPolicy Bypass -File "teste_antes_de_aplicar\run_all_tests.ps1" -Java8Home $env:JDK8_HOME -Java11Home $env:JDK11_HOME -Java26Home $env:JDK21_HOME -IpedHome $env:IPED_HOME -JavaFxLib $env:JAVAFX_LIB
+          if ($LASTEXITCODE -ne 0) { throw "run_all_tests.ps1 falhou ($LASTEXITCODE)" }
+
+          foreach ($regScript in @(
+            'tests\run_capture_header_mime_regression.ps1',
+            'tests\run_svg_sanitizer_compatibility.ps1',
+            'tests\run_verifier_embedded_image_compatibility.ps1'
+          )) {
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $regScript
+            if ($LASTEXITCODE -ne 0) { throw "$regScript falhou ($LASTEXITCODE)" }
+          }
+          Write-Host 'ALL_GITEA_CI_TESTS=PASS'
+
+      - name: Publicar release e ativos no Gitea diretamente do GiteaRunner
+        if: ${{ !cancelled() && success() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == 'true')) }}
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DISPATCH_TAG: ${{ inputs.release_tag }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $token = if (![string]::IsNullOrWhiteSpace($env:RELEASE_TOKEN)) { $env:RELEASE_TOKEN } else { $env:GITHUB_TOKEN }
+          if ([string]::IsNullOrWhiteSpace($token)) { throw 'Nenhum token disponivel para publicar release no Gitea' }
+
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF.Substring('refs/tags/'.Length)
+          } elseif (![string]::IsNullOrWhiteSpace($env:DISPATCH_TAG)) {
+            $env:DISPATCH_TAG
+          } else {
+            "v$($env:PLUGIN_VER)"
+          }
+
+          $repo = $env:GITHUB_REPOSITORY
+          $apiBase = "http://127.0.0.1:3000/api/v1/repos/$repo"
+          $headers = @{ Authorization = "token $token" }
+          $ptBr = [Globalization.CultureInfo]::GetCultureInfo('pt-BR')
+
+          $zipFmt = [string]::Format($ptBr, '{0:N0}', [long]$env:ZIP_BYTES)
+          $exeFmt = [string]::Format($ptBr, '{0:N0}', [long]$env:EXE_BYTES)
+          $jarFmt = [string]::Format($ptBr, '{0:N0}', [long]$env:JAR_BYTES)
+          $pluginFmt = [string]::Format($ptBr, '{0:N0}', [long]$env:PLUGIN_BYTES)
+
+          $zipAssetName = "instalador-chat-captura-IPED-$($env:PLUGIN_VER)-verificador-$($env:VERIFIER_VER).zip"
+          $exeAssetName = "integridade-verifier-$($env:VERIFIER_VER).exe"
+          $jarAssetName = "integridade-verifier-$($env:VERIFIER_VER).jar"
+          $pluginAssetName = "iped-viewers-impl-4.3.1-$($env:PLUGIN_VER).jar"
+
+          $templateLines = @(
+            '## Otimizado',
+            '- Versão estável **{PLUGIN_VER}** publicada na branch `main` acompanhando o **Verificador de Integridade {VERIFIER_VER}**, compilada e verificada diretamente pelo **GiteaRunner** via [`build-reproducible.ps1`](http://127.0.0.1:3000/{REPO}/src/tag/{TAG}/build-reproducible.ps1).',
+            '- **Compilação Determinística Multiplataforma**: timestamps UTC fixos (`1980-02-01T00:00:00Z`), ordenação lexicográfica de entradas (`ReproducibleZipPacker`), manifesto fixo e toolchain pinável (`Temurin JDK 21.0.13+9` + `OpenJFX 21.0.5` + `IPED 4.3.1` + `.NET 10.0.15` com `-p:Deterministic=true`), permitindo que qualquer auditor recompilando no Windows, Linux ou macOS obtenha exatamente os mesmos hashes SHA-256 bit a bit.',
+            '- Verificador de Integridade **{VERIFIER_VER}**: mantém todas as proteções estruturais da `1.4.4` (scanner HTML léxico determinístico `scanHtmlElements` / `parseHtmlTagStrict`, `openFile` com `LinkOption.NOFOLLOW_LINKS` + `maxBytes`, runtime `.NET 10.0.15`, proteção anti-reparse/zip-bomb no launcher, allowlists HTML/MIME simétricas e leitura completa sem tetos artificiais).',
+            '- Plugin **{PLUGIN_VER}**: recompilado deterministicamente como fat-JAR OpenCV autocontido com `CHAT_CAPTURE_PLUGIN_VERSION = "{PLUGIN_VER}"` e `Implementation-Version: {PLUGIN_VER}`.',
+            '',
+            '## Corrigido',
+            '- Allowlist exclusiva de binários confiáveis em `VerifierIntegrity.java`, `instalar_captura_chat_zap.bat` e `VerifierIntegrityHashTest.java` sincronizada exclusivamente com os binários determinísticos oficiais do Verificador **{VERIFIER_VER}** (`{JAR_SHORT}...` e `{EXE_SHORT}...`), rejeitando `<= 1.4.4`.',
+            '- Esteira completa do Gitea Actions executa compilação dupla (`REPRODUCIBLE_BUILD_VERIFIED=PASS`), prova de igualdade bit a bit contra os hashes versionados, `test-security-spec.ps1`, `run_all_tests.ps1` e regressões antes de publicar esta release.',
+            '',
+            '## Incluido',
+            '- Plugin Chat Captura IPED `{PLUGIN_VER}` (`{PLUGIN_ASSET}` | `{PLUGIN_FMT}` bytes | SHA-256: `{PLUGIN_SHA}`).',
+            '- Verificador de Integridade `{VERIFIER_VER}` em JAR (`{JAR_FMT}` bytes) e EXE Windows x64 autocontido (`{EXE_FMT}` bytes).',
+            '- ZIP instalador completo (`{ZIP_ASSET}` | `{ZIP_FMT}` bytes | SHA-256: `{ZIP_SHA}`).',
+            '',
+            '## SHA-256 do Verificador {VERIFIER_VER}',
+            '- JAR: `{JAR_SHA}`',
+            '- EXE: `{EXE_SHA}`',
+            '',
+            'Veja `versao_hash.md` e `CHECKSUMS.md` para todos os hashes e detalhes das versões anteriores.'
+          )
+          $bodyClean = $templateLines -join "`n"
+          $vars = @{
+            '{PLUGIN_VER}'   = $env:PLUGIN_VER
+            '{VERIFIER_VER}' = $env:VERIFIER_VER
+            '{REPO}'         = $repo
+            '{TAG}'          = $tag
+            '{JAR_SHORT}'    = $env:JAR_SHA.Substring(0, 8)
+            '{EXE_SHORT}'    = $env:EXE_SHA.Substring(0, 8)
+            '{PLUGIN_ASSET}' = $pluginAssetName
+            '{PLUGIN_FMT}'   = $pluginFmt
+            '{PLUGIN_SHA}'   = $env:PLUGIN_SHA
+            '{JAR_FMT}'      = $jarFmt
+            '{EXE_FMT}'      = $exeFmt
+            '{ZIP_ASSET}'    = $zipAssetName
+            '{ZIP_FMT}'      = $zipFmt
+            '{ZIP_SHA}'      = $env:ZIP_SHA
+            '{JAR_SHA}'      = $env:JAR_SHA
+            '{EXE_SHA}'      = $env:EXE_SHA
+          }
+          foreach ($k in $vars.Keys) {
+            $bodyClean = $bodyClean.Replace($k, $vars[$k])
+          }
+
+          $existing = $null
+          try {
+            $existing = Invoke-RestMethod -Method Get -Uri "$apiBase/releases/tags/$tag" -Headers $headers -TimeoutSec 15
+          } catch {
+            $existing = $null
+          }
+
+          $payloadObj = @{
+            tag_name = $tag
+            target_commitish = 'main'
+            name = $tag
+            body = $bodyClean
+            draft = $false
+            prerelease = $false
+          }
+          $payloadBytes = [Text.Encoding]::UTF8.GetBytes(($payloadObj | ConvertTo-Json -Depth 4))
+
+          if ($existing -and $existing.id) {
+            $rel = Invoke-RestMethod -Method Patch -Uri "$apiBase/releases/$($existing.id)" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $payloadBytes -TimeoutSec 30
+            foreach ($oldAsset in @($rel.assets)) {
+              Invoke-RestMethod -Method Delete -Uri "$apiBase/releases/$($rel.id)/assets/$($oldAsset.id)" -Headers $headers -TimeoutSec 30 | Out-Null
+            }
+          } else {
+            $rel = Invoke-RestMethod -Method Post -Uri "$apiBase/releases" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $payloadBytes -TimeoutSec 30
+          }
+          $relId = $rel.id
+          Write-Host "GITEA_RELEASE_ID=$relId | TAG=$tag"
+
+          $uploadStage = Join-Path ([IO.Path]::GetTempPath()) ('gitea-upload-' + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force -Path $uploadStage | Out-Null
+          try {
+            $uploads = @(
+              @{ Src = $env:ZIP_PATH; Name = $zipAssetName; Bytes = [long]$env:ZIP_BYTES },
+              @{ Src = $env:EXE_PATH; Name = $exeAssetName; Bytes = [long]$env:EXE_BYTES },
+              @{ Src = $env:JAR_PATH; Name = $jarAssetName; Bytes = [long]$env:JAR_BYTES },
+              @{ Src = $env:PLUGIN_PATH; Name = $pluginAssetName; Bytes = [long]$env:PLUGIN_BYTES }
+            )
+            foreach ($u in $uploads) {
+              $stagedFile = Join-Path $uploadStage $u.Name
+              Copy-Item -LiteralPath $u.Src -Destination $stagedFile -Force
+              $uploadUrl = "$apiBase/releases/$relId/assets?name=$([Uri]::EscapeDataString($u.Name))"
+              & curl.exe -sS -f -X POST -H "Authorization: token $token" -F "attachment=@$stagedFile" $uploadUrl
+              if ($LASTEXITCODE -ne 0) { throw "Falha ao enviar ativo $($u.Name) para release $relId ($LASTEXITCODE)" }
+            }
+          } finally {
+            Remove-Item -LiteralPath $uploadStage -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          $finalRel = Invoke-RestMethod -Method Get -Uri "$apiBase/releases/$relId" -Headers $headers -TimeoutSec 30
+          foreach ($expName in @($zipAssetName, $exeAssetName, $jarAssetName, $pluginAssetName)) {
+            $found = $finalRel.assets | Where-Object { $_.name -eq $expName } | Select-Object -First 1
+            if (!$found) { throw "Ativo nao encontrado na release final: $expName" }
+            Write-Host "RELEASE_ASSET_OK: $($found.name) ($($found.size) bytes) -> $($found.browser_download_url)"
+          }

@@ -1,11 +1,13 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.4 acompanha a release `v2.6.9` (estável em `main`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.3` foram abandonadas). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.5 acompanha a release `v2.7.0` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
 
 ## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.4.5 (release v2.7.0) | `integridade-verifier.jar` | `E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D` | Build determinístico (`build-reproducible.ps1` com Temurin 21.0.13+9 `--release 8`, bytecode 52, timestamps UTC fixos `1980-02-01T00:00:00Z`); `159.164` bytes; `--self-test` código 0 (`SELF_TEST_OK 1.4.5`); mantém todas as proteções de `1.4.4` |
+| 1.4.5 (release v2.7.0) | `integridade-verifier.exe` | `AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3` | Build Windows x64 autocontido determinístico (`jlink`/`jpackage` Temurin 21.0.13+9 + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true`); `--self-test` código 0 (`SELF_TEST_OK 1.4.5`); `77.616.218` bytes |
 | 1.4.4 (release v2.6.9) | `integridade-verifier.jar` | `C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF` | Build com JDK 8; bytecode 52; 159.189 bytes; scanner HTML léxico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), guarda `openFile` (`NOFOLLOW_LINKS` + `maxBytes`), allowlists HTML/MIME simétricas, `safeRegularFileSize`, `html.disable` e `MAX_SCAN_ENTRIES` |
 | 1.4.4 (release v2.6.9) | `integridade-verifier.exe` | `A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291` | Build Windows x64 autocontido (Java 11 + runtime `.NET 10.0.15` sem CVEs, bloqueio de reparse points e limites de descompressão no launcher); `--self-test` código 0 (`SELF_TEST_OK 1.4.4`); 77.874.266 bytes |
 | 1.4.3 (release v2.6.8) | `integridade-verifier.jar` | `104F69AABCB86851C2DA905AD6E8428177BDEC1E6D3750580291A8ECD008B382` | Build com JDK 8; bytecode 52; 159.189 bytes; scanner HTML léxico por máquina de estados (`F-01` Fase 4), guarda `openFile` (`NOFOLLOW_LINKS`), allowlists HTML/MIME simétricas com o plugin, `safeRegularFileSize` sem symlink TOCTOU, `html.disable` e `MAX_SCAN_ENTRIES` |

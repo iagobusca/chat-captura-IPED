@@ -1,6 +1,6 @@
-# Guia de Uso — Chat Captura IPED (v2.6.9) e Verificador de Integridade (v1.4.4)
+# Guia de Uso — Chat Captura IPED (v2.7.0) e Verificador de Integridade (v1.4.5)
 
-Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.4.4**.
+Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.4.5**.
 
 > **Documentos técnicos complementares:** consulte [README.md](README.md), [doc.md](doc.md), [CHECKSUMS.md](CHECKSUMS.md) e [verificador-integridade/README.md](verificador-integridade/README.md).
 >
@@ -11,7 +11,7 @@ Este guia explica passo a passo como instalar, configurar, capturar trechos de c
 ## 1. Pré-requisitos e Instalação
 
 - **IPED 4.3.1** com **Java 11** (o plugin `iped-viewers-impl-4.3.1.jar` substitui o viewer padrão mantendo o tema do IPED).
-- **Verificador de Integridade (`1.4.4`)**:
+- **Verificador de Integridade (`1.4.5`)**:
   - `integridade-verifier.exe` (Windows x64 autocontido, não exige instalação extra); ou
   - `integridade-verifier.jar` (requer **Java 8 / 1.8 ou superior**).
 

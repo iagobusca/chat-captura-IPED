@@ -4,6 +4,11 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.4.5] - 2026-11-16
+
+### Build Reprodutível Auditável (`v2.7.0`)
+- Compilação e empacotamento determinísticos por [`../build-reproducible.ps1`](../build-reproducible.ps1) (`ReproducibleZipPacker` com timestamps UTC `1980-02-01T00:00:00Z` e ordem lexicográfica fixa; Temurin JDK `21.0.13+9` `--release 8` para `integridade-verifier.jar`; `jlink`/`jpackage` + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true -p:ContinuousIntegrationBuild=true` no launcher Windows x64), com validação bit a bit dupla no `GiteaRunner`.
+
 ## [1.4.4] - 2026-11-16
 
 ### Segurança e Corrigido

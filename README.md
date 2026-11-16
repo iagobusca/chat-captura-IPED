@@ -4,8 +4,9 @@ Plugin/customizacao para o IPED 4.3.1 que captura intervalos de mensagens do vie
 
 Este pacote foi montado para ficar em um repositorio GitHub e permitir reinstalar a versao modificada do `iped-viewers-impl-4.3.1.jar` sem precisar recompilar o IPED.
 
-Versao atual do plugin: **2.6.9**
-Verificador de Integridade: **1.4.4**
+Versao atual do plugin: **2.7.0**
+Verificador de Integridade: **1.4.5**
+Build reproduzivel (Windows/Linux/macOS): [`build-reproducible.ps1`](build-reproducible.ps1) (`pwsh -NoProfile -File ./build-reproducible.ps1 -DownloadDeps -PinTemurin -VerifyReproducibility`)
 
 ## Demonstração do Resultado e Verificador de Integridade
 

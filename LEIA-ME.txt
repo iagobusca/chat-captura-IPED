@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.9 - Verificador de Integridade 1.4.4
+Pacote Chat Captura IPED 2.7.0 - Verificador de Integridade 1.4.5
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,17 +7,19 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.4.4 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.4.5 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.6.9 / Verificador 1.4.4 — versão estável):
-- Verificador 1.4.4:
+Novidades desta versão (2.7.0 / Verificador 1.4.5 — versão estável com build determinístico auditável):
+- Verificador 1.4.5:
+  * Compilação e empacotamento determinísticos via build-reproducible.ps1 (Temurin JDK 21 --release 8 para JAR, OpenJFX 21 + .NET 10.0.15 determinístico com payload.zip reprodutível no EXE win-x64).
   * Substitui regexes de varredura HTML por scanner léxico determinístico por máquina de estados (scanHtmlElements / parseHtmlTagStrict), bloqueando bypasses com aspas/apóstrofos isolados em atributos sem aspas;
   * Endurece openFile com LinkOption.NOFOLLOW_LINKS, verificação de arquivo regular e teto de leitura (maxBytes), além de consolidar allowlists HTML/MIME simétricas com o plugin, safeRegularFileSize sem corrida de symlink, html.disable em Swing, MAX_SCAN_ENTRIES e runtime .NET 10.0.15 sem CVEs no EXE.
-- Plugin 2.6.9:
+- Plugin 2.7.0:
+  * Fat-JAR OpenCV autocontido compilado deterministicamente (--release 11, Implementation-Version: 2.7.0) via build-reproducible.ps1 com timestamps UTC e ordem de entradas fixos.
   * Defesa em profundidade Swing com html.disable=true antes do cálculo de texto no SearchHitRenderer (ChatCapturePanel) e na fila SavedChatPickerDialog, mitigando possível interpretação HTML/injeção em rótulos de resultados e seletores locais;
   * Limpeza determinística de ciclo de vida WebView/OpenCV/executor em ChatCaptureLinkedWindow (DISPOSE_ON_CLOSE) e HtmlLinkViewer (dispose() e guarda if (disposed) em loadFile), compatibilidade reflexiva com AttachmentSearcher.openItem no IPED 4.3.1 oficial e instalador com sincronização segura de localização e suporte a caminhos com "!";
-  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.4.4 (versões <= 1.4.3 rejeitadas).
+  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.4.5 (versões <= 1.4.4 rejeitadas).
 
 Novidades desta versão (2.6.8 / Verificador 1.4.3 — versão estável):
 - Verificador 1.4.3:
@@ -115,9 +117,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.4.4:
-JAR C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF
-EXE A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291
+SHA-256 do Verificador 1.4.5:
+JAR E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D
+EXE AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3
 
-SHA-256 do plugin 2.6.9:
-JAR 725CA7E02538A5B5EEBB043A29868E90515CBCAC7BFBA4CC518A7EEF55150B9C
+SHA-256 do plugin 2.7.0:
+JAR BAFEB6350D170EB401E82292094E49BEA3CAFB9009F86F6B575DF585A90DAAA6

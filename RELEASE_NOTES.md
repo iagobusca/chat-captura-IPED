@@ -5,6 +5,24 @@ Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUM
 
 ---
 
+## v2.7.0 (Estável / `main`) / Verificador 1.4.5
+
+- **Tag**: [v2.7.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.7.0) (Release estável compilada e publicada via `GiteaRunner` + `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.7.0-verificador-1.4.5.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.7.0/instalador-chat-captura-IPED-2.7.0-verificador-1.4.5.zip) (`94.409.121` bytes | SHA-256: `C9F70B8827C2259179B8C366A9184336C7BD8EF17376B0A8E0B9335149B7CC9E`)
+- [integridade-verifier-1.4.5.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.7.0/integridade-verifier-1.4.5.exe) (`77.616.218` bytes | SHA-256: `AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3`)
+- [integridade-verifier-1.4.5.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.7.0/integridade-verifier-1.4.5.jar) (`159.164` bytes | SHA-256: `E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D`)
+- [iped-viewers-impl-4.3.1-2.7.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.7.0/iped-viewers-impl-4.3.1-2.7.0.jar) (`1.510.768` bytes | SHA-256: `BAFEB6350D170EB401E82292094E49BEA3CAFB9009F86F6B575DF585A90DAAA6`)
+
+### Otimizado, Corrigido e Incluído
+- **Build Reprodutível Auditável (`build-reproducible.ps1`)**: compilador multiplataforma (Windows, Linux e macOS) com timestamps UTC fixos (`1980-02-01T00:00:00Z`), ordenação lexicográfica de entradas (`ReproducibleZipPacker`), manifesto fixo, toolchain pinável (Temurin JDK `21.0.13+9` + OpenJFX `21.0.5` + IPED `4.3.1` + `.NET 10.0.15` determinístico) e prova dupla automática (`-VerifyReproducibility` -> `REPRODUCIBLE_BUILD_VERIFIED=PASS`).
+- **Esteira e Publicação Direta no Gitea (`GiteaRunner`)**: workflow `.gitea/workflows/release.yml` recompila do código-fonte no runner local, comprova bit a bit que todos os SHA-256 coincidem com `VerifierIntegrity.java`, `instalar_captura_chat_zap.bat` e `CHECKSUMS.md`, executa a suíte completa de testes e publica a release `v2.7.0` com os 4 ativos verificados.
+- **Verificador `1.4.5` & Plugin `2.7.0`**: mantém integralmente todo o endurecimento de segurança da `v2.6.9` / `1.4.4` (scanner HTML léxico F-01, `openFile` com `NOFOLLOW_LINKS`, `safeRegularFileSize`, `html.disable` Swing, limpeza determinística `dispose()` + `DISPOSE_ON_CLOSE`) com allowlist exclusiva em `VerifierIntegrity` e `instalar_captura_chat_zap.bat` sincronizada exclusivamente para os binários `1.4.5` (`E013F31E...` / `AF1C41C0...`), rejeitando `<= 1.4.4`.
+
+---
+
 ## v2.6.9 (Estável / `main`) / Verificador 1.4.4
 
 - **Tag**: [v2.6.9](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.6.9) (Release estável na branch `main`)

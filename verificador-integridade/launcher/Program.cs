@@ -1,4 +1,4 @@
-// Versão 1.4.4 — endurecimento de segurança (scanner HTML léxico F-01, openFile NOFOLLOW_LINKS, allowlists HTML/MIME simétricas, safeRegularFileSize sem corrida de symlink, html.disable, MAX_SCAN_ENTRIES e runtime .NET 10.0.15).
+// Versão 1.4.5 — empacotamento determinístico auditável (build-reproducible.ps1) + endurecimento de segurança (scanner HTML léxico F-01, openFile NOFOLLOW_LINKS, allowlists HTML/MIME simétricas, safeRegularFileSize sem corrida de symlink, html.disable, MAX_SCAN_ENTRIES e runtime .NET 10.0.15).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

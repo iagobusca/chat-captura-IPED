@@ -1,5 +1,14 @@
 # Checksums
 
+## Build 2.7.0 (Estável / `main`) / Verificador 1.4.5 — Build Determinístico Auditável
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
+| --- | ---: | --- | --- |
+| `instalador-chat-captura-IPED-2.7.0-verificador-1.4.5.zip` | 94409121 | `C9F70B8827C2259179B8C366A9184336C7BD8EF17376B0A8E0B9335149B7CC9E` | Pacote completo de instalação estável compilado via `build-reproducible.ps1` (timestamps UTC fixos `1980-02-01T00:00:00Z`, ordem lexicográfica; plugin `2.7.0`, Verificador `1.4.5` JAR+EXE com `.NET 10.0.15`, `json-20260719`, `validate-plugin-jar.ps1` e script `.bat`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.7.0.jar` | 1510768 | `BAFEB6350D170EB401E82292094E49BEA3CAFB9009F86F6B575DF585A90DAAA6` | Fat-JAR determinístico do plugin (`Implementation-Version: 2.7.0`, `--release 11`, Temurin JDK 21.0.13+9 + OpenJFX 21.0.5, `MultiViewer` + `org/opencv/**` embutidos); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 159164 | `E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D` | Verificador `1.4.5` JAR determinístico (`--release 8`, bytecode 52, Temurin JDK 21.0.13+9, empacotado por `ReproducibleZipPacker`) |
+| `verificador-integridade/integridade-verifier.exe` | 77616218 | `AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3` | Executável Windows x64 determinístico do Verificador `1.4.5` (`jlink`/`jpackage` Temurin 21.0.13+9 + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true -p:ContinuousIntegrationBuild=true`, `--self-test` OK) |
+
 ## Build 2.6.9 (Estável / `main`) / Verificador 1.4.4
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Observações |

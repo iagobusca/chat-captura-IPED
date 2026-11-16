@@ -4,6 +4,14 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.7.0] - 2026-11-16
+
+### Build Reprodutível Auditável & Integração GiteaRunner
+- **Compilador Determinístico (`build-reproducible.ps1`)**: adicionado script multiplataforma (`Windows`, `Linux` e `macOS`) com `ReproducibleZipPacker` (timestamps UTC `1980-02-01T00:00:00Z`, ordenação lexicográfica e manifesto fixo), suporte a `--verify-reproducibility` (compilação dupla com prova bit a bit) e toolchain pinável (`Temurin JDK 21.0.13+9` + `OpenJFX 21.0.5` + `IPED 4.3.1`).
+- **Workflow Gitea (`GiteaRunner`)**: `.gitea/workflows/release.yml` compila de forma reprodutível no runner local, valida igualdade bit a bit de todos os SHA-256 contra `VerifierIntegrity.java`, `instalar_captura_chat_zap.bat` e `CHECKSUMS.md`, executa todas as suítes Java/PowerShell/Python e publica a release `v2.7.0` com os 4 artefatos verificados.
+- **Verificador `1.4.5` (`IntegrityVerifier` e launcher `.exe`)**: recompilado deterministicamente (`159.164` bytes JAR `E013F31E...`; `77.616.218` bytes EXE `AF1C41C0...` com runtime `.NET 10.0.15` intacto).
+- **Plugin `2.7.0` & Instalador**: `CHAT_CAPTURE_PLUGIN_VERSION = "2.7.0"`, `Implementation-Version: 2.7.0` (`1.510.768` bytes, SHA-256 `BAFEB635...`), allowlist exclusiva em `VerifierIntegrity` e `instalar_captura_chat_zap.bat` sincronizada com os binários do Verificador `1.4.5` (rejeitando `<= 1.4.4`), e instalador determinístico `instalador-chat-captura-IPED-2.7.0-verificador-1.4.5.zip` (`94.409.121` bytes, SHA-256 `C9F70B88...`).
+
 ## [2.6.9] - 2026-11-16
 
 ### Segurança e Corrigido

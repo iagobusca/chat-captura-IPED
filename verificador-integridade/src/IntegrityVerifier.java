@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.4.4";
+    private static final String VERIFIER_VERSION = "1.4.5";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {

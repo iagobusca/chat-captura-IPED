@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.4.4
+# Verificador de Integridade 1.4.5
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.4.4 consolida o scanner HTML léxico determinístico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), proteções `openFile` com `LinkOption.NOFOLLOW_LINKS` e limite de leitura, `safeRegularFileSize` sem corrida de symlink, `html.disable` em todos os componentes Swing, `MAX_SCAN_ENTRIES`, allowlists HTML/MIME simétricas com o plugin e ausência de tetos artificiais de relatório. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java 11 e .NET 10.0.15 necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.4.5 consolida a compilação e o empacotamento determinísticos auditáveis via [`../build-reproducible.ps1`](../build-reproducible.ps1) (Temurin JDK 21.0.13+9 `--release 8` no JAR, `jlink`/`jpackage` + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true` no EXE, timestamps UTC fixos `1980-02-01T00:00:00Z`), preservando todas as proteções de segurança da série 1.4.4 (scanner HTML léxico F-01, `openFile` com `LinkOption.NOFOLLOW_LINKS` e `maxBytes`, `safeRegularFileSize`, `html.disable` Swing, `MAX_SCAN_ENTRIES`, allowlists HTML/MIME simétricas com o plugin e ausência de tetos artificiais de relatório). O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java 21 (subconjunto mínimo `jlink`) e .NET 10.0.15 necessários.
 
 ## Getting Started
 
@@ -15,7 +15,7 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.4.4: JAR `C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF`; EXE `A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.4.5: JAR `E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D`; EXE `AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 
