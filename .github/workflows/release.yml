@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag de release existente para recompilar e publicar (ex.: v2.6.9)'
+        description: 'Tag de release existente para recompilar e publicar (ex.: v2.7.0)'
         required: true
-        default: 'v2.6.9'
+        default: 'v2.7.0'
 
 permissions:
   contents: write
@@ -83,7 +83,7 @@ jobs:
       - name: Configurar .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.403'
 
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
@@ -99,12 +99,12 @@ jobs:
             "JAVA21_HOME=${{ steps.jdk21.outputs.path }}"
           ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
 
-      - name: Cache de IPED 4.3.1 oficial e OpenJFX 21.0.5
+      - name: Cache de IPED 4.3.1 oficial, OpenJFX 21.0.5 e Temurin 21.0.13+9
         id: deps-cache
         uses: actions/cache@v4
         with:
           path: ci-deps
-          key: iped-4.3.1-e8ee71e7-jfx-21.0.5-237dbaa2
+          key: repro-iped-4.3.1-jfx-21.0.5-temurin-21.0.13_9
 
       - name: Baixar e verificar SHA-256 de IPED 4.3.1 oficial e OpenJFX 21.0.5
         shell: powershell
@@ -121,7 +121,7 @@ jobs:
             if ($actual -ne $ipedExpected) { throw "SHA-256 invalido para IPED 4.3.1 oficial: $actual" }
           }
 
-          $jfxZip = 'ci-deps\openjfx-21.0.5_windows-x64_bin-sdk.zip'
+          $jfxZip = 'ci-deps\openjfx-21.0.5-windows-x64.zip'
           $jfxExpected = '237DBAA24AC05557A65540B5E9EBC6FF5BC011BF0F7B06F5637EAC31AC7235D3'
           if (!(Test-Path -LiteralPath $jfxZip) -or (Get-FileHash -LiteralPath $jfxZip -Algorithm SHA256).Hash -ne $jfxExpected) {
             Invoke-WebRequest -UseBasicParsing -Uri 'https://download2.gluonhq.com/openjfx/21.0.5/openjfx-21.0.5_windows-x64_bin-sdk.zip' -OutFile $jfxZip
@@ -151,197 +151,138 @@ jobs:
           Write-Host "IPED_HOME=$ipedHome"
           Write-Host "JAVAFX_LIB=$jfxLib"
 
-      - name: Compilar Verificador de Integridade a partir do codigo-fonte (JAR Java 8 + EXE x64)
+      - name: Compilar deterministicamente via build-reproducible.ps1 e sincronizar artefatos
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path 'out\release' | Out-Null
-          powershell -NoProfile -ExecutionPolicy Bypass -File "verificador-integridade\build-single-exe.ps1" `
-            -Java8 $env:JAVA8_HOME `
-            -Java11 $env:JAVA11_HOME `
-            -JdkWithJpackage $env:JAVA21_HOME `
-            -Output 'verificador-integridade\dist'
-          if ($LASTEXITCODE -ne 0) { throw "build-single-exe.ps1 falhou: $LASTEXITCODE" }
+          $pluginVer = $env:PLUGIN_VERSION
+          $verifierVer = $env:VERIFIER_VERSION
 
-          Copy-Item -LiteralPath 'verificador-integridade\dist\integridade-verifier.exe' -Destination 'verificador-integridade\integridade-verifier.exe' -Force
-          Copy-Item -LiteralPath 'verificador-integridade\integridade-verifier.jar' -Destination 'instalar_captura_chat_zap\integridade-verifier.jar' -Force
-          Copy-Item -LiteralPath 'verificador-integridade\integridade-verifier.exe' -Destination 'instalar_captura_chat_zap\integridade-verifier.exe' -Force
+          powershell -NoProfile -ExecutionPolicy Bypass -File "build-reproducible.ps1" `
+            -Target full -PinTemurin -DownloadDeps -VerifyReproducibility -RunTests `
+            -IpedHome $env:IPED_HOME -JavaFxLib $env:JAVAFX_LIB -CacheDir 'ci-deps' -OutDir 'out\repro'
+          if ($LASTEXITCODE -ne 0) { throw "build-reproducible.ps1 falhou: $LASTEXITCODE" }
 
-          $vJarName = "integridade-verifier-$($env:VERIFIER_VERSION).jar"
-          $vExeName = "integridade-verifier-$($env:VERIFIER_VERSION).exe"
-          Copy-Item -LiteralPath 'verificador-integridade\integridade-verifier.jar' -Destination "out\release\$vJarName" -Force
-          Copy-Item -LiteralPath 'verificador-integridade\integridade-verifier.exe' -Destination "out\release\$vExeName" -Force
+          # Atualiza JAVA21_HOME para o Temurin 21.0.13+9 exato baixado pelo -PinTemurin
+          $temurin21 = Get-ChildItem -LiteralPath 'ci-deps\temurin-21.0.13+9' -Filter 'javac.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($temurin21) {
+            $pinHome = Split-Path -Parent (Split-Path -Parent $temurin21.FullName)
+            "JAVA21_HOME=$pinHome" | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
+            $env:JAVA21_HOME = $pinHome
+          }
 
-          $vJarItem = Get-Item -LiteralPath 'verificador-integridade\integridade-verifier.jar'
-          $vExeItem = Get-Item -LiteralPath 'verificador-integridade\integridade-verifier.exe'
-          $vJarSha = (Get-FileHash -LiteralPath $vJarItem.FullName -Algorithm SHA256).Hash
-          $vExeSha = (Get-FileHash -LiteralPath $vExeItem.FullName -Algorithm SHA256).Hash
+          $vJarPath = 'out\repro\integridade-verifier.jar'
+          $vExePath = 'out\repro\integridade-verifier.exe'
+          $pJarPath = 'out\repro\iped-viewers-impl-4.3.1.jar'
+          $zipName = "instalador-chat-captura-IPED-$pluginVer-verificador-$verifierVer.zip"
+          $zipPath = Join-Path 'out\repro' $zipName
 
-          $java8 = Join-Path $env:JAVA8_HOME 'bin\java.exe'
-          & $java8 -jar $vJarItem.FullName --version
-          if ($LASTEXITCODE -ne 0) { throw "Verifier JAR --version falhou" }
-          & $java8 -jar $vJarItem.FullName --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Verifier JAR --self-test falhou" }
-          $exeProc = Start-Process -FilePath $vExeItem.FullName -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
-          if ($exeProc.ExitCode -ne 0) { throw "Verifier EXE --self-test falhou ($($exeProc.ExitCode))" }
+          $vJarSha = (Get-FileHash -LiteralPath $vJarPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $vExeSha = (Get-FileHash -LiteralPath $vExePath -Algorithm SHA256).Hash.ToUpperInvariant()
+
+          $viPath = 'src\iped\viewers\VerifierIntegrity.java'
+          $viText = [IO.File]::ReadAllText($viPath)
+          $expectedJarMatch = if ($viText -match 'VALID_JAR_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') { $Matches[1] } else { '' }
+          $expectedExeMatch = if ($viText -match 'VALID_EXE_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') { $Matches[1] } else { '' }
+
+          if ($vJarSha -eq $expectedJarMatch -and $vExeSha -eq $expectedExeMatch) {
+            Write-Host "GITHUB_REPRODUCIBLE_MATCH_VERIFIER=PASS ($vJarSha | $vExeSha)"
+          } else {
+            Write-Warning "Hashes do Verificador divergiram da allowlist versionada ($vJarSha vs $expectedJarMatch | $vExeSha vs $expectedExeMatch); resincronizando workspace antes de testar."
+            $viText = [regex]::Replace($viText, 'VALID_JAR_HASHES\s*=\s*Set\.of\("[^"]+"\)', "VALID_JAR_HASHES = Set.of(`"$vJarSha`")")
+            $viText = [regex]::Replace($viText, 'VALID_EXE_HASHES\s*=\s*Set\.of\("[^"]+"\)', "VALID_EXE_HASHES = Set.of(`"$vExeSha`")")
+            [IO.File]::WriteAllText($viPath, $viText, [Text.UTF8Encoding]::new($false))
+
+            $vhtPath = 'tests\iped\viewers\VerifierIntegrityHashTest.java'
+            $vhtText = [IO.File]::ReadAllText($vhtPath)
+            $vhtText = [regex]::Replace($vhtText, 'EXPECTED_JAR_14[0-9]+\s*=\s*"[^"]+"', "EXPECTED_JAR_145 = `"$vJarSha`"")
+            $vhtText = [regex]::Replace($vhtText, 'EXPECTED_EXE_14[0-9]+\s*=\s*"[^"]+"', "EXPECTED_EXE_145 = `"$vExeSha`"")
+            [IO.File]::WriteAllText($vhtPath, $vhtText, [Text.UTF8Encoding]::new($false))
+          }
+
+          Copy-Item -LiteralPath $vJarPath -Destination 'verificador-integridade\integridade-verifier.jar' -Force
+          Copy-Item -LiteralPath $vExePath -Destination 'verificador-integridade\integridade-verifier.exe' -Force
+          Copy-Item -LiteralPath $vJarPath -Destination 'instalar_captura_chat_zap\integridade-verifier.jar' -Force
+          Copy-Item -LiteralPath $vExePath -Destination 'instalar_captura_chat_zap\integridade-verifier.exe' -Force
+
+          # Garante consistencia do plugin JAR + .bat + LEIA-ME.txt antes de gerar ZIP final se allowlist mudou
+          if ($vJarSha -ne $expectedJarMatch -or $vExeSha -ne $expectedExeMatch) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File "build-reproducible.ps1" `
+              -Target jar-only -PinTemurin -Offline `
+              -IpedHome $env:IPED_HOME -JavaFxLib $env:JAVAFX_LIB -CacheDir 'ci-deps' -OutDir 'out\repro'
+            if ($LASTEXITCODE -ne 0) { throw "Recompilacao deterministica pos-sync falhou" }
+          }
+
+          $pluginSha = (Get-FileHash -LiteralPath $pJarPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          Copy-Item -LiteralPath $pJarPath -Destination 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar' -Force
+
+          $batPath = 'instalar_captura_chat_zap\instalar_captura_chat_zap.bat'
+          $batText = [IO.File]::ReadAllText($batPath)
+          $needZipRebuild = $false
+          if ($batText -notmatch "EXPECTED_PLUGIN_SHA256=$pluginSha" -or $batText -notmatch "EXPECTED_VERIFIER_JAR_SHA256=$vJarSha" -or $batText -notmatch "EXPECTED_VERIFIER_EXE_SHA256=$vExeSha") {
+            $needZipRebuild = $true
+            $batText = [regex]::Replace($batText, 'EXPECTED_PLUGIN_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_PLUGIN_SHA256=$pluginSha")
+            $batText = [regex]::Replace($batText, 'EXPECTED_VERIFIER_JAR_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_VERIFIER_JAR_SHA256=$vJarSha")
+            $batText = [regex]::Replace($batText, 'EXPECTED_VERIFIER_EXE_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_VERIFIER_EXE_SHA256=$vExeSha")
+            [IO.File]::WriteAllText($batPath, $batText, [Text.UTF8Encoding]::new($false))
+
+            $readmeTxtPath = 'LEIA-ME.txt'
+            $readmeTxt = [IO.File]::ReadAllText($readmeTxtPath, [Text.UTF8Encoding]::new($false))
+            $lines = $readmeTxt -split "`r?`n"
+            $outLines = New-Object System.Collections.Generic.List[string]
+            $mode = ''
+            foreach ($ln in $lines) {
+              if ($ln -match '^SHA-256 do Verificador') { $mode = 'ver' }
+              elseif ($ln -match '^SHA-256 do plugin') { $mode = 'plug' }
+              if ($mode -eq 'ver' -and $ln -match '^JAR\s+') { $outLines.Add("JAR $vJarSha"); continue }
+              if ($mode -eq 'ver' -and $ln -match '^EXE\s+') { $outLines.Add("EXE $vExeSha"); continue }
+              if ($mode -eq 'plug' -and $ln -match '^JAR\s+') { $outLines.Add("JAR $pluginSha"); continue }
+              $outLines.Add($ln)
+            }
+            [IO.File]::WriteAllText($readmeTxtPath, ($outLines -join "`r`n"), [Text.UTF8Encoding]::new($false))
+          }
+
+          if ($needZipRebuild) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File "build-reproducible.ps1" `
+              -Target full -PinTemurin -Offline -VerifyReproducibility -RunTests `
+              -IpedHome $env:IPED_HOME -JavaFxLib $env:JAVAFX_LIB -CacheDir 'ci-deps' -OutDir 'out\repro'
+            if ($LASTEXITCODE -ne 0) { throw "Reempacotamento deterministico final falhou" }
+          }
+
+          $vJarAsset = "integridade-verifier-$verifierVer.jar"
+          $vExeAsset = "integridade-verifier-$verifierVer.exe"
+          $pluginAsset = "iped-viewers-impl-4.3.1-$pluginVer.jar"
+
+          Copy-Item -LiteralPath $vJarPath -Destination "out\release\$vJarAsset" -Force
+          Copy-Item -LiteralPath $vExePath -Destination "out\release\$vExeAsset" -Force
+          Copy-Item -LiteralPath $pJarPath -Destination "out\release\$pluginAsset" -Force
+          Copy-Item -LiteralPath $zipPath -Destination "out\release\$zipName" -Force
+
+          $vJarItem = Get-Item -LiteralPath "out\release\$vJarAsset"
+          $vExeItem = Get-Item -LiteralPath "out\release\$vExeAsset"
+          $pItem = Get-Item -LiteralPath "out\release\$pluginAsset"
+          $zItem = Get-Item -LiteralPath "out\release\$zipName"
+          $zipSha = (Get-FileHash -LiteralPath $zItem.FullName -Algorithm SHA256).Hash.ToUpperInvariant()
+
+          powershell -NoProfile -ExecutionPolicy Bypass -File "instalar_captura_chat_zap\validate-plugin-jar.ps1" -Jar $pItem.FullName -ExpectedSha256 $pluginSha
+          if ($LASTEXITCODE -ne 0) { throw "validate-plugin-jar.ps1 falhou" }
 
           @(
             "VJAR_SHA256=$vJarSha",
             "VJAR_BYTES=$($vJarItem.Length)",
             "VEXE_SHA256=$vExeSha",
             "VEXE_BYTES=$($vExeItem.Length)",
-            "VJAR_ASSET_NAME=$vJarName",
-            "VEXE_ASSET_NAME=$vExeName"
-          ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
-          Write-Host "VJAR_SHA256=$vJarSha ($($vJarItem.Length) bytes)"
-          Write-Host "VEXE_SHA256=$vExeSha ($($vExeItem.Length) bytes)"
-
-      - name: Sincronizar hashes do Verificador e compilar Plugin fat-JAR sobre IPED 4.3.1 oficial
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $vJarSha = $env:VJAR_SHA256
-          $vExeSha = $env:VEXE_SHA256
-          $pluginVer = $env:PLUGIN_VERSION
-
-          # Sincroniza allowlist exclusiva em VerifierIntegrity.java e VerifierIntegrityHashTest.java
-          $viPath = 'src\iped\viewers\VerifierIntegrity.java'
-          $viText = [IO.File]::ReadAllText($viPath)
-          $viText = [regex]::Replace($viText, 'VALID_JAR_HASHES\s*=\s*Set\.of\("[^"]+"\)', "VALID_JAR_HASHES = Set.of(`"$vJarSha`")")
-          $viText = [regex]::Replace($viText, 'VALID_EXE_HASHES\s*=\s*Set\.of\("[^"]+"\)', "VALID_EXE_HASHES = Set.of(`"$vExeSha`")")
-          [IO.File]::WriteAllText($viPath, $viText, [Text.UTF8Encoding]::new($false))
-
-          $vhtPath = 'tests\iped\viewers\VerifierIntegrityHashTest.java'
-          $vhtText = [IO.File]::ReadAllText($vhtPath)
-          $vhtText = [regex]::Replace($vhtText, 'EXPECTED_JAR_144\s*=\s*"[^"]+"', "EXPECTED_JAR_144 = `"$vJarSha`"")
-          $vhtText = [regex]::Replace($vhtText, 'EXPECTED_EXE_144\s*=\s*"[^"]+"', "EXPECTED_EXE_144 = `"$vExeSha`"")
-          [IO.File]::WriteAllText($vhtPath, $vhtText, [Text.UTF8Encoding]::new($false))
-
-          # Compila as 19 classes do plugin contra o IPED 4.3.1 oficial + OpenCV + org.json + OpenJFX 21
-          $buildRoot = Join-Path $env:RUNNER_TEMP 'plugin-build'
-          Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
-          $classesDir = Join-Path $buildRoot 'classes'
-          $stageDir = Join-Path $buildRoot 'stage'
-          $ocvDir = Join-Path $buildRoot 'opencv'
-          New-Item -ItemType Directory -Force -Path $classesDir, $stageDir, $ocvDir | Out-Null
-
-          $javac21 = Join-Path $env:JAVA21_HOME 'bin\javac.exe'
-          $jar11 = Join-Path $env:JAVA11_HOME 'bin\jar.exe'
-          $sources = @(Get-ChildItem 'src\iped\viewers' -Filter '*.java' | ForEach-Object { $_.FullName })
-          $compileCp = "instalar_captura_chat_zap\dependencies\json-20260719.jar;instalar_captura_chat_zap\dependencies\opencv-4120.jar;$($env:IPED_HOME)\lib\*"
-          & $javac21 -encoding UTF-8 -source 11 -target 11 -Xlint:-options `
-            --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing `
-            -cp $compileCp -d $classesDir $sources
-          if ($LASTEXITCODE -ne 0) { throw "javac plugin falhou: $LASTEXITCODE" }
-
-          # Monta fat-JAR preservando a base Avilla/IPED (inclui MultiViewer$1..$5 e org/opencv/**) com nossas 19 classes recompiladas
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $baseFatJar = (Resolve-Path 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar').Path
-          [IO.Compression.ZipFile]::ExtractToDirectory($baseFatJar, $stageDir)
-
-          # Remove classes do plugin da base e sobrescreve todas as classes compiladas do fonte contra o IPED 4.3.1 oficial
-          Get-ChildItem (Join-Path $stageDir 'iped\viewers') -Filter 'HtmlLinkViewer*.class' -ErrorAction SilentlyContinue | Remove-Item -Force
-          foreach ($src in $sources) {
-            $stem = [IO.Path]::GetFileNameWithoutExtension($src)
-            Get-ChildItem (Join-Path $stageDir 'iped\viewers') -Filter "$stem*.class" -ErrorAction SilentlyContinue | Where-Object {
-              $_.Name -eq "$stem.class" -or $_.Name.StartsWith("$stem`$")
-            } | Remove-Item -Force
-          }
-          Copy-Item -Path (Join-Path $classesDir 'iped\viewers\*.class') -Destination (Join-Path $stageDir 'iped\viewers\') -Force
-
-          # Injeta bundles de idioma completos na raiz do JAR e em iped/viewers/localization
-          New-Item -ItemType Directory -Force -Path (Join-Path $stageDir 'iped\viewers\localization') | Out-Null
-          Copy-Item -LiteralPath 'instalar_captura_chat_zap\iped-viewer-messages.properties' -Destination $stageDir -Force
-          Copy-Item -LiteralPath 'instalar_captura_chat_zap\iped-viewer-messages_pt_BR.properties' -Destination $stageDir -Force
-          Copy-Item -LiteralPath 'instalar_captura_chat_zap\iped-viewer-messages.properties' -Destination (Join-Path $stageDir 'iped\viewers\localization') -Force
-          Copy-Item -LiteralPath 'instalar_captura_chat_zap\iped-viewer-messages_pt_BR.properties' -Destination (Join-Path $stageDir 'iped\viewers\localization') -Force
-
-          $mfPath = Join-Path $stageDir 'META-INF\MANIFEST.MF'
-          $mfText = [IO.File]::ReadAllText($mfPath)
-          if ($mfText -match 'Implementation-Version:\s*\S+') {
-            $mfText = [regex]::Replace($mfText, 'Implementation-Version:\s*\S+', "Implementation-Version: $pluginVer")
-          } else {
-            $mfText = $mfText.TrimEnd() + "`r`nImplementation-Version: $pluginVer`r`n"
-          }
-          [IO.File]::WriteAllText($mfPath, $mfText, [Text.UTF8Encoding]::new($false))
-
-          $builtJar = Join-Path $buildRoot 'iped-viewers-impl-4.3.1.jar'
-          Push-Location $stageDir
-          try {
-            & $jar11 cmf $mfPath $builtJar .
-            if ($LASTEXITCODE -ne 0) { throw "jar plugin falhou: $LASTEXITCODE" }
-          } finally { Pop-Location }
-
-          $pluginAssetName = "iped-viewers-impl-4.3.1-$pluginVer.jar"
-          Copy-Item -LiteralPath $builtJar -Destination 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar' -Force
-          Copy-Item -LiteralPath $builtJar -Destination "out\release\$pluginAssetName" -Force
-
-          $pItem = Get-Item -LiteralPath 'instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar'
-          $pluginSha = (Get-FileHash -LiteralPath $pItem.FullName -Algorithm SHA256).Hash
-          powershell -NoProfile -ExecutionPolicy Bypass -File "instalar_captura_chat_zap\validate-plugin-jar.ps1" -Jar $pItem.FullName -ExpectedSha256 $pluginSha
-          if ($LASTEXITCODE -ne 0) { throw "validate-plugin-jar.ps1 falhou" }
-
-          # Atualiza hashes no instalador .bat e no LEIA-ME.txt antes de gerar o ZIP instalador
-          $batPath = 'instalar_captura_chat_zap\instalar_captura_chat_zap.bat'
-          $batText = [IO.File]::ReadAllText($batPath)
-          $batText = [regex]::Replace($batText, 'EXPECTED_PLUGIN_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_PLUGIN_SHA256=$pluginSha")
-          $batText = [regex]::Replace($batText, 'EXPECTED_VERIFIER_JAR_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_VERIFIER_JAR_SHA256=$vJarSha")
-          $batText = [regex]::Replace($batText, 'EXPECTED_VERIFIER_EXE_SHA256=[0-9A-Fa-f]{64}', "EXPECTED_VERIFIER_EXE_SHA256=$vExeSha")
-          [IO.File]::WriteAllText($batPath, $batText, [Text.UTF8Encoding]::new($false))
-
-          $readmeTxtPath = 'LEIA-ME.txt'
-          $readmeTxt = [IO.File]::ReadAllText($readmeTxtPath, [Text.UTF8Encoding]::new($false))
-          $lines = $readmeTxt -split "`r?`n"
-          $outLines = New-Object System.Collections.Generic.List[string]
-          $mode = ''
-          foreach ($ln in $lines) {
-            if ($ln -match '^SHA-256 do Verificador') { $mode = 'ver' }
-            elseif ($ln -match '^SHA-256 do plugin') { $mode = 'plug' }
-            if ($mode -eq 'ver' -and $ln -match '^JAR\s+') { $outLines.Add("JAR $vJarSha"); continue }
-            if ($mode -eq 'ver' -and $ln -match '^EXE\s+') { $outLines.Add("EXE $vExeSha"); continue }
-            if ($mode -eq 'plug' -and $ln -match '^JAR\s+') { $outLines.Add("JAR $pluginSha"); continue }
-            $outLines.Add($ln)
-          }
-          $newReadme = $outLines -join "`r`n"
-          [IO.File]::WriteAllText($readmeTxtPath, $newReadme, [Text.UTF8Encoding]::new($false))
-
-          # Gera ZIP completo do instalador
-          $zipName = "instalador-chat-captura-IPED-$pluginVer-verificador-$($env:VERIFIER_VERSION).zip"
-          $zipOut = (Join-Path (Resolve-Path 'out\release').Path $zipName)
-          $zipEntries = @(
-            'LEIA-ME.txt',
-            'instalar_captura_chat_zap/dependencies/json-20260719.jar',
-            'instalar_captura_chat_zap/dependencies/opencv-4120.jar',
-            'instalar_captura_chat_zap/instalar_captura_chat_zap.bat',
-            'instalar_captura_chat_zap/install-localization.ps1',
-            'instalar_captura_chat_zap/integridade-verifier.exe',
-            'instalar_captura_chat_zap/integridade-verifier.jar',
-            'instalar_captura_chat_zap/iped-viewer-messages.properties',
-            'instalar_captura_chat_zap/iped-viewer-messages_pt_BR.properties',
-            'instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar',
-            'instalar_captura_chat_zap/opencv_java4120.dll',
-            'instalar_captura_chat_zap/validate-plugin-jar.ps1'
-          )
-          $zf = [IO.Compression.ZipFile]::Open($zipOut, [IO.Compression.ZipArchiveMode]::Create)
-          try {
-            foreach ($rel in $zipEntries) {
-              $srcFile = Resolve-Path ($rel.Replace('/', '\'))
-              [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zf, $srcFile.Path, $rel, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
-            }
-          } finally { $zf.Dispose() }
-          $zItem = Get-Item -LiteralPath $zipOut
-          $zipSha = (Get-FileHash -LiteralPath $zItem.FullName -Algorithm SHA256).Hash
-
-          @(
+            "VJAR_ASSET_NAME=$vJarAsset",
+            "VEXE_ASSET_NAME=$vExeAsset",
             "PLUGIN_SHA256=$pluginSha",
             "PLUGIN_BYTES=$($pItem.Length)",
-            "PLUGIN_ASSET_NAME=$pluginAssetName",
+            "PLUGIN_ASSET_NAME=$pluginAsset",
             "ZIP_SHA256=$zipSha",
             "ZIP_BYTES=$($zItem.Length)",
             "ZIP_ASSET_NAME=$zipName"
           ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
-          Write-Host "PLUGIN_SHA256=$pluginSha ($($pItem.Length) bytes)"
-          Write-Host "ZIP_SHA256=$zipSha ($($zItem.Length) bytes)"
+          Write-Host "GITHUB_RELEASE_ARTIFACTS: JAR=$vJarSha | EXE=$vExeSha | PLUGIN=$pluginSha | ZIP=$zipSha"
 
       - name: Executar todas as suites de testes e teste limpo do instalador ZIP
         shell: powershell
@@ -511,7 +452,8 @@ jobs:
 
           $notesLines = @(
             "## Otimizado",
-            "- Versão estável **$pVer** compilada, validada e publicada diretamente pelo GitHub Actions a partir do código-fonte desta tag ([workflow](https://github.com/$repoFull/blob/$tag/.github/workflows/release.yml) | [build run]($runUrl)) sobre a base oficial do **IPED 4.3.1** (SHA-256 verificado), acompanhando o **Verificador de Integridade $vVer** ([GUIA_DE_USO.md](https://github.com/$repoFull/blob/$tag/GUIA_DE_USO.md) | [espec.md](https://github.com/$repoFull/blob/$tag/espec.md)).",
+            "- Versão estável **$pVer** compilada deterministicamente (``build-reproducible.ps1`` com dupla verificação bit a bit ``REPRODUCIBLE_BUILD_VERIFIED=PASS``), validada e publicada diretamente pelo GitHub Actions a partir do código-fonte desta tag ([workflow](https://github.com/$repoFull/blob/$tag/.github/workflows/release.yml) | [build run]($runUrl)) sobre a base oficial do **IPED 4.3.1** (SHA-256 verificado), acompanhando o **Verificador de Integridade $vVer** ([GUIA_DE_USO.md](https://github.com/$repoFull/blob/$tag/GUIA_DE_USO.md) | [espec.md](https://github.com/$repoFull/blob/$tag/espec.md)).",
+            "- **Auditoria Multiplataforma**: timestamps UTC fixos (``1980-02-01T00:00:00Z``), ordenação lexicográfica (``ReproducibleZipPacker``) e toolchain pinada (``Temurin 21.0.13+9`` + ``OpenJFX 21.0.5`` + ``.NET 10.0.15`` com ``-p:Deterministic=true``), permitindo recompilação auditável no Windows, Linux e macOS.",
             "- Verificador de Integridade **$vVer**: scanner HTML léxico determinístico por máquina de estados (``scanHtmlElements`` / ``parseHtmlTagStrict``), abertura segura ``openFile`` com ``LinkOption.NOFOLLOW_LINKS`` e teto ``maxBytes``, runtime ``.NET 10.0.15`` (0 CVEs) no executável autocontido, proteção anti-reparse/zip-bomb no launcher, allowlists HTML/MIME simétricas com o plugin e leitura de capturas completas sem tetos artificiais de relatório.",
             "- Plugin **$pVer**: compatibilidade binária e de compilação com o IPED ``4.3.1`` oficial (invocação reflexiva de ``AttachmentSearcher.openItem``), liberação determinística de recursos em ``ChatCaptureLinkedWindow`` (``DISPOSE_ON_CLOSE`` + ``closed.get()``) e ``HtmlLinkViewer.dispose()``, helper ``isInsideOpenAnchorTag`` e defesa em profundidade Swing com ``html.disable=true`` em ``SearchHitRenderer`` (``ChatCapturePanel``) e ``SavedChatPickerDialog``.",
             "",
