@@ -1,7 +1,9 @@
 # Release Notes — Chat Captura IPED
 
-Histórico consolidado das releases `beta` do plugin e do **Verificador de Integridade**.
-Para hashes detalhados e versões mais antigas, consulte [CHECKSUMS.md](CHECKSUMS.md), [versao_hash.md](versao_hash.md) e [CHANGELOG.md](CHANGELOG.md).
+Histórico consolidado das releases do plugin e do **Verificador de Integridade**.
+Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.md), [versao_hash.md](versao_hash.md) e [CHANGELOG.md](CHANGELOG.md).
+
+> **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). As releases `<= 2.6.8-beta` abaixo documentam o histórico completo de desenvolvimento e auditoria no Gitea local.
 
 ---
 

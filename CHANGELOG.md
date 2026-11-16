@@ -2,6 +2,8 @@
 
 Mudanças relevantes do plugin.
 
+> **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na série estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). As entradas `<= 2.6.8-beta` preservam o histórico completo de desenvolvimento e endurecimento de segurança publicado originalmente no repositório Gitea local.
+
 ## [Não Lançado] - Em desenvolvimento
 
 ## [2.7.0] - 2026-11-16

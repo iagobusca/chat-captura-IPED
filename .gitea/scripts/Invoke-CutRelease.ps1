@@ -328,8 +328,26 @@ $ch = Insert-BeforeRegexAnchor -Text $ch -Pattern '^## \[[0-9]' -InsertBlock $ch
 Set-RepoText 'CHANGELOG.md' $ch
 
 $readme = Get-RepoText 'README.md'
-$readme = [regex]::Replace($readme, 'Versao atual do plugin:\s*\*\*[^*]+\*\*', "Versao atual do plugin: **$PluginVersion**")
-$readme = [regex]::Replace($readme, 'Verificador de Integridade:\s*\*\*[^*]+\*\*', "Verificador de Integridade: **$VerifierVersion**")
+$readme = [regex]::Replace($readme, 'Vers[^\r\n]*atual do plugin:\*\* `[^`]+` \(branch `[^`]+`\)', [Regex]::Unescape("Vers\u00e3o atual do plugin:** ``$PluginVersion`` (branch ``$targetBranch``)"))
+$readme = [regex]::Replace($readme, 'Verificador de Integridade:\*\* `[^`]+`', "Verificador de Integridade:** ``$VerifierVersion``")
+$readme = $readme.Replace("instalador-chat-captura-IPED-$prevPluginVer-verificador-$prevVerifierVer.zip", $zipName)
+$readme = $readme.Replace("iped-viewers-impl-4.3.1-$prevPluginVer.jar", "iped-viewers-impl-4.3.1-$PluginVersion.jar")
+$readme = $readme.Replace("integridade-verifier-$prevVerifierVer.jar", "integridade-verifier-$VerifierVersion.jar")
+$readme = $readme.Replace("integridade-verifier-$prevVerifierVer.exe", "integridade-verifier-$VerifierVersion.exe")
+$readme = $readme.Replace("Allowlist exclusiva de seguran$([char]0x00E7)a:** o plugin ``$prevPluginVer``", "Allowlist exclusiva de seguran$([char]0x00E7)a:** o plugin ``$PluginVersion``")
+$readme = $readme.Replace("($prevPluginVer / Verificador $prevVerifierVer)", "($PluginVersion / Verificador $VerifierVersion)")
+$readme = $readme.Replace("da s$([char]0x00E9)rie ``$prevVerifierVer``", "da s$([char]0x00E9)rie ``$VerifierVersion``")
+$readme = $readme.Replace("Verificador de Integridade ``$prevVerifierVer``", "Verificador de Integridade ``$VerifierVersion``")
+$readme = $readme.Replace("Verificador ``$prevVerifierVer``", "Verificador ``$VerifierVersion``")
+$readme = $readme.Replace("fat-JAR ``$prevPluginVer``", "fat-JAR ``$PluginVersion``")
+$readme = $readme.Replace("Implementation-Version: $prevPluginVer", "Implementation-Version: $PluginVersion")
+$readme = $readme.Replace("SELF_TEST_OK $prevVerifierVer", "SELF_TEST_OK $VerifierVersion")
+$readme = $readme.Replace("Artefatos e SHA-256 (``v$prevPluginVer`` / Verificador ``$prevVerifierVer``)", "Artefatos e SHA-256 (``$tagName`` / Verificador ``$VerifierVersion``)")
+$readme = $readme.Replace("da tag ``v$prevPluginVer``", "da tag ``$tagName``")
+$readme = [regex]::Replace($readme, "(\|\s*``$([Regex]::Escape($zipName))``\s*\|\s*``)\d+(``\s*\|\s*``)[A-F0-9]{64}(``)", "`${1}$zipBytes`${2}$zipSha`${3}")
+$readme = [regex]::Replace($readme, "(\|\s*``iped-viewers-impl-4\.3\.1-$([Regex]::Escape($PluginVersion))\.jar``\s*\|\s*``)\d+(``\s*\|\s*``)[A-F0-9]{64}(``)", "`${1}$pJarBytes`${2}$pJarSha`${3}")
+$readme = [regex]::Replace($readme, "(\|\s*``integridade-verifier-$([Regex]::Escape($VerifierVersion))\.jar``\s*\|\s*``)\d+(``\s*\|\s*``)[A-F0-9]{64}(``)", "`${1}$vJarBytes`${2}$vJarSha`${3}")
+$readme = [regex]::Replace($readme, "(\|\s*``integridade-verifier-$([Regex]::Escape($VerifierVersion))\.exe``\s*\|\s*``)\d+(``\s*\|\s*``)[A-F0-9]{64}(``)", "`${1}$vExeBytes`${2}$vExeSha`${3}")
 Set-RepoText 'README.md' $readme
 
 $guia = Get-RepoText 'GUIA_DE_USO.md'

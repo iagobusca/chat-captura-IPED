@@ -2,6 +2,8 @@
 
 Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.4.5 acompanha a release `v2.7.0` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
 
+> **Nota de publicação:** As releases públicas no GitHub iniciam na série estável `v2.6.8` / Verificador `1.4.3` (`1.4.3`, `1.4.4`, `1.4.5`). As linhas `<= 1.4.2` documentam o histórico anterior mantido para auditoria e verificação de rejeição em `VerifierIntegrityHashTest`.
+
 ## Binários com hashes registrados
 
 | Versão | Arquivo | SHA-256 | Evidência |

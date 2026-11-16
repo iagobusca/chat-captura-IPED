@@ -1,5 +1,7 @@
 # Checksums
 
+> **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na versão estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). Os builds `<= 2.6.8-beta` abaixo permanecem documentados como histórico de auditoria do repositório local.
+
 ## Build 2.7.0 (Estável / `main`) / Verificador 1.4.5 — Build Determinístico Auditável
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
