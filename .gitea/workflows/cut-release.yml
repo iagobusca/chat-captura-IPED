@@ -1,0 +1,101 @@
+name: Cortar Nova Versao (1-Click Bump, Build, Tag e Release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_version:
+        description: 'Nova versao do plugin (ex.: 2.7.1 ou 2.7.1-beta)'
+        required: true
+        default: '2.7.1'
+      verifier_version:
+        description: 'Versao do Verificador de Integridade (ex.: 1.4.6 ou manter 1.4.5)'
+        required: true
+        default: '1.4.5'
+      channel:
+        description: 'Canal de publicacao: estavel (branch main) ou beta (branch beta + Pre-Release)'
+        required: true
+        default: 'estavel'
+      summary_notes:
+        description: 'Resumo curto das novidades (opcional)'
+        required: false
+        default: ''
+      publish_gitea_packages:
+        description: 'Espelhar os 4 artefatos no Gitea Packages (Generic) apos publicar a Release (true/false)'
+        required: false
+        default: 'true'
+      deploy_local_iped:
+        description: 'Atualizar pastas IPED locais apos validacao completa (true/false)'
+        required: false
+        default: 'false'
+      local_iped_targets:
+        description: 'Pastas IPED alvo separadas por ponto e virgula (;)'
+        required: false
+        default: 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1;F:\Download\Avilla-Acquisitions\IPED_v10;F:\Download\Avilla-Acquisitions\IPED_v11;F:\Download\Avilla-Acquisitions\Prova_v2;F:\Download\Avilla-Acquisitions\Prova_v3'
+      dry_run:
+        description: 'Modo simulacao: faz bump, build duplo e testes sem push/release/deploy real (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  cut-release:
+    if: github.server_url != 'https://github.com'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repositorio local Gitea
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoUrl = "http://127.0.0.1:3000/$($env:GITHUB_REPOSITORY).git"
+          if (!(Test-Path .git)) {
+            git init .
+            git remote add origin $repoUrl
+          } else {
+            git remote set-url origin $repoUrl
+          }
+          git fetch --depth 1 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git fetch failed ($LASTEXITCODE)" }
+          git checkout --force FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git checkout failed ($LASTEXITCODE)" }
+          git clean -fdx
+          Write-Host "CHECKOUT_SHA=$(git rev-parse HEAD) | REF=$($env:GITHUB_REF)"
+
+      - name: Executar corte de versao 1-click (bump, build deterministico, testes, tag e release)
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          IN_PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          IN_VERIFIER_VERSION: ${{ inputs.verifier_version }}
+          IN_CHANNEL: ${{ inputs.channel }}
+          IN_SUMMARY: ${{ inputs.summary_notes }}
+          IN_PUBLISH_PACKAGES: ${{ inputs.publish_gitea_packages }}
+          IN_DEPLOY_LOCAL: ${{ inputs.deploy_local_iped }}
+          IN_TARGETS: ${{ inputs.local_iped_targets }}
+          IN_DRY_RUN: ${{ inputs.dry_run }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $token = if (![string]::IsNullOrWhiteSpace($env:RELEASE_TOKEN)) { $env:RELEASE_TOKEN } else { $env:GITHUB_TOKEN }
+          $channelVal = $env:IN_CHANNEL.Trim().ToLowerInvariant()
+          if ($channelVal -notin @('estavel', 'beta')) {
+            throw "Channel invalido ('$channelVal'): informe 'estavel' ou 'beta'."
+          }
+          $pubPkg = ($env:IN_PUBLISH_PACKAGES.Trim().ToLowerInvariant() -eq 'true')
+          $depLoc = ($env:IN_DEPLOY_LOCAL.Trim().ToLowerInvariant() -eq 'true')
+          $isDry = ($env:IN_DRY_RUN.Trim().ToLowerInvariant() -eq 'true')
+
+          $cutParams = @{
+            RepoRoot             = $repo
+            RepoSlug             = $env:GITHUB_REPOSITORY
+            PluginVersion        = $env:IN_PLUGIN_VERSION.Trim()
+            VerifierVersion      = $env:IN_VERIFIER_VERSION.Trim()
+            Channel              = $channelVal
+            SummaryNotes         = $env:IN_SUMMARY
+            Token                = $token
+            GiteaBaseUrl         = 'http://127.0.0.1:3000'
+            PublishGiteaPackages = $pubPkg
+            DeployLocalIped      = $depLoc
+            LocalIpedTargets     = $env:IN_TARGETS
+            DryRun               = $isDry
+          }
+          & (Join-Path $repo '.gitea\scripts\Invoke-CutRelease.ps1') @cutParams

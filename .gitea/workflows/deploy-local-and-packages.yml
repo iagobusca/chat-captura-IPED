@@ -1,0 +1,153 @@
+name: Deploy Local IPED & Gitea Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_packages:
+        description: 'Publicar ou atualizar binarios desta versao no Gitea Packages Generic (true/false)'
+        required: false
+        default: 'true'
+      deploy_local_iped:
+        description: 'Instalar/atualizar plugin + verificador nas pastas locais do IPED (true/false)'
+        required: false
+        default: 'true'
+      local_iped_targets:
+        description: 'Pastas IPED alvo separadas por ponto e virgula (;)'
+        required: false
+        default: 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1;F:\Download\Avilla-Acquisitions\IPED_v10;F:\Download\Avilla-Acquisitions\IPED_v11;F:\Download\Avilla-Acquisitions\Prova_v2;F:\Download\Avilla-Acquisitions\Prova_v3'
+      dry_run:
+        description: 'Modo simulacao: compila, confere bit a bit e valida alvos sem publicar/copiar (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  deploy-and-packages:
+    if: github.server_url != 'https://github.com'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repositorio local Gitea
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoUrl = "http://127.0.0.1:3000/$($env:GITHUB_REPOSITORY).git"
+          if (!(Test-Path .git)) {
+            git init .
+            git remote add origin $repoUrl
+          } else {
+            git remote set-url origin $repoUrl
+          }
+          git fetch --depth 1 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git fetch failed ($LASTEXITCODE)" }
+          git checkout --force FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git checkout failed ($LASTEXITCODE)" }
+          git clean -fdx
+          Write-Host "CHECKOUT_SHA=$(git rev-parse HEAD) | REF=$($env:GITHUB_REF)"
+
+      - name: Compilar, conferir SHA-256 bit a bit e executar Packages/Deploy
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          IN_PUBLISH_PACKAGES: ${{ inputs.publish_packages }}
+          IN_DEPLOY_LOCAL: ${{ inputs.deploy_local_iped }}
+          IN_TARGETS: ${{ inputs.local_iped_targets }}
+          IN_DRY_RUN: ${{ inputs.dry_run }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          . (Join-Path $repo 'tests\resolve_test_env.ps1')
+
+          $jdk21 = Resolve-JdkHome -Explicit $(if (Test-Path -LiteralPath 'C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot\bin\javac.exe') { 'C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot' } else { '' }) -EnvNames @('JAVA21_HOME', 'JAVA_HOME') -MajorVersions @(21) -RequiredTool 'bin\javac.exe'
+          $ipedHome = if ($env:IPED_HOME -and (Test-Path -LiteralPath (Join-Path $env:IPED_HOME 'lib'))) {
+            $env:IPED_HOME
+          } elseif (Test-Path -LiteralPath 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\lib') {
+            'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1'
+          } else {
+            Resolve-WorkspaceIpedRoot -RepoRoot $repo
+          }
+          $reproCache = 'C:\Avilla-Forensics-Free\repro-cache'
+          $outDir = Join-Path $repo 'out\reproducible'
+
+          $buildArgs = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', (Join-Path $repo 'build-reproducible.ps1'),
+            '-Target', 'full', '-PinTemurin', '-VerifyReproducibility', '-RunTests',
+            '-JdkHome', $jdk21, '-IpedHome', $ipedHome, '-CacheDir', $reproCache, '-OutDir', $outDir
+          )
+          $cachedJfx = Join-Path $reproCache 'openjfx-21.0.5-windows-x64\javafx-sdk-21.0.5\lib\javafx.web.jar'
+          if (Test-Path -LiteralPath $cachedJfx) { $buildArgs += '-Offline' } else { $buildArgs += '-DownloadDeps' }
+          & powershell @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw "build-reproducible.ps1 falhou ($LASTEXITCODE)" }
+
+          $viewerText = [IO.File]::ReadAllText((Join-Path $repo 'src\iped\viewers\HtmlLinkViewer.java'))
+          if ($viewerText -notmatch 'CHAT_CAPTURE_PLUGIN_VERSION\s*=\s*"([^"]+)"') { throw 'CHAT_CAPTURE_PLUGIN_VERSION ausente' }
+          $pluginVer = $Matches[1]
+          $verifierVer = (Get-Content -LiteralPath (Join-Path $repo 'verificador-integridade\VERSION') -Raw).Trim()
+          $tag = "v$pluginVer"
+
+          $jarPath = Join-Path $outDir 'integridade-verifier.jar'
+          $exePath = Join-Path $outDir 'integridade-verifier.exe'
+          $pluginPath = Join-Path $outDir 'iped-viewers-impl-4.3.1.jar'
+          $zipPath = Join-Path $outDir "instalador-chat-captura-IPED-$pluginVer-verificador-$verifierVer.zip"
+
+          $jarSha = (Get-FileHash -LiteralPath $jarPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $exeSha = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $pluginSha = (Get-FileHash -LiteralPath $pluginPath -Algorithm SHA256).Hash.ToUpperInvariant()
+
+          $viText = [IO.File]::ReadAllText((Join-Path $repo 'src\iped\viewers\VerifierIntegrity.java'))
+          if ($viText -notmatch 'VALID_JAR_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') { throw 'VALID_JAR_HASHES ausente' }
+          if ($jarSha -ne $Matches[1]) { throw "DIVERGENCIA JAR: CI=$jarSha != SRC=$($Matches[1])" }
+          if ($viText -notmatch 'VALID_EXE_HASHES\s*=\s*Set\.of\("([A-F0-9]{64})"\)') { throw 'VALID_EXE_HASHES ausente' }
+          if ($exeSha -ne $Matches[1]) { throw "DIVERGENCIA EXE: CI=$exeSha != SRC=$($Matches[1])" }
+
+          $batText = [IO.File]::ReadAllText((Join-Path $repo 'instalar_captura_chat_zap\instalar_captura_chat_zap.bat'))
+          if ($batText -notmatch 'EXPECTED_PLUGIN_SHA256=([A-F0-9]{64})' -or $pluginSha -ne $Matches[1]) {
+            throw "DIVERGENCIA Plugin JAR vs .bat: CI=$pluginSha != BAT=$($Matches[1])"
+          }
+          Write-Host "BIT_FOR_BIT_HASH_MATCH=PASS ($pluginVer / $verifierVer)"
+
+          $token = if (![string]::IsNullOrWhiteSpace($env:RELEASE_TOKEN)) { $env:RELEASE_TOKEN } else { $env:GITHUB_TOKEN }
+          $pubPkg = ($env:IN_PUBLISH_PACKAGES.Trim().ToLowerInvariant() -eq 'true')
+          $depLoc = ($env:IN_DEPLOY_LOCAL.Trim().ToLowerInvariant() -eq 'true')
+          $isDry = ($env:IN_DRY_RUN.Trim().ToLowerInvariant() -eq 'true')
+          $targetBranch = if ($pluginVer -match '-') { 'beta' } else { 'main' }
+          $isPre = ($pluginVer -match '-')
+
+          if ($pubPkg) {
+            $pubParams = @{
+              Repo            = $env:GITHUB_REPOSITORY
+              Token           = $token
+              Tag             = $tag
+              TargetBranch    = $targetBranch
+              Prerelease      = $isPre
+              PluginVersion   = $pluginVer
+              VerifierVersion = $verifierVer
+              ZipPath         = $zipPath
+              ExePath         = $exePath
+              JarPath         = $jarPath
+              PluginPath      = $pluginPath
+              GiteaBaseUrl    = 'http://127.0.0.1:3000'
+              PublishRelease  = $false
+              PublishPackages = $true
+              DryRun          = $isDry
+            }
+            & (Join-Path $repo '.gitea\scripts\Publish-GiteaReleaseAndPackages.ps1') @pubParams
+          }
+
+          if ($depLoc) {
+            $depParams = @{
+              RepoRoot                   = $repo
+              PluginJar                  = $pluginPath
+              VerifierJar                = $jarPath
+              VerifierExe                = $exePath
+              PluginVersion              = $pluginVer
+              VerifierVersion            = $verifierVer
+              ExpectedPluginSha256       = $pluginSha
+              ExpectedVerifierJarSha256  = $jarSha
+              ExpectedVerifierExeSha256  = $exeSha
+              TargetsSemicolonList       = $env:IN_TARGETS
+              JavaExe                    = (Join-Path $jdk21 'bin\java.exe')
+              DryRun                     = $isDry
+            }
+            & (Join-Path $repo '.gitea\scripts\Invoke-LocalIpedDeploy.ps1') @depParams
+          }
