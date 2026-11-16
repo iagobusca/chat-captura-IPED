@@ -6,7 +6,7 @@ Plugin/customização em Java para o **IPED 4.3.1** que captura intervalos de me
 - **Verificador de Integridade:** `1.4.5`
 - **Compatibilidade alvo:** IPED `4.3.1` oficial (Java 11+) | Launcher EXE com runtime `.NET 10.0.15`
 - **Build reproduzível auditável (Windows / Linux / macOS):** [`build-reproducible.ps1`](build-reproducible.ps1)
-- **Licença:** [GNU General Public License v3.0 (GPLv3)](LICENSE)
+- **Licença e Direitos Autorais:** `Copyright (C) 2026 iagobusca` — [GNU General Public License v3.0 (GPLv3)](LICENSE) ([NOTICE](NOTICE))
 
 ---
 
@@ -102,6 +102,7 @@ pwsh -NoProfile -File ./build-reproducible.ps1 -DownloadDeps -PinTemurin -Verify
 ```text
 chat-captura IPED/
   LICENSE
+  NOTICE
   README.md
   GUIA_DE_USO.md
   CHANGELOG.md
@@ -123,6 +124,8 @@ chat-captura IPED/
 
 ---
 
-## Licença
+## Licença e Direitos Autorais (GNU GPLv3 — Seção 5(a))
 
-Este projeto é distribuído sob os termos da licença **GNU General Public License v3.0 (GPLv3)** — consulte o arquivo [`LICENSE`](LICENSE) para o texto integral, alinhado ao licenciamento do [IPED](https://github.com/sepinf-inc/IPED).
+- **Copyright (C) 2026 `iagobusca`**
+- Este projeto é distribuído sob os termos da licença **GNU General Public License v3.0 (GPLv3)** — consulte o arquivo [`LICENSE`](LICENSE) para o texto integral.
+- **Aviso de modificação (GPLv3 Seção 5(a)):** este trabalho deriva e estende o componente `iped-viewers-impl` do [IPED 4.3.1](https://github.com/sepinf-inc/IPED) (licenciado originalmente sob GNU GPLv3 pelos autores do IPED / SEPINF), modificado e ampliado por **`iagobusca`** entre **2026-10-31 e 2026-11-16** (captura `html-message-v1`, anotações/links, busca no chat, censura por similaridade, Re-Extrair/migração transacional, allowlists e Verificador de Integridade independente). Consulte [`NOTICE`](NOTICE) para a relação completa de arquivos modificados/criados e datas.

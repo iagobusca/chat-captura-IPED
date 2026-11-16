@@ -61,9 +61,9 @@ Cole o hash recebido e compare, ou cole o conteúdo completo de `historico-captu
 
 ![Comparação no modo Público](<imagem doc/004_publico.png>)
 
-## License
+## Licença e Copyright
 
-O repositório não informa uma licença específica para este utilitário.
+**Copyright (C) 2026 `iagobusca`** — Este utilitário e seu lançador são distribuídos sob os termos da licença **GNU General Public License v3.0 (GPLv3)** (consulte [`../LICENSE`](../LICENSE) e [`../NOTICE`](../NOTICE)).
 
 ## Arquivos e documentação
 
