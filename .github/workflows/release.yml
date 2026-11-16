@@ -426,10 +426,10 @@ jobs:
             'iped.viewers.UiAndAuxFolderRegressionTest',
             'iped.viewers.CaptureIntegrityTest'
           )) {
-            & $java21 -Dprism.order=sw --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp $cls
+            & $java21 '-Dprism.order=sw' --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp $cls
             if ($LASTEXITCODE -ne 0) { throw "Falhou: $cls" }
           }
-          & $java21 -Dprism.order=sw --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp iped.viewers.OpenCvLoaderTest (Join-Path $repo 'instalar_captura_chat_zap\opencv_java4120.dll')
+          & $java21 '-Dprism.order=sw' --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp iped.viewers.OpenCvLoaderTest (Join-Path $repo 'instalar_captura_chat_zap\opencv_java4120.dll')
           if ($LASTEXITCODE -ne 0) { throw "OpenCvLoaderTest falhou" }
 
           # 3) Regressoes PowerShell
