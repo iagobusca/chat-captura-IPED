@@ -3,6 +3,9 @@ from pathlib import Path
 import re
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_env_paths import find_sample_html
+
 
 class LinhaParser(HTMLParser):
     def __init__(self):
@@ -60,7 +63,7 @@ for bundle_name in ("iped-viewer-messages.properties", "iped-viewer-messages_pt_
                 "MarkerMissing", "InvalidRangeOrder", "RangeReady"):
         require(f"ChatCapturePanel.{key}=" in bundle, f"{bundle_name} lacks localized key {key}")
 
-fixture = repo.parent.parent / "IPED_testes_chat_real" / "Exportados" / "arquivos" / "F" / "A" / "FAF3132301A706022E1C3EAD6AE0800B.html"
+fixture = find_sample_html()
 if not fixture.is_file():
     raise FileNotFoundError(f"IPED 4.3.1 reference HTML not found: {fixture}")
 parser = LinhaParser()

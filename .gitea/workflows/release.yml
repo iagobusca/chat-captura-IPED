@@ -266,6 +266,10 @@ jobs:
           $env:TEST_VERIFIER_EXE = $env:EXE_PATH
           $env:TEST_VERIFIER_JAR = $env:JAR_PATH
           $env:TEST_PLUGIN_JAR = $env:PLUGIN_PATH
+          $env:CHAT_CAPTURE_SAMPLE_HTML = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\Exportados\arquivos\F\A\FAF3132301A706022E1C3EAD6AE0800B.html'
+          $env:CHAT_CAPTURE_SAMPLE_ROOT = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\IPED_testes_chat_real\teste_chat_extraido'
+          $env:IPED_JJS = 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\jre\bin\jjs.exe'
+          $env:JAVA_HOME = $env:JDK21_HOME
 
           & powershell -NoProfile -ExecutionPolicy Bypass -File "verificador-integridade\prototype\test-security-spec.ps1"
           if ($LASTEXITCODE -ne 0) { throw "test-security-spec.ps1 falhou ($LASTEXITCODE)" }
