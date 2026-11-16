@@ -493,7 +493,7 @@ jobs:
       - name: Gerar notas e publicar Release Oficial no GitHub
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           function Format-DotBytes([string]$raw) {
