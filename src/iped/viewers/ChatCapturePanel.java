@@ -52,6 +52,31 @@ public class ChatCapturePanel extends JPanel {
         return box;
     }
 
+    static JComponent plainMessageComponent(String text) {
+        String safe = text == null ? "" : text; //$NON-NLS-1$
+        if (!safe.contains("\n") && safe.length() <= 140) { //$NON-NLS-1$
+            return plainLabel(safe);
+        }
+        javax.swing.JTextArea area = new javax.swing.JTextArea(safe);
+        area.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setOpaque(false);
+        area.setColumns(48);
+        int lines = 1;
+        for (int i = 0; i < safe.length(); i++) {
+            if (safe.charAt(i) == '\n') lines++;
+        }
+        area.setRows(Math.min(18, Math.max(2, lines + (safe.length() / 64))));
+        if (lines <= 8 && safe.length() <= 500) {
+            return area;
+        }
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(540, 260));
+        return scroll;
+    }
+
     private final HtmlLinkViewer viewer;
     private final JTextField outputFolder = new JTextField();
     private final JCheckBox customNameToggle = plainCheckBox("Nome custom", false); //$NON-NLS-1$
@@ -405,11 +430,17 @@ public class ChatCapturePanel extends JPanel {
 
         private static final long serialVersionUID = 1L;
 
+        SearchHitRenderer() {
+            putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        }
+
         @Override
         public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected,
                 boolean focused) {
-            java.awt.Component component = super.getListCellRendererComponent(list, value, index, selected, focused);
             putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+            setToolTipText(null);
+            java.awt.Component component = super.getListCellRendererComponent(list,
+                    value instanceof ChatSearchHit ? "" : value, index, selected, focused); //$NON-NLS-1$
             if (value instanceof ChatSearchHit) {
                 ChatSearchHit hit = (ChatSearchHit) value;
                 String label = ChatSearchHit.typeLabel(hit.type);

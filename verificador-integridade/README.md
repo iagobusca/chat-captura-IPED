@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.4.3
+# Verificador de Integridade 1.4.4
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.4.3 remove o limite artificial de tamanho estimado de relatório (`enforceReportBudget` / `4.194.304` caracteres), o limite de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e os tetos cumulativos entre capturas (`verifyAllBounded` / `--verify-only`), mantendo todas as correções de segurança e consistência (`F-01`..`F-10`) da série `1.4.2`. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java e .NET necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.4.4 consolida o scanner HTML léxico determinístico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), proteções `openFile` com `LinkOption.NOFOLLOW_LINKS` e limite de leitura, `safeRegularFileSize` sem corrida de symlink, `html.disable` em todos os componentes Swing, `MAX_SCAN_ENTRIES`, allowlists HTML/MIME simétricas com o plugin e ausência de tetos artificiais de relatório. O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java 11 e .NET 10.0.15 necessários.
 
 ## Getting Started
 
@@ -15,7 +15,7 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.4.3: JAR `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D`; EXE `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.4.4: JAR `C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF`; EXE `A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 

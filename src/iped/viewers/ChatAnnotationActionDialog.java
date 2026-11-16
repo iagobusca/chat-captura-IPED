@@ -166,13 +166,15 @@ class ChatAnnotationActionDialog extends JDialog {
         if (confirmPrompt != null) {
             return confirmPrompt.test(confirmKey);
         }
-        return javax.swing.JOptionPane.showConfirmDialog(this, Messages.getString(confirmKey),
+        return javax.swing.JOptionPane.showConfirmDialog(this,
+                ChatCapturePanel.plainMessageComponent(Messages.getString(confirmKey)),
                 Messages.getString("ChatAnnotationActions.Delete"), //$NON-NLS-1$
                 javax.swing.JOptionPane.YES_NO_OPTION) == javax.swing.JOptionPane.YES_OPTION;
     }
 
     private void showNote(String text) {
-        javax.swing.JOptionPane.showMessageDialog(this, text, Messages.getString("ChatAnnotationActions.Notes"), //$NON-NLS-1$
+        javax.swing.JOptionPane.showMessageDialog(this, ChatCapturePanel.plainMessageComponent(text),
+                Messages.getString("ChatAnnotationActions.Notes"), //$NON-NLS-1$
                 javax.swing.JOptionPane.PLAIN_MESSAGE);
     }
 
@@ -191,7 +193,7 @@ class ChatAnnotationActionDialog extends JDialog {
                         .append(link.captureFolder);
             }
         }
-        javax.swing.JOptionPane.showMessageDialog(this, text.toString(),
+        javax.swing.JOptionPane.showMessageDialog(this, ChatCapturePanel.plainMessageComponent(text.toString()),
                 Messages.getString("ChatAnnotationActions.LinkedChats"), javax.swing.JOptionPane.PLAIN_MESSAGE); //$NON-NLS-1$
     }
 

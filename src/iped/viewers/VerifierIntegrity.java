@@ -18,8 +18,8 @@ public final class VerifierIntegrity {
     private static final String JAR_NAME = "integridade-verifier.jar";
     private static final String EXE_NAME = "integridade-verifier.exe";
 
-    private static final Set<String> VALID_JAR_HASHES = Set.of("8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D");
-    private static final Set<String> VALID_EXE_HASHES = Set.of("723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581");
+    private static final Set<String> VALID_JAR_HASHES = Set.of("C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF");
+    private static final Set<String> VALID_EXE_HASHES = Set.of("A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291");
     private static volatile boolean alertShown = false;
 
     /** Copia os arquivos do verificador (jar/exe) para a pasta de captura, se encontrados. */
@@ -288,7 +288,10 @@ public final class VerifierIntegrity {
             pane.addHyperlinkListener(e -> {
                 if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
                     try {
-                        java.awt.Desktop.getDesktop().browse(e.getURL().toURI());
+                        java.net.URI uri = e.getURL().toURI();
+                        if ("https".equalsIgnoreCase(uri.getScheme())) {
+                            java.awt.Desktop.getDesktop().browse(uri);
+                        }
                     } catch (Exception ignored) {
                     }
                 }

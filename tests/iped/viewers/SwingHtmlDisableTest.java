@@ -53,11 +53,34 @@ public final class SwingHtmlDisableTest {
         ListCellRenderer<? super ChatSearchHit> renderer = searchList.getCellRenderer();
 
         ChatSearchHit plainHit = new ChatSearchHit("id1", "", "<html><img src=x>");
-        Component compPlain = renderer.getListCellRendererComponent(searchList, plainHit, 0, false, false);
+        javax.swing.JComponent rendererComponent = renderer instanceof javax.swing.JComponent
+                ? (javax.swing.JComponent) renderer
+                : null;
+        java.util.List<Object> leakedHtmlViews = new java.util.ArrayList<>();
+        java.beans.PropertyChangeListener htmlViewTrap = evt -> {
+            if (javax.swing.plaf.basic.BasicHTML.propertyKey.equals(evt.getPropertyName()) && evt.getNewValue() != null) {
+                leakedHtmlViews.add(evt.getNewValue());
+            }
+        };
+        if (rendererComponent != null) {
+            rendererComponent.addPropertyChangeListener(htmlViewTrap);
+        }
+        Component compPlain;
+        try {
+            compPlain = renderer.getListCellRendererComponent(searchList, plainHit, 0, false, false);
+        } finally {
+            if (rendererComponent != null) {
+                rendererComponent.removePropertyChangeListener(htmlViewTrap);
+            }
+        }
+        assertTrue(leakedHtmlViews.isEmpty(),
+                "SearchHitRenderer without type label must never parse HTML during rendering");
         if (compPlain instanceof javax.swing.JComponent) {
             javax.swing.JComponent jc = (javax.swing.JComponent) compPlain;
             assertTrue(Boolean.TRUE.equals(jc.getClientProperty("html.disable")),
                     "SearchHitRenderer without type label must set html.disable=true");
+            assertTrue(jc.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey) == null,
+                    "SearchHitRenderer without type label must not retain BasicHTML view");
             assertEquals("<html>&lt;html&gt;&lt;img src=x&gt;</html>", jc.getToolTipText(),
                     "SearchHitRenderer tooltip must escape HTML characters");
         }
@@ -70,6 +93,28 @@ public final class SwingHtmlDisableTest {
                     "SearchHitRenderer with typed HTML label enables escaped HTML rendering");
             assertEquals("<html>a&amp;b&#39;c&quot;d&lt;e&gt;f</html>", jc.getToolTipText(),
                     "SearchHitRenderer tooltip must escape all 5 HTML special characters");
+        }
+
+        leakedHtmlViews.clear();
+        if (rendererComponent != null) {
+            rendererComponent.addPropertyChangeListener(htmlViewTrap);
+        }
+        Component compPlainAfterTyped;
+        try {
+            compPlainAfterTyped = renderer.getListCellRendererComponent(searchList, plainHit, 2, false, false);
+        } finally {
+            if (rendererComponent != null) {
+                rendererComponent.removePropertyChangeListener(htmlViewTrap);
+            }
+        }
+        assertTrue(leakedHtmlViews.isEmpty(),
+                "SearchHitRenderer must reset html.disable before super.getListCellRendererComponent after typed row");
+        if (compPlainAfterTyped instanceof javax.swing.JComponent) {
+            javax.swing.JComponent jc = (javax.swing.JComponent) compPlainAfterTyped;
+            assertTrue(Boolean.TRUE.equals(jc.getClientProperty("html.disable")),
+                    "SearchHitRenderer must keep html.disable=true on plain hit after typed row");
+            assertTrue(jc.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey) == null,
+                    "SearchHitRenderer must not keep BasicHTML view after typed row");
         }
     }
 
@@ -111,8 +156,9 @@ public final class SwingHtmlDisableTest {
             JList list = (JList) listField.get(dialog);
             Component c = list.getCellRenderer().getListCellRendererComponent(list, "<html><b>bad</b>", 0, false, false);
             assertTrue(c instanceof javax.swing.JComponent
-                    && Boolean.TRUE.equals(((javax.swing.JComponent) c).getClientProperty("html.disable")),
-                    "SavedChatPickerDialog list renderer must disable HTML rendering");
+                    && Boolean.TRUE.equals(((javax.swing.JComponent) c).getClientProperty("html.disable"))
+                    && ((javax.swing.JComponent) c).getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey) == null,
+                    "SavedChatPickerDialog list renderer must disable HTML rendering before BasicHTML runs");
         } finally {
             dialog.dispose();
         }
@@ -151,6 +197,8 @@ public final class SwingHtmlDisableTest {
         ChatCaptureLinkedWindow window = new ChatCaptureLinkedWindow(
                 null, stubSearcher, null, "<html><img src=x>", new java.io.File("."), "linked-test");
         try {
+            assertTrue(window.getDefaultCloseOperation() == javax.swing.WindowConstants.DISPOSE_ON_CLOSE,
+                    "ChatCaptureLinkedWindow must use DISPOSE_ON_CLOSE so closing via X releases WebView/executor");
             Field viewerField = ChatCaptureLinkedWindow.class.getDeclaredField("linkedViewer");
             viewerField.setAccessible(true);
             HtmlLinkViewer innerViewer = (HtmlLinkViewer) viewerField.get(window);
@@ -158,6 +206,15 @@ public final class SwingHtmlDisableTest {
             linkedDestField.setAccessible(true);
             Object linkedDest = linkedDestField.get(innerViewer.getChatCapturePanel());
             verifyNonHtmlLabelsDisabled(window.getContentPane(), linkedDest);
+
+            window.dispatchEvent(new java.awt.event.WindowEvent(window, java.awt.event.WindowEvent.WINDOW_CLOSING));
+            Field execField = HtmlLinkViewer.class.getDeclaredField("uiScriptExecutor");
+            execField.setAccessible(true);
+            java.util.concurrent.ExecutorService exec = (java.util.concurrent.ExecutorService) execField.get(innerViewer);
+            Field disposedField = HtmlLinkViewer.class.getDeclaredField("disposed");
+            disposedField.setAccessible(true);
+            assertTrue(Boolean.TRUE.equals(disposedField.get(innerViewer)) && exec.isShutdown(),
+                    "Closing ChatCaptureLinkedWindow via X must dispose linkedViewer and shut down uiScriptExecutor");
         } finally {
             window.dispose();
         }

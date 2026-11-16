@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -43,7 +44,7 @@ class ProductionMigrationContractTests(unittest.TestCase):
         self.assertIn("if (!job.resetLegacyRecords)", VIEWER)
         self.assertIn("if (job.resetLegacyRecords)", VIEWER)
         self.assertIn("Files.isSymbolicLink(candidate.path)", VIEWER)
-        self.assertIn("Files.size(candidate.path) != declaredLength", VIEWER)
+        self.assertIn("CaptureIntegrity.safeRegularFileSize(candidate.path) != declaredLength", VIEWER)
         self.assertIn("CaptureIntegrity.sha256(candidate.path).equalsIgnoreCase(expectedSha256)", VIEWER)
         self.assertIn("CaptureIntegrity.sha256(temporary).equalsIgnoreCase(expectedSha256)", VIEWER)
         self.assertIn("StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS", VIEWER)
@@ -68,6 +69,18 @@ class ProductionMigrationContractTests(unittest.TestCase):
         for key in ("MigrateLegacyToHtml", "ResetLegacyRecords", "MigrateLegacyNoReferenceWarning", "CensorshipReferenceUnavailable", "CensorshipWouldBeLost", "MigrateExtracting"):
             self.assertIn("ChatCapturePanel." + key + "=", MESSAGES_EN)
             self.assertIn("ChatCapturePanel." + key + "=", MESSAGES_PT)
+
+    def test_all_chat_localization_keys_exist_in_both_bundles(self):
+        keys_en = {m.group(1) for m in re.finditer(r"^([^#=\r\n]+?)=", MESSAGES_EN, re.MULTILINE)}
+        keys_pt = {m.group(1) for m in re.finditer(r"^([^#=\r\n]+?)=", MESSAGES_PT, re.MULTILINE)}
+        referenced = set()
+        for java_file in (ROOT / "src").rglob("*.java"):
+            content = java_file.read_text(encoding="utf-8")
+            for match in re.finditer(r'"((?:Chat[A-Za-z0-9_]*|MenuClass|HtmlLinkViewer)\.[A-Za-z0-9_.]+)"', content):
+                referenced.add(match.group(1))
+        self.assertGreater(len(referenced), 100)
+        self.assertEqual(sorted(referenced - keys_en), [])
+        self.assertEqual(sorted(referenced - keys_pt), [])
 
 
 if __name__ == "__main__":

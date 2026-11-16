@@ -1,13 +1,22 @@
 # Checksums
 
+## Build 2.6.9 (Estável / `main`) / Verificador 1.4.4
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Observações |
+|---|---|---|---|
+| `instalador-chat-captura-IPED-2.6.9-verificador-1.4.4.zip` | 95520077 | `7AE66926EF857C35EF73B6192B54EAD7D2E8751E8D984D89CDD5DBAC144A6ABC` | Pacote completo de instalação estável (plugin `2.6.9`, Verificador `1.4.4` JAR+EXE com runtime `.NET 10.0.15`, `json-20260719`, `validate-plugin-jar.ps1`, sincronização segura de localização e script `.bat` sem duplicação de JARs em `lib\`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.9.jar` | 1513268 | `725CA7E02538A5B5EEBB043A29868E90515CBCAC7BFBA4CC518A7EEF55150B9C` | Fat-JAR do plugin (`Implementation-Version: 2.6.9`; compatível com API do IPED `4.3.1` oficial, defesa em profundidade Swing `html.disable`, limpeza `dispose()` + `DISPOSE_ON_CLOSE`, `MultiViewer` + `org/opencv/**` embutidos); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 159189 | `C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF` | Verificador `1.4.4` compilado em Java 8 (scanner HTML léxico por máquina de estados, guarda `openFile` com `NOFOLLOW_LINKS` + `maxBytes`, allowlists HTML/MIME simétricas, `safeRegularFileSize`, `html.disable`, `MAX_SCAN_ENTRIES` e sem tetos artificiais de relatório) |
+| `verificador-integridade/integridade-verifier.exe` | 77874266 | `A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291` | Executável Windows x64 autocontido do Verificador `1.4.4` (Java 11 + runtime `.NET 10.0.15` 0 CVEs, anti-reparse/zip-bomb no launcher, `--self-test` OK) |
+
 ## Build 2.6.8 (Estável / `main`) / Verificador 1.4.3
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Observações |
 |---|---|---|---|
-| `instalador-chat-captura-IPED-2.6.8-verificador-1.4.3.zip` | 96948861 | `A6F69393A73E036BEE73E53AE5F45C03005A9BBE6376825EF23AA19AF7640D24` | Pacote completo de instalação estável (plugin `2.6.8`, Verificador `1.4.3` JAR+EXE, dependências e script BAT) |
-| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.6.8.jar` | 1506187 | `AB6B8A5F8E1D5B4A00E4C86A825FBA871BB4E3550E3EFC76734CA8A952F50ED5` | Fat-JAR do plugin (`Implementation-Version: 2.6.8`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
-| `verificador-integridade/integridade-verifier.jar` | 154638 | `8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D` | Verificador `1.4.3` compilado em Java 8 (sem limite de tamanho de relatório e sem tetos cumulativos entre capturas) |
-| `verificador-integridade/integridade-verifier.exe` | 77867588 | `723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581` | Executável Windows x64 autocontido do Verificador `1.4.3` (`--self-test` OK) |
+| `instalador-chat-captura-IPED-2.6.8-verificador-1.4.3.zip` | 94677720 | `FBD4657A55686A32252C5CF81BBD35ABD1E06C7A44639142080F21ED4BDF5AF7` | Pacote completo de instalação estável (plugin `2.6.8`, Verificador `1.4.3` JAR+EXE com runtime `.NET 10.0.15`, `json-20260719`, `validate-plugin-jar.ps1` e script `.bat` sem duplicação de JARs em `lib\`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1.jar` | 1513265 | `E817A1743BCB50DCF36026769C156E6ACC2796A9446E435DBFAFC501C2B9D058` | Fat-JAR do plugin (`Implementation-Version: 2.6.8`; compatível com API do IPED `4.3.1` oficial, `MultiViewer` + `org/opencv/**` embutidos) |
+| `verificador-integridade/integridade-verifier.jar` | 159189 | `104F69AABCB86851C2DA905AD6E8428177BDEC1E6D3750580291A8ECD008B382` | Verificador `1.4.3` compilado em Java 8 (validação HTML léxica por máquina de estados, guardas `openFile` com `NOFOLLOW_LINKS`, allowlists HTML/MIME simétricas, `MAX_SCAN_ENTRIES` e sem tetos artificiais de relatório) |
+| `verificador-integridade/integridade-verifier.exe` | 77874266 | `17D8F5DCED38029B68849AF11A2358B38B31FD4A01BDAF4BFEA514FC27842E05` | Executável Windows x64 autocontido do Verificador `1.4.3` (runtime `.NET 10.0.15` 0 CVEs, anti-reparse/zip-bomb no launcher, `--self-test` OK) |
 
 ## Build 2.6.8-beta / Verificador 1.4.3 (tolerância a anexos > 8 MiB e remoção do limite de tamanho de relatório; allowlist exclusiva 1.4.3)
 

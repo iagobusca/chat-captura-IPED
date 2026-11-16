@@ -52,17 +52,37 @@ foreach ($name in $required) {
     $source = Join-Path $ResourceDir $name
     if (!(Test-Path -LiteralPath $target)) { throw "Locale do IPED nao encontrado: $target" }
     $current = [IO.File]::ReadAllText($target)
+    $newline = if ($current.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $updated = $current
+    $changed = $false
     $add = [Collections.Generic.List[string]]::new()
     foreach ($line in [IO.File]::ReadAllLines($source)) {
-        if (!$line -or $line.StartsWith('#') -or !$line.Contains('=')) { continue }
+        if (!$line -or $line.TrimStart().StartsWith('#') -or $line.TrimStart().StartsWith('!') -or !$line.Contains('=')) { continue }
         $key = $line.Substring(0, $line.IndexOf('='))
-        if ($current -notmatch ('(?m)^' + [regex]::Escape($key) + '=')) { $add.Add($line) }
+        $pattern = '(?m)^' + [regex]::Escape($key) + '=[^\r\n]*'
+        $m = [regex]::Match($updated, $pattern)
+        if ($m.Success) {
+            if ($m.Value.EndsWith('\') -or $line.EndsWith('\')) { continue }
+            if ($m.Value -cne $line) {
+                $updated = $updated.Substring(0, $m.Index) + $line + $updated.Substring($m.Index + $m.Length)
+                $changed = $true
+            }
+        } else {
+            $add.Add($line)
+        }
     }
-    if ($add.Count) {
+    if ($add.Count -gt 0) {
+        $trimmed = $updated.TrimEnd("`r", "`n")
+        if ($trimmed -match '(?<!\\)(\\\\)*\\$') {
+            $trimmed = $trimmed + ' '
+        }
+        $updated = $trimmed + $newline + ($add -join $newline) + $newline
+        $changed = $true
+    }
+    if ($changed) {
         $stamp = if ([string]::IsNullOrWhiteSpace($BackupStamp)) { Get-Date -Format yyyyMMdd-HHmmss } else { $BackupStamp.Trim() }
         $backup = "$target.bak-$stamp"
         Copy-Item -LiteralPath $target -Destination $backup
-        $updated = $current.TrimEnd() + [Environment]::NewLine + ($add -join [Environment]::NewLine) + [Environment]::NewLine
         [IO.File]::WriteAllText($target, $updated, [Text.UTF8Encoding]::new($false))
         Write-Host "Localization atualizada com backup: $backup"
     }

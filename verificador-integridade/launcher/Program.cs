@@ -1,4 +1,4 @@
-// Versão 1.4.3 — endurecimento F-06/F-10 e remoção de tetos de relatório: limpeza segura de diretórios temporários (grace window + anti-junction) e teste ZIP de 0 bytes.
+// Versão 1.4.4 — endurecimento de segurança (scanner HTML léxico F-01, openFile NOFOLLOW_LINKS, allowlists HTML/MIME simétricas, safeRegularFileSize sem corrida de symlink, html.disable, MAX_SCAN_ENTRIES e runtime .NET 10.0.15).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
@@ -233,24 +233,72 @@ internal static class Program
         }
     }
 
-    private static void ExtractArchiveSafely(ZipArchive archive, string rootDir)
+    private const int MaxArchiveEntries = 4096;
+    private const long MaxArchiveTotalBytes = 512L * 1024L * 1024L;
+
+    private static void EnsureNoReparsePointHierarchy(string rootDir, string targetPath)
+    {
+        string normalizedRoot = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedTarget = Path.GetFullPath(targetPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var rootInfo = new DirectoryInfo(normalizedRoot);
+        if (rootInfo.Exists && (rootInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Diretório raiz não pode ser um link simbólico ou junção NTFS.");
+        bool sameRoot = normalizedTarget.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+        if (!sameRoot && !normalizedTarget.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("O pacote contém um caminho inválido.");
+        if (sameRoot) return;
+        string relative = normalizedTarget.Substring(normalizedRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string current = normalizedRoot;
+        foreach (string segment in relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (File.Exists(current) || Directory.Exists(current))
+            {
+                FileAttributes attrs = File.GetAttributes(current);
+                if ((attrs & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Link simbólico ou junção NTFS não permitido durante a extração/verificação.");
+            }
+        }
+    }
+
+    private static void ExtractArchiveSafely(ZipArchive archive, string rootDir, int maxEntries = MaxArchiveEntries, long maxTotalBytes = MaxArchiveTotalBytes)
     {
         string normalizedRoot = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        EnsureNoReparsePointHierarchy(rootDir, rootDir);
+        int entryCount = 0;
+        long totalBytes = 0;
+        byte[] copyBuffer = new byte[81920];
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
+            entryCount++;
+            if (entryCount > maxEntries)
+                throw new InvalidDataException("O pacote excede o número máximo de entradas permitidas.");
             string destination = Path.GetFullPath(Path.Combine(rootDir, entry.FullName));
             if (!destination.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("O pacote contém um caminho inválido.");
             bool isDir = entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\") || string.IsNullOrEmpty(entry.Name);
             string destPath = destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            EnsureNoReparsePointHierarchy(rootDir, destPath);
             if (isDir)
             {
                 Directory.CreateDirectory(destPath);
+                EnsureNoReparsePointHierarchy(rootDir, destPath);
             }
             else
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-                entry.ExtractToFile(destPath, true);
+                string parentDir = Path.GetDirectoryName(destPath)!;
+                Directory.CreateDirectory(parentDir);
+                EnsureNoReparsePointHierarchy(rootDir, destPath);
+                using Stream entryStream = entry.Open();
+                using var output = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                int read;
+                while ((read = entryStream.Read(copyBuffer, 0, copyBuffer.Length)) > 0)
+                {
+                    totalBytes += read;
+                    if (totalBytes > maxTotalBytes)
+                        throw new InvalidDataException("O pacote excede o limite máximo de bytes descomprimidos.");
+                    output.Write(copyBuffer, 0, read);
+                }
             }
         }
     }
@@ -327,6 +375,22 @@ internal static class Program
             if (!File.Exists(dataFile) || File.ReadAllText(dataFile, Encoding.UTF8) != "ok")
                 throw new InvalidOperationException("Falha no autoteste de extração de arquivo ZIP.");
 
+            using (var overflowBuffer = new MemoryStream())
+            {
+                using (var creator = new ZipArchive(overflowBuffer, ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    ZipArchiveEntry bigEntry = creator.CreateEntry("big.txt");
+                    using var w = new StreamWriter(bigEntry.Open(), new UTF8Encoding(false));
+                    w.Write("1234567890");
+                }
+                overflowBuffer.Position = 0;
+                using var readerOverflow = new ZipArchive(overflowBuffer, ZipArchiveMode.Read);
+                bool rejected = false;
+                try { ExtractArchiveSafely(readerOverflow, Path.Combine(scratch, "overflow"), maxTotalBytes: 4); }
+                catch (InvalidDataException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("Falha no autoteste de limite de descompressão ZIP.");
+            }
+
             string freshDir = Path.Combine(scratch, "instance-fresh");
             string staleDir = Path.Combine(scratch, "instance-stale");
             Directory.CreateDirectory(freshDir);
@@ -342,6 +406,12 @@ internal static class Program
             DeleteDirectorySafely(scratch);
             if (Directory.Exists(scratch))
                 throw new InvalidOperationException("Falha na limpeza segura de diretório temporário.");
+
+            bool siblingRejected = false;
+            try { EnsureNoReparsePointHierarchy(Path.Combine(scratch, "root"), Path.Combine(scratch, "root-sibling", "x")); }
+            catch (InvalidDataException) { siblingRejected = true; }
+            if (!siblingRejected)
+                throw new InvalidOperationException("Falha no autoteste de fronteira de caminho irmão.");
         }
         finally
         {
@@ -399,9 +469,11 @@ internal static class Program
             if (fields.Length != 2 || fields[0].Length != 64) throw new InvalidDataException("Manifesto interno de hashes inválido.");
             string path = fields[1].Replace('/', Path.DirectorySeparatorChar);
             if (Path.IsPathRooted(path) || path.Split(Path.DirectorySeparatorChar).Any(p => p == "..")) throw new InvalidDataException("Caminho inseguro no manifesto.");
+            string normalizedRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
             string full = Path.GetFullPath(Path.Combine(root, path));
-            if (!full.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+            if (!full.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
                 throw new InvalidDataException("Arquivo do runtime ausente: " + path);
+            EnsureNoReparsePointHierarchy(root, full);
             using var input = File.OpenRead(full);
             string actual = Convert.ToHexString(SHA256.HashData(input));
             if (!actual.Equals(fields[0], StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Hash inválido no runtime extraído: " + path);

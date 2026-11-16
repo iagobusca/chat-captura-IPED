@@ -4,6 +4,14 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.4.4] - 2026-11-16
+
+### Segurança e Corrigido
+
+- Substituição das regexes de varredura HTML (`HTML_TAG_PATTERN`, `HTML_META_TAG_PATTERN`, `HTML_SCRIPT_ELEMENT_PATTERN`, `HTML_STYLE_ELEMENT_PATTERN`) por scanner léxico determinístico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), bloqueando bypasses com aspas/apóstrofos isolados em atributos sem aspas (`F-01` Fase 4).
+- Endurecimento de `openFile` com `LinkOption.NOFOLLOW_LINKS`, verificação de arquivo regular e limite máximo de leitura (`maxBytes`), além de remoção de código morto vulnerável (`isAllowedPath` não utilizado).
+- Sincronização de `safeRegularFileSize` sem janela de corrida TOCTOU de symlinks, allowlists HTML/MIME simétricas com o plugin, `html.disable` em todos os rótulos/caixas Swing, `MAX_SCAN_ENTRIES` e build Windows x64 com `.NET 10.0.15` (0 CVEs) e proteção anti-reparse/zip-bomb no launcher.
+
 ## [1.4.3] - 2026-11-14
 
 ### Corrigido e Melhorado

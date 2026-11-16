@@ -4,6 +4,18 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.6.9] - 2026-11-16
+
+### Segurança e Corrigido
+
+- **Verificador `1.4.4` (`IntegrityVerifier` e launcher `.exe`)**:
+  - Consolidação do scanner HTML léxico determinístico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), bloqueando bypasses com apóstrofo/aspa isolada em atributos sem aspas em `presentationVersion` `0` e `2`.
+  - Endurecimento de `openFile` (`LinkOption.NOFOLLOW_LINKS`, verificação de arquivo regular e limite `maxBytes`), remoção de método morto vulnerável (`isAllowedPath`), `safeRegularFileSize` sem corrida de symlink, `html.disable` em componentes Swing, `MAX_SCAN_ENTRIES` e executável x64 autocontido com `.NET 10.0.15` (0 CVEs).
+- **Plugin `2.6.9` (`HtmlLinkViewer` / `ChatCapturePanel` / `SavedChatPickerDialog` / `ChatCaptureLinkedWindow` / `VerifierIntegrity` / instalador)**:
+  - Defesa em profundidade Swing com `putClientProperty("html.disable", Boolean.TRUE)` antes do cálculo de texto em `SearchHitRenderer` (`ChatCapturePanel`) e nos renderizadores/diálogos locais (`SavedChatPickerDialog`), prevenindo renderização HTML em rótulos derivados de conteúdo indexado ou nomes de pastas.
+  - Fechamento e limpeza determinística em `ChatCaptureLinkedWindow` (`DISPOSE_ON_CLOSE` e checagem `closed.get()`), `HtmlLinkViewer.dispose()` e guarda `if (disposed)` em `loadFile`, além do helper reflexivo `AttachmentSearcher.openItem` para compatibilidade com o IPED `4.3.1` oficial e correções no instalador `.bat` (caminhos com `!`, rollback em falhas e não duplicação de `json-*.jar`/`opencv-*.jar`).
+  - Incremento de versão para `2.6.9` (`CHAT_CAPTURE_PLUGIN_VERSION`, `Implementation-Version: 2.6.9`, SHA-256 `725CA7E0...`) e allowlist exclusiva de `VerifierIntegrity` sincronizada com os binários oficiais do Verificador `1.4.4` (`C37D52F2...` / `A57CB7E8...`), rejeitando `<= 1.4.3`.
+
 ## [2.6.8] - 2026-11-14
 
 ### Estável (`main`)

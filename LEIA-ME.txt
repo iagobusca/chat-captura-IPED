@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.6.8 - Verificador de Integridade 1.4.3
+Pacote Chat Captura IPED 2.6.9 - Verificador de Integridade 1.4.4
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,8 +7,17 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.4.3 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.4.4 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
+
+Novidades desta versão (2.6.9 / Verificador 1.4.4 — versão estável):
+- Verificador 1.4.4:
+  * Substitui regexes de varredura HTML por scanner léxico determinístico por máquina de estados (scanHtmlElements / parseHtmlTagStrict), bloqueando bypasses com aspas/apóstrofos isolados em atributos sem aspas;
+  * Endurece openFile com LinkOption.NOFOLLOW_LINKS, verificação de arquivo regular e teto de leitura (maxBytes), além de consolidar allowlists HTML/MIME simétricas com o plugin, safeRegularFileSize sem corrida de symlink, html.disable em Swing, MAX_SCAN_ENTRIES e runtime .NET 10.0.15 sem CVEs no EXE.
+- Plugin 2.6.9:
+  * Defesa em profundidade Swing com html.disable=true antes do cálculo de texto no SearchHitRenderer (ChatCapturePanel) e na fila SavedChatPickerDialog, mitigando possível interpretação HTML/injeção em rótulos de resultados e seletores locais;
+  * Limpeza determinística de ciclo de vida WebView/OpenCV/executor em ChatCaptureLinkedWindow (DISPOSE_ON_CLOSE) e HtmlLinkViewer (dispose() e guarda if (disposed) em loadFile), compatibilidade reflexiva com AttachmentSearcher.openItem no IPED 4.3.1 oficial e instalador com sincronização segura de localização e suporte a caminhos com "!";
+  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.4.4 (versões <= 1.4.3 rejeitadas).
 
 Novidades desta versão (2.6.8 / Verificador 1.4.3 — versão estável):
 - Verificador 1.4.3:
@@ -106,9 +115,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.4.3:
-JAR 8CB04812B4BD68C0DB9959DECEB63C9F7D8F8D99CF4BD5B4DC56A9148B305A1D
-EXE 723DD7507D44AB14E3FFA723D2838CFC0C3F8B77B53725919A2E1CBCBA145581
+SHA-256 do Verificador 1.4.4:
+JAR C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF
+EXE A57CB7E8C15B256DDBDE99899157D8CC2B8AA8B3ABCD8F30D7CACE17F2962291
 
-SHA-256 do plugin 2.6.8:
-JAR AB6B8A5F8E1D5B4A00E4C86A825FBA871BB4E3550E3EFC76734CA8A952F50ED5
+SHA-256 do plugin 2.6.9:
+JAR 725CA7E02538A5B5EEBB043A29868E90515CBCAC7BFBA4CC518A7EEF55150B9C

@@ -12,6 +12,7 @@ public class UiAndAuxFolderRegressionTest {
         testRecaptureAuxiliaryFolderDetection();
         testOutputFolderResolution();
         testEmptyOutputFolderDoesNotInstallVerifierOnRecaptureOrStart();
+        testRecapturePaginationExcludesInvalidCaptures();
         System.out.println("UiAndAuxFolderRegressionTest: PASS");
     }
 
@@ -55,6 +56,24 @@ public class UiAndAuxFolderRegressionTest {
                 "Empty outputFolder must never drop verifier JAR into current working directory");
         assertTrue(Files.exists(exeTarget) == hadExeBefore,
                 "Empty outputFolder must never drop verifier EXE into current working directory");
+    }
+
+    private static void testRecapturePaginationExcludesInvalidCaptures() {
+        assertTrue(!HtmlLinkViewer.shouldSelectRecaptureCheckBox(false, true, true),
+                "Invalid capture checkbox must never render selected even when bulk-all is active");
+        assertTrue(HtmlLinkViewer.shouldSelectRecaptureCheckBox(true, true, false),
+                "Valid capture checkbox must render selected when bulk-all is active");
+        assertTrue(!HtmlLinkViewer.shouldSelectRecaptureCheckBox(true, false, false),
+                "Valid unselected capture must not render selected");
+
+        java.util.List<String> all = java.util.Arrays.asList("cap-1", "cap-invalid-1", "cap-2", "cap-invalid-2");
+        java.util.Set<String> knownInvalid = new java.util.HashSet<>(java.util.Collections.singletonList("cap-invalid-1"));
+        java.util.List<String> collected = HtmlLinkViewer.collectSelectedRecaptureFolders(
+                all, java.util.Collections.emptySet(), knownInvalid, true);
+        assertTrue(!collected.contains("cap-invalid-1"),
+                "Known invalid capture must never be included in selected folders");
+        assertTrue(collected.contains("cap-1") && collected.contains("cap-2"),
+                "Valid captures must be retained in bulk selection");
     }
 
     private static void assertEqual(String expected, String actual, String msg) {

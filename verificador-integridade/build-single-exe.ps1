@@ -59,7 +59,7 @@ $JdkWithJpackage = Resolve-JdkHome -Explicit $JdkWithJpackage -EnvNames @('JAVA2
 
 if (!$JsonJar) { $JsonJar = Join-Path $Base 'dependencies\json-20260719.jar' }
 if (!$Output) { $Output = Join-Path $Base 'dist' }
-$Work = Join-Path $Base 'build-single-exe\1.4.3'
+$Work = Join-Path $Base 'build-single-exe\1.4.4'
 $Classes = Join-Path $Work 'classes'
 $Input = Join-Path $Work 'input'
 $Runtime = Join-Path $Work 'runtime11'
@@ -77,7 +77,7 @@ if (Test-Path -LiteralPath $Icon) {
 }
 $Jar = Join-Path $Input 'integridade-verifier.jar'
 $Manifest = Join-Path $Work 'MANIFEST.MF'
-@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.4.3','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
+@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.4.4','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
 & (Join-Path $Java8 'bin\jar.exe') cfm $Jar $Manifest -C $Classes .
 if ($LASTEXITCODE) { throw 'Falha ao montar o JAR Java.' }
 $JsonClasses = Join-Path $Work 'json-classes'
@@ -90,7 +90,7 @@ Copy-Item $Jar (Join-Path $Base 'integridade-verifier.jar') -Force
 & (Join-Path $Java11 'bin\jlink.exe') --module-path (Join-Path $Java11 'jmods') --add-modules java.base,java.datatransfer,java.desktop,java.xml --strip-debug --no-header-files --no-man-pages --output $Runtime
 if ($LASTEXITCODE) { throw 'Falha ao criar runtime Java 11 reduzido.' }
 New-Item -ItemType Directory -Force -Path $AppImage | Out-Null
-& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.4.3
+& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.4.4
 if ($LASTEXITCODE) { throw 'Falha ao criar imagem Java empacotada.' }
 $Rows = Get-ChildItem -LiteralPath $PayloadDir -File -Recurse | ForEach-Object {
     $Relative = $_.FullName.Substring($PayloadDir.Length).TrimStart('\','/').Replace('\','/')
@@ -122,6 +122,21 @@ if ($OfflineBuild) { $dotnetArgs += '-p:NuGetAudit=false' }
 $publishExit = $LASTEXITCODE
 try { & dotnet build-server shutdown | Out-Null } catch {}
 if ($publishExit) { throw 'Falha ao compilar o lançador EXE autoextraível.' }
+$depsJson = Get-ChildItem -LiteralPath (Join-Path $Base 'launcher') -Filter 'integridade-verifier.deps.json' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if (!$depsJson) { throw 'integridade-verifier.deps.json nao encontrado apos dotnet publish.' }
+$depsContent = [IO.File]::ReadAllText($depsJson.FullName)
+if ($depsContent -notmatch 'Microsoft\.NETCore\.App\.Runtime\.win-x64/([0-9]+\.[0-9]+\.[0-9]+)') {
+    throw "Versao do runtime .NET win-x64 nao identificada em $($depsJson.FullName)"
+}
+$embeddedNetRuntime = [version]$Matches[1]
+if ($embeddedNetRuntime -lt [version]'10.0.15') {
+    throw "Runtime .NET inseguro detectado ($embeddedNetRuntime < 10.0.15). Verifique conectividade com nuget.org."
+}
+if ($depsContent -notmatch 'Microsoft\.WindowsDesktop\.App\.Runtime\.win-x64/([0-9]+\.[0-9]+\.[0-9]+)' -or [version]$Matches[1] -lt [version]'10.0.15') {
+    throw "Runtime WindowsDesktop inseguro detectado em $($depsJson.FullName)"
+}
+Write-Host "Runtime .NET embutido validado: $embeddedNetRuntime (WindowsDesktop $($Matches[1]))"
 Copy-Item (Join-Path $Base 'launcher\publish\integridade-verifier.exe') (Join-Path $Output 'integridade-verifier.exe') -Force
 Write-Host "JAR Java 8: $Base\integridade-verifier.jar"
 Write-Host "EXE autoextraível: $Output\integridade-verifier.exe"

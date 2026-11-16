@@ -124,7 +124,7 @@ class ChatAnnotationStore {
         }
         String content;
         try {
-            content = CaptureIntegrity.readUtf8Limited(storeFile, MAX_STORE_BYTES);
+            content = CaptureIntegrity.readJsonUtf8Limited(storeFile, MAX_STORE_BYTES);
         } catch (IOException e) {
             LOGGER.warn("Unable to read {}, keeping annotations in memory only", storeFile, e); //$NON-NLS-1$
             return;

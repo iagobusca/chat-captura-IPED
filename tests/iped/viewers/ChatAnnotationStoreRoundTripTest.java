@@ -16,6 +16,7 @@ public final class ChatAnnotationStoreRoundTripTest {
         testFieldMetadataExtraction();
         testJunctionOutputIsRejected();
         testPersistContractAndMalformedUnicodeEscape();
+        testDeeplyNestedJsonStoreIsRejected();
         System.out.println("ChatAnnotationStoreRoundTripTest: PASS");
     }
 
@@ -172,6 +173,22 @@ public final class ChatAnnotationStoreRoundTripTest {
                 "valid 4-hex \\u0041 must still decode to A");
         equal("u12", ChatAnnotationStore.unescape("\\u12"),
                 "truncated \\u escape must not throw or mis-decode");
+    }
+
+    private static void testDeeplyNestedJsonStoreIsRejected() throws Exception {
+        Path deepRoot = Files.createTempDirectory("chat-annotation-deep-json-");
+        try {
+            StringBuilder deep = new StringBuilder();
+            for (int i = 0; i < 80; i++) deep.append("{\"a\":");
+            deep.append("1");
+            for (int i = 0; i < 80; i++) deep.append("}");
+            Files.writeString(deepRoot.resolve(ChatAnnotationStore.FILE_NAME), deep.toString());
+            ChatAnnotationStore store = new ChatAnnotationStore();
+            store.bindOutputRoot(deepRoot);
+            check(store.get("k1", "m1") == null, "deeply nested (>64) chat-annotations.json must be rejected cleanly by load()");
+        } finally {
+            deleteTree(deepRoot);
+        }
     }
 
     private static void equal(Object expected, Object actual, String message) {

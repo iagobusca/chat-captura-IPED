@@ -37,6 +37,7 @@ public final class CaptureIntegrityTest {
             legacyWhatsappHtmlHasCspNoDoubleEscapeAndNoopener();
             attachmentHandlerOpenAndSetSelectedAreNullSafeAndEscaped();
             canonicalJsonEquivalenceAndVerifierHtmlEscaping();
+            specHardeningRegressionChecks();
             System.out.println("CaptureIntegrityTest: PASS");
             javafx.application.Platform.exit();
             System.exit(0);
@@ -721,6 +722,180 @@ public final class CaptureIntegrityTest {
         equal("&lt;img src=x onerror=&#39;alert(1)&#39;&gt;&amp;&quot;",
                 VerifierIntegrity.htmlEscape("<img src=x onerror='alert(1)'>&\""),
                 "VerifierIntegrity.htmlEscape must escape all HTML metacharacters");
+    }
+
+    public interface ThreeArgTestSearcher extends iped.viewers.api.AttachmentSearcher {
+        boolean openItem(String luceneQuery, String highlightTerm, String sourceName);
+    }
+
+    public interface TwoArgTestSearcher extends iped.viewers.api.AttachmentSearcher {
+        boolean openItem(String luceneQuery, String highlightTerm);
+    }
+
+    private static void specHardeningRegressionChecks() throws Exception {
+        // B-04 / F-02: <audio>/<aside>/<abbr> nao podem bloquear ancoras HTML
+        check(!HtmlLinkViewer.isInsideOpenAnchorTag("<audio controls></audio>"),
+                "audio tag must not be treated as open anchor");
+        check(!HtmlLinkViewer.isInsideOpenAnchorTag("<aside>meta</aside><abbr>a</abbr>"),
+                "aside/abbr must not be treated as open anchor");
+        check(HtmlLinkViewer.isInsideOpenAnchorTag("<aside>meta</aside><a href='x'>link"),
+                "open lowercase anchor after aside must be detected");
+        check(!HtmlLinkViewer.isInsideOpenAnchorTag("<A href='x'>link</A><video>"),
+                "closed uppercase anchor must return false");
+        check(HtmlLinkViewer.isInsideOpenAnchorTag("<a\nhref='x'>link"),
+                "newline-separated anchor attribute must be detected");
+
+        // B-05 / S-01: html.disable em labels e areas de texto Swing
+        javax.swing.JComponent shortComp = ChatCapturePanel.plainMessageComponent("<html><b>alert</b>");
+        check(Boolean.TRUE.equals(shortComp.getClientProperty("html.disable")),
+                "short Swing message component must set html.disable=true");
+        javax.swing.JComponent longComp = ChatCapturePanel.plainMessageComponent("<html>\n<b>line2</b>");
+        javax.swing.JComponent textComp = longComp instanceof javax.swing.JScrollPane
+                ? (javax.swing.JComponent) ((javax.swing.JScrollPane) longComp).getViewport().getView()
+                : longComp;
+        check(Boolean.TRUE.equals(textComp.getClientProperty("html.disable")),
+                "multiline Swing message component must set html.disable=true");
+
+        // A-01: invocacao reflexiva segura de AttachmentSearcher.openItem
+        java.lang.reflect.Method openMethod = HtmlLinkViewer.class.getDeclaredMethod(
+                "openSearcherItem", iped.viewers.api.AttachmentSearcher.class, String.class, String.class, String.class);
+        openMethod.setAccessible(true);
+        check(!((Boolean) openMethod.invoke(null, null, "q", null, "src")),
+                "null AttachmentSearcher must return false gracefully");
+
+        final String[] capturedArgs = new String[3];
+        ThreeArgTestSearcher threeArgProxy = (ThreeArgTestSearcher) java.lang.reflect.Proxy.newProxyInstance(
+                ThreeArgTestSearcher.class.getClassLoader(),
+                new Class<?>[] { ThreeArgTestSearcher.class },
+                (proxy, method, args) -> {
+                    if ("openItem".equals(method.getName()) && args != null && args.length == 3) {
+                        capturedArgs[0] = (String) args[0];
+                        capturedArgs[1] = (String) args[1];
+                        capturedArgs[2] = (String) args[2];
+                        return Boolean.TRUE;
+                    }
+                    return null;
+                });
+        check((Boolean) openMethod.invoke(null, threeArgProxy, "hash:1", "hl", "capA"),
+                "3-arg openItem proxy must succeed");
+        equal("hash:1|hl|capA", capturedArgs[0] + "|" + capturedArgs[1] + "|" + capturedArgs[2],
+                "3-arg openItem arguments must match");
+
+        ThreeArgTestSearcher failingProxy = (ThreeArgTestSearcher) java.lang.reflect.Proxy.newProxyInstance(
+                ThreeArgTestSearcher.class.getClassLoader(),
+                new Class<?>[] { ThreeArgTestSearcher.class },
+                (proxy, method, args) -> {
+                    if ("openItem".equals(method.getName())) {
+                        throw new IllegalStateException("simulated searcher failure");
+                    }
+                    return null;
+                });
+        check(!((Boolean) openMethod.invoke(null, failingProxy, "hash:2", null, "capB")),
+                "throwing openItem proxy must degrade gracefully to false");
+
+        // A-03: dispose() libera ExecutorService e Matcher nativo + evita execucao pos-dispose
+        HtmlLinkViewer disposedViewer = createHeadlessViewer();
+        java.lang.reflect.Field disposedField = HtmlLinkViewer.class.getDeclaredField("disposed");
+        disposedField.setAccessible(true);
+        java.lang.reflect.Field execField = HtmlLinkViewer.class.getDeclaredField("uiScriptExecutor");
+        execField.setAccessible(true);
+        java.util.concurrent.ExecutorService uiExec = (java.util.concurrent.ExecutorService) execField.get(disposedViewer);
+        check(!((Boolean) disposedField.get(disposedViewer)), "fresh viewer must not be disposed");
+        check(!uiExec.isShutdown(), "fresh viewer executor must be active");
+        javax.swing.SwingUtilities.invokeAndWait(disposedViewer::dispose);
+        check((Boolean) disposedField.get(disposedViewer), "viewer.dispose() must set disposed=true");
+        check(uiExec.isShutdown(), "viewer.dispose() must shutdown uiScriptExecutor");
+        java.lang.reflect.Method runOffEdt = HtmlLinkViewer.class.getDeclaredMethod("runOffEdtIfNeeded", Runnable.class);
+        runOffEdt.setAccessible(true);
+        runOffEdt.invoke(disposedViewer, (Runnable) () -> { });
+        check(ChatCaptureLinkedWindow.class.getDeclaredMethod("dispose") != null,
+                "ChatCaptureLinkedWindow must override dispose()");
+
+        // B-03 / F-01: cabecalho HTML com tabela/headings/dir/data-* seguros e bloqueio de MIME inseguro
+        java.lang.reflect.Method validateHeader = HtmlLinkViewer.class.getDeclaredMethod("validateCaptureHeaderHtml", String.class);
+        validateHeader.setAccessible(true);
+        String safeHeaderInput = "<div id=\"capture-topbar\" dir=\"rtl\" lang=\"pt-BR\" data-iped-role=\"hdr\">"
+                + "<h3>Titulo</h3><table><tbody><tr><th colspan=\"2\" width=\"120\">Cab</th>"
+                + "<td rowspan=\"1\" height=\"24\" data-role=\"c\"><em><u>Ok</u></em><hr></td></tr></tbody></table></div>";
+        String renderedHeader = (String) validateHeader.invoke(null, safeHeaderInput);
+        check(renderedHeader.contains("dir=\"rtl\"") && renderedHeader.contains("colspan=\"2\"")
+                && renderedHeader.contains("data-iped-role=\"hdr\""),
+                "safe header structural attributes must survive sanitization");
+
+        String[] badHeaders = {
+            "<div id=\"capture-topbar\" data-capture-link-token=\"x\">a</div>",
+            "<div id=\"capture-topbar\" width=\"50\">a</div>",
+            "<div id=\"capture-topbar\"><img src=\"data:image/svg+xml;base64,PHN2Zz4=\"></div>"
+        };
+        for (String badHeader : badHeaders) {
+            boolean rejected = false;
+            try {
+                validateHeader.invoke(null, badHeader);
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                if (ite.getCause() instanceof java.io.IOException) {
+                    rejected = true;
+                } else {
+                    throw ite;
+                }
+            }
+            check(rejected, "unsafe header HTML must be rejected: " + badHeader);
+        }
+
+        // B-06 / S-02: constante de limite de referencias OpenCV
+        Class<?> matcherClass = Class.forName("iped.viewers.HtmlLinkViewer$SensitiveImageMatcher");
+        java.lang.reflect.Field maxRefsField = matcherClass.getDeclaredField("MAX_REFERENCE_IMAGES");
+        maxRefsField.setAccessible(true);
+        equal(512, maxRefsField.getInt(null), "SensitiveImageMatcher.MAX_REFERENCE_IMAGES must be 512");
+
+        // B-07 / S-03: safeRegularFileSize e listRegularFilesSafe bloqueiam juncao na raiz
+        Path root = Files.createTempDirectory("capture-spec-hardening-");
+        try {
+            final ChatCaptureLinkedWindow[] winHolder = new ChatCaptureLinkedWindow[1];
+            javax.swing.SwingUtilities.invokeAndWait(() -> {
+                winHolder[0] = new ChatCaptureLinkedWindow(null, null, null, "Test", root.toFile(), "linked");
+            });
+            java.lang.reflect.Field linkedViewerField = ChatCaptureLinkedWindow.class.getDeclaredField("linkedViewer");
+            linkedViewerField.setAccessible(true);
+            HtmlLinkViewer winInnerViewer = (HtmlLinkViewer) linkedViewerField.get(winHolder[0]);
+            java.util.concurrent.ExecutorService winExec = (java.util.concurrent.ExecutorService) execField.get(winInnerViewer);
+            check(!winExec.isShutdown(), "linked window viewer executor must be active before dispose");
+            javax.swing.SwingUtilities.invokeAndWait(() -> winHolder[0].dispose());
+            check(winExec.isShutdown(), "ChatCaptureLinkedWindow.dispose() must shutdown inner HtmlLinkViewer executor");
+            Path regular = Files.write(root.resolve("sample.bin"), "hello-bytes".getBytes(StandardCharsets.UTF_8));
+            equal(11L, CaptureIntegrity.safeRegularFileSize(regular), "safeRegularFileSize must return byte length");
+            if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+                Path outside = Files.createDirectories(root.resolve("outside"));
+                Path junction = Files.createTempDirectory("capture-root-junction-");
+                Files.delete(junction);
+                Process p = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
+                        junction.toAbsolutePath().toString(), outside.toAbsolutePath().toString())
+                        .redirectErrorStream(true).start();
+                if (p.waitFor() != 0) {
+                    throw new AssertionError("mklink /J failed in specHardeningRegressionChecks");
+                }
+                try {
+                    boolean rejectedList = false;
+                    try {
+                        CaptureIntegrity.listRegularFilesSafe(junction, 100);
+                    } catch (java.io.IOException expected) {
+                        rejectedList = true;
+                    }
+                    check(rejectedList, "listRegularFilesSafe must reject root NTFS junction");
+
+                    boolean rejectedSize = false;
+                    try {
+                        CaptureIntegrity.safeRegularFileSize(junction);
+                    } catch (java.io.IOException expected) {
+                        rejectedSize = true;
+                    }
+                    check(rejectedSize, "safeRegularFileSize must reject NTFS junction");
+                } finally {
+                    Files.deleteIfExists(junction);
+                }
+            }
+        } finally {
+            deleteTree(root);
+        }
     }
 
     private static void deleteTree(Path root) throws Exception {

@@ -15,6 +15,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $python (Join-Path $PSScriptRoot 'test_html_censorship_contract.py')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $python (Join-Path $PSScriptRoot 'test_fase4_spec_validation.py')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $repo 'tests\resolve_test_env.ps1')
 $jdk8Home = Resolve-JdkHome -EnvNames @('JAVA8_HOME', 'JAVA_HOME') -MajorVersions @(8) -RequiredTool 'bin\javac.exe'

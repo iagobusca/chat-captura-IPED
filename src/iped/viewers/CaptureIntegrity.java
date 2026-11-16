@@ -39,9 +39,12 @@ final class CaptureIntegrity {
     }
 
     static String sha256(Path file) throws IOException {
+        if (file == null || isLinkOrReparse(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Invalid or non-regular file for SHA-256: " + file);
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
-            try (InputStream input = new BufferedInputStream(Files.newInputStream(file))) {
+            try (InputStream input = new BufferedInputStream(Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS))) {
                 byte[] buffer = new byte[16384];
                 int count;
                 while ((count = input.read(buffer)) >= 0) {
@@ -134,6 +137,9 @@ final class CaptureIntegrity {
 
     static List<Path> listRegularFilesSafe(Path rootPath, int maxFiles) throws IOException {
         Path root = rootPath.toAbsolutePath().normalize();
+        if (isLinkOrReparse(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Symbolic links or junctions are not allowed as capture root: " + root);
+        }
         Path realRoot = root.toRealPath();
         List<Path> files = new ArrayList<>();
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
@@ -193,7 +199,7 @@ final class CaptureIntegrity {
         for (Path file : files) {
             inventory.put(new JSONObject()
                     .put("path", relative(root, file))
-                    .put("size", Files.size(file))
+                    .put("size", safeRegularFileSize(file))
                     .put("sha256", sha256(file)));
         }
         return inventory;
@@ -207,7 +213,10 @@ final class CaptureIntegrity {
         if (maxBytes <= 0 || maxBytes > MAX_HTML_CAPTURE_BYTES) {
             throw new IllegalArgumentException("Invalid UTF-8 read limit: " + maxBytes);
         }
-        long size = Files.size(path);
+        if (path == null || isLinkOrReparse(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Invalid or non-regular metadata file: " + path);
+        }
+        long size = safeRegularFileSize(path);
         if (size > maxBytes) {
             throw new IOException("JSON metadata exceeds the limit of " + maxBytes + " bytes: " + path);
         }
@@ -457,6 +466,17 @@ final class CaptureIntegrity {
         return resolved;
     }
 
+    static long safeRegularFileSize(Path path) throws IOException {
+        if (path == null) {
+            throw new IOException("Null file path");
+        }
+        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (attrs.isSymbolicLink() || attrs.isOther() || !attrs.isRegularFile()) {
+            throw new IOException("Symbolic links or junctions are not allowed: " + path);
+        }
+        return attrs.size();
+    }
+
     static void appendAudit(Path captureRoot, JSONObject event) throws IOException {
         Path root = captureRoot.toAbsolutePath().normalize();
         createDirectoriesSafe(root, root);
@@ -471,7 +491,7 @@ final class CaptureIntegrity {
             throw new IOException("Audit log path is not a regular file");
         }
         byte[] encoded = (record.toString() + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
-        long currentSize = Files.exists(log, LinkOption.NOFOLLOW_LINKS) ? Files.size(log) : 0L;
+        long currentSize = Files.exists(log, LinkOption.NOFOLLOW_LINKS) ? safeRegularFileSize(log) : 0L;
         if (currentSize + encoded.length > MAX_AUDIT_BYTES) {
             throw new IOException("Cumulative recapture audit exceeds the " + MAX_AUDIT_BYTES + " byte limit");
         }

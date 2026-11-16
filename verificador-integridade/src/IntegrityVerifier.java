@@ -35,16 +35,31 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.4.3";
+    private static final String VERIFIER_VERSION = "1.4.4";
+    private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
-    private static final Pattern HTML_TAG_PATTERN = Pattern.compile("(?is)<([a-z][a-z0-9]*)\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
-    private static final Pattern HTML_META_TAG_PATTERN = Pattern.compile("(?is)<meta\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>");
-    private static final Pattern HTML_SCRIPT_ELEMENT_PATTERN = Pattern.compile("(?is)<script\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>(.*?)</script\\s*>");
-    private static final Pattern HTML_STYLE_ELEMENT_PATTERN = Pattern.compile("(?is)<style\\b((?:\"[^\"]*\"|'[^']*'|[^'\">])*)>(.*?)</style\\s*>");
+    private static final class HtmlElementToken {
+        final String tag;
+        final boolean closing;
+        final Map<String, String> attrs;
+        final int start;
+        final int end;
+        final String body;
+        HtmlElementToken(String tag, boolean closing, Map<String, String> attrs, int start, int end, String body) {
+            this.tag = tag;
+            this.closing = closing;
+            this.attrs = attrs;
+            this.start = start;
+            this.end = end;
+            this.body = body;
+        }
+    }
     private static final Map<String, Set<String>> ALLOWED_HTML_ATTRIBUTES = buildAllowedHtmlAttributes();
 
     private static Map<String, Set<String>> buildAllowedHtmlAttributes() {
         Map<String, Set<String>> map = new HashMap<>();
+        Set<String> passiveAttrs = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title", "dir", "lang")));
+        Set<String> cellAttrs = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title", "dir", "lang", "colspan", "rowspan", "width", "height")));
         map.put("html", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("lang"))));
         map.put("head", Collections.emptySet());
         map.put("title", Collections.emptySet());
@@ -53,23 +68,50 @@ public final class IntegrityVerifier {
         map.put("nav", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
         map.put("section", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "role", "aria-modal", "aria-labelledby"))));
         map.put("aside", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
-        map.put("h2", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id"))));
-        map.put("div", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "title", "data-capture-message-key", "data-iped-capture-date", "data-time", "data-src1", "data-src2"))));
-        map.put("span", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title", "data-iped-capture-date", "data-time"))));
-        map.put("p", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class"))));
-        map.put("strong", Collections.emptySet());
-        map.put("small", Collections.emptySet());
-        map.put("b", Collections.emptySet());
-        map.put("i", Collections.emptySet());
+        map.put("h1", passiveAttrs);
+        map.put("h2", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "title", "dir", "lang"))));
+        map.put("h3", passiveAttrs);
+        map.put("h4", passiveAttrs);
+        map.put("h5", passiveAttrs);
+        map.put("h6", passiveAttrs);
+        map.put("div", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "class", "title", "dir", "lang", "data-capture-message-key", "data-iped-capture-date", "data-time", "data-src1", "data-src2"))));
+        map.put("span", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title", "dir", "lang", "data-iped-capture-date", "data-time"))));
+        map.put("p", passiveAttrs);
+        map.put("strong", passiveAttrs);
+        map.put("small", passiveAttrs);
+        map.put("b", passiveAttrs);
+        map.put("i", passiveAttrs);
+        map.put("em", passiveAttrs);
+        map.put("u", passiveAttrs);
         map.put("br", Collections.emptySet());
+        map.put("hr", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("class", "title"))));
         map.put("ul", Collections.emptySet());
         map.put("li", Collections.emptySet());
+        map.put("table", passiveAttrs);
+        map.put("tbody", passiveAttrs);
+        map.put("tr", passiveAttrs);
+        map.put("td", cellAttrs);
+        map.put("th", cellAttrs);
         map.put("a", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("href", "class", "title", "download", "target", "rel", "aria-label", "data-capture-censored"))));
-        map.put("img", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "alt", "title", "width", "height", "data-capture-censored"))));
+        map.put("img", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "alt", "title", "dir", "lang", "width", "height", "data-capture-censored"))));
         map.put("audio", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "controls", "preload"))));
         map.put("video", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "controls", "preload", "width", "height"))));
         map.put("iframe", Collections.unmodifiableSet(new HashSet<>(Arrays.asList("src", "class", "title", "sandbox"))));
         return Collections.unmodifiableMap(map);
+    }
+
+    private static final Set<String> PASSIVE_DATA_ATTR_TAGS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "div", "span", "p", "b", "strong", "i", "em", "u", "small", "h1", "h2", "h3", "h4", "h5", "h6",
+            "table", "tbody", "tr", "td", "th")));
+
+    private static boolean isAllowedSafeDataAttr(String tag, String attr) {
+        if (!PASSIVE_DATA_ATTR_TAGS.contains(tag) || attr == null || !attr.matches("data-[a-z0-9_-]{1,64}")) {
+            return false;
+        }
+        return !"data-capture-link-token".equals(attr)
+                && !"data-capture-src-token".equals(attr)
+                && !"data-capture-censored".equals(attr)
+                && (!"data-capture-message-key".equals(attr) || "div".equals(tag));
     }
     private static final String CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}var returnX=0,returnY=0,restorePending=false;function isPreview(){return location.hash.indexOf('#preview-')===0;}document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-media-link'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-media-link')&&(n.getAttribute('href')||'').indexOf('#preview-')===0){returnX=window.pageXOffset||0;returnY=window.pageYOffset||0;restorePending=true;}var c=e.target;while(c&&c!==document&&!c.classList.contains('capture-close')&&!c.classList.contains('capture-close-icon'))c=c.parentNode;if(c&&c.classList&& (c.classList.contains('capture-close')||c.classList.contains('capture-close-icon'))&&isPreview())stop();},true);window.addEventListener('hashchange',function(){if(!isPreview()){stop();if(restorePending){var x=returnX,y=returnY;restorePending=false;window.requestAnimationFrame(function(){window.scrollTo(x,y);});}}});})();";
     private static final String LEGACY_CAPTURE_MEDIA_STOP_SCRIPT = "(function(){function stop(){document.querySelectorAll('.capture-modal audio,.capture-modal video').forEach(function(m){try{m.pause();m.currentTime=0;}catch(e){}});}window.addEventListener('hashchange',function(){if(location.hash.indexOf('#preview-')!==0)stop();});document.addEventListener('click',function(e){var n=e.target;while(n&&n!==document&&!n.classList.contains('capture-close'))n=n.parentNode;if(n&&n.classList&&n.classList.contains('capture-close'))stop();});})();";
@@ -81,8 +123,6 @@ public final class IntegrityVerifier {
     private static final int MAX_JSON_DEPTH = 64;
     private static final int MAX_CAPTURE_CANDIDATES = 10000;
     private static final long MAX_SELECTED_ITEMS = 25000L;
-    private static final long MAX_SELECTED_METADATA_BYTES = 32L * 1024L * 1024L;
-    private static final long MAX_REPORT_ESTIMATED_CHARS = 4L * 1024L * 1024L;
     private static final long MAX_HTML_CAPTURE_BYTES = 64L * 1024L * 1024L;
     private static Image verifierIcon() {
         try {
@@ -122,8 +162,9 @@ public final class IntegrityVerifier {
         return frame;
     }
     private static void showTopMessage(Component parent, Object message, String title, int messageType) {
+        final Object safeMessage = message instanceof String ? plainMessageComponent((String) message) : message;
         Runnable display = () -> {
-            JOptionPane pane = new JOptionPane(message, messageType);
+            JOptionPane pane = new JOptionPane(safeMessage, messageType);
             Window owner = parent instanceof Window ? (Window) parent
                     : (parent == null ? null : SwingUtilities.getWindowAncestor(parent));
             JDialog dialog = pane.createDialog(owner, title);
@@ -156,6 +197,31 @@ public final class IntegrityVerifier {
         JCheckBox box = new JCheckBox(text, selected);
         box.putClientProperty("html.disable", Boolean.TRUE);
         return box;
+    }
+
+    static JComponent plainMessageComponent(String text) {
+        String safe = text == null ? "" : text;
+        if (!safe.contains("\n") && safe.length() <= 140) {
+            return plainLabel(safe);
+        }
+        JTextArea area = new JTextArea(safe);
+        area.putClientProperty("html.disable", Boolean.TRUE);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setOpaque(false);
+        area.setColumns(52);
+        int lines = 1;
+        for (int i = 0; i < safe.length(); i++) {
+            if (safe.charAt(i) == '\n') lines++;
+        }
+        area.setRows(Math.min(18, Math.max(2, lines + (safe.length() / 64))));
+        if (lines <= 8 && safe.length() <= 500) {
+            return area;
+        }
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(560, 260));
+        return scroll;
     }
 
     private static boolean isConsistentLocalHistoryStatus(String historyStatus) {
@@ -556,7 +622,7 @@ public final class IntegrityVerifier {
         try{return workerRef[0].get();}catch(CancellationException e){return null;}catch(ExecutionException e){Throwable cause=e.getCause();if(cause instanceof Exception)throw (Exception)cause;throw new IOException("Falha durante a busca de capturas.",cause);}
     }
     private static long candidateMetadataBytes(Capture c) throws IOException {
-        long total=0;for(String name:new String[]{"integridade.json","manifest.json"}){Path p=c.dir.resolve(name);if(Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)){long size=Files.size(p);if(size>MAX_METADATA_BYTES)throw new IOException("Arquivo de metadados excede o limite: "+p);total+=size;}}
+        long total=0;for(String name:new String[]{"integridade.json","manifest.json"}){Path p=c.dir.resolve(name);if(Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)){long size=safeRegularFileSize(p);if(size>MAX_METADATA_BYTES)throw new IOException("Arquivo de metadados excede o limite: "+p);total+=size;}}
         return total;
     }
     private static void verifyAllBounded(List<Capture> captures) throws Exception { verifyAllBounded(captures, null, null); }
@@ -632,20 +698,36 @@ public final class IntegrityVerifier {
     }
     private static Path applicationFolder() throws Exception {
         Path location=Paths.get(IntegrityVerifier.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toAbsolutePath().normalize();
-        Path start=Files.isRegularFile(location)?location.getParent():location;
-        for(Path p=start;p!=null;p=p.getParent())if(Files.isRegularFile(p.resolve("index.html")))return p;
+        Path start=Files.isRegularFile(location,LinkOption.NOFOLLOW_LINKS)?location.getParent():location;
+        for(Path p=start;p!=null;p=p.getParent())if(Files.isRegularFile(p.resolve("index.html"),LinkOption.NOFOLLOW_LINKS))return p;
         return start;
     }
     private static void openInBrowser(Component owner,Path html) {
         try {
-            if (!Files.isRegularFile(html)) throw new IOException("O relatório HTML não foi encontrado: " + html);
+            if (html == null || isLinkOrReparse(html) || !Files.isRegularFile(html, LinkOption.NOFOLLOW_LINKS)) throw new IOException("O relatório HTML não foi encontrado ou é inválido: " + html);
             if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) throw new IOException("Este sistema não disponibilizou a abertura do navegador padrão.");
             Desktop.getDesktop().browse(html.toUri());
         } catch (Exception e) {
             showTopMessage(owner, "Não foi possível abrir o navegador padrão. Abra este arquivo manualmente:\n" + html + "\n\nDetalhe: " + e.getMessage(), "Abrir relatório", JOptionPane.ERROR_MESSAGE);
         }
     }
-    private static void openFile(Component owner,Path file) { try { if(!Desktop.isDesktopSupported())throw new IOException("A abertura de arquivos não está disponível.");Desktop.getDesktop().open(file.toFile()); } catch(Exception e){showTopMessage(owner,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);} }
+    /** Validates that a local report/history file is a regular file with no symlink/reparse component before opening. */
+    private static void validateOpenableRegularFile(Path file) throws IOException {
+        if (file == null || isLinkOrReparse(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("O arquivo não foi encontrado ou é inválido: " + file);
+        }
+        Path parent = file.getParent();
+        if (parent != null && isLinkOrReparse(parent)) {
+            throw new IOException("Link simbólico ou junção não permitido no caminho do arquivo: " + parent);
+        }
+    }
+    private static void openFile(Component owner,Path file) {
+        try {
+            validateOpenableRegularFile(file);
+            if(!Desktop.isDesktopSupported()||!Desktop.getDesktop().isSupported(Desktop.Action.OPEN))throw new IOException("A abertura de arquivos não está disponível.");
+            Desktop.getDesktop().open(file.toFile());
+        } catch(Exception e){showTopMessage(owner,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);}
+    }
     static String classifyPublicHashMatch(String supplied, String localFullHash, String localPublicHash) {
         String trimmed = supplied == null ? "" : supplied.trim();
         if (trimmed.isEmpty()) return "EMPTY";
@@ -829,7 +911,7 @@ public final class IntegrityVerifier {
     private static List<Capture> discover(Path root,IntConsumer progress) throws IOException {
         validateRootDirectory(root);
         List<Capture> out=new ArrayList<>();
-        try(java.util.stream.Stream<Path> s=Files.list(root)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(p))continue;String n=p.getFileName().toString();if(isIgnoredCaptureDirectoryName(n))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
+        try(java.util.stream.Stream<Path> s=Files.list(root).limit(MAX_SCAN_ENTRIES + 1L)) {java.util.Iterator<Path> it=s.iterator();long scanned=0;while(it.hasNext()){if(Thread.currentThread().isInterrupted())throw new CancellationException("Busca cancelada");Path p=it.next();scanned++;if(scanned>MAX_SCAN_ENTRIES)throw new IOException("A pasta excede o limite de "+MAX_SCAN_ENTRIES+" entradas escaneadas; a busca foi interrompida.");if(!Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(p))continue;String n=p.getFileName().toString();if(isIgnoredCaptureDirectoryName(n))continue;if(Files.isRegularFile(p.resolve("manifest.json"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("whatsapp.html"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("relatorio.htm"),LinkOption.NOFOLLOW_LINKS)||Files.isRegularFile(p.resolve("texto.txt"),LinkOption.NOFOLLOW_LINKS)){if(out.size()>=MAX_CAPTURE_CANDIDATES)throw new IOException("A pasta excede o limite de "+MAX_CAPTURE_CANDIDATES+" capturas candidatas; a busca foi interrompida.");Capture c=new Capture();c.dir=p;c.name=n;out.add(c);if(progress!=null&&out.size()%100==0)progress.accept(out.size());}}if(progress!=null)progress.accept(out.size());}
         out.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT))); return out;
     }
     private static List<Capture> chooseCaptures(List<Capture> captures) throws Exception {
@@ -1036,7 +1118,7 @@ public final class IntegrityVerifier {
         }
         for(Item i:expected.values()){
             Path f=resolve(c.dir,i.path);if(f==null||!Files.isRegularFile(f,LinkOption.NOFOLLOW_LINKS)){i.state="ausente/invalid_path";c.items.add(i);continue;}
-            i.actual=hash(f);i.bytes=Files.size(f);i.state=i.expected.equalsIgnoreCase(i.actual)&&i.size==i.bytes?"integro":"alterado";c.items.add(i);
+            i.actual=hash(f);i.bytes=safeRegularFileSize(f);i.state=i.expected.equalsIgnoreCase(i.actual)&&i.size==i.bytes?"integro":"alterado";c.items.add(i);
         }
         Set<String> seen=expected.keySet();
         // Must match HtmlLinkViewer.calculateFolderHash: all regular files, including
@@ -1047,7 +1129,7 @@ public final class IntegrityVerifier {
         if((long)expected.size()+extraCount>maxItemsAllowed)throw new IOException("O limite global de itens selecionados foi excedido antes de montar os resultados.");
         allFiles.sort(Comparator.comparing(p->c.dir.relativize(p).toString().replace('\\','/').toLowerCase(Locale.ROOT)));
         MessageDigest canonical=MessageDigest.getInstance(ALG);
-        for(Path f:allFiles){String rel=c.dir.relativize(f).toString().replace('\\','/');long size=Files.size(f);String sha=hash(f);String line=rel+'|'+size+'|'+sha+'\n';canonical.update(line.getBytes(StandardCharsets.UTF_8));c.bytes+=size;c.fileCount++;if(!rel.equals("manifest.json")&&!rel.equals("integridade.json")&&!rel.equals("reextracao-auditoria.jsonl")&&!seen.contains(rel)){Item x=new Item();x.path=rel;x.actual=sha;x.bytes=size;x.state="extra";c.items.add(x);}}
+        for(Path f:allFiles){String rel=c.dir.relativize(f).toString().replace('\\','/');long size=safeRegularFileSize(f);String sha=hash(f);String line=rel+'|'+size+'|'+sha+'\n';canonical.update(line.getBytes(StandardCharsets.UTF_8));c.bytes+=size;c.fileCount++;if(!rel.equals("manifest.json")&&!rel.equals("integridade.json")&&!rel.equals("reextracao-auditoria.jsonl")&&!seen.contains(rel)){Item x=new Item();x.path=rel;x.actual=sha;x.bytes=size;x.state="extra";c.items.add(x);}}
         c.hash=hex(canonical.digest());
         c.items.sort(Comparator.comparing(i->i.path));
         if(extraCount>0){
@@ -1087,7 +1169,7 @@ public final class IntegrityVerifier {
         String migrationSha=manifest.optString("migrationSha256","");
         if(!"migration.json".equals(migrationFile)||!migrationSha.matches("(?i)[0-9a-f]{64}")
                 ||migrationPath==null||!Files.isRegularFile(migrationPath,LinkOption.NOFOLLOW_LINKS)
-                ||Files.size(migrationPath)>MAX_METADATA_BYTES||!hash(migrationPath).equalsIgnoreCase(migrationSha))
+                ||safeRegularFileSize(migrationPath)>MAX_METADATA_BYTES||!hash(migrationPath).equalsIgnoreCase(migrationSha))
             throw new IOException("Arquivo migration.json ausente ou divergente do manifesto.");
         JSONObject migrationFileJson=parseBoundedJson(readUtf8Limited(migrationPath),migrationPath);
         if(migrationFileJson.optInt("schemaVersion",0)!=1||!migration.keySet().equals(migrationFileJson.keySet()))
@@ -1101,7 +1183,7 @@ public final class IntegrityVerifier {
 
         JSONArray artifacts=integrity.optJSONArray("artifacts");
         JSONObject migrationEntry=findIntegrityArtifact(artifacts,"migration.json");
-        if(migrationEntry==null||migrationEntry.optLong("size",-1)!=Files.size(migrationPath)
+        if(migrationEntry==null||migrationEntry.optLong("size",-1)!=safeRegularFileSize(migrationPath)
                 ||!migrationEntry.optString("sha256","").equalsIgnoreCase(hash(migrationPath)))
             throw new IOException("migration.json não está vinculado ao inventário da cadeia local de integridade.");
         addIntegrityArtifactItem(c,"migration.json",migrationEntry,"registro de migração íntegro");
@@ -1110,10 +1192,10 @@ public final class IntegrityVerifier {
         boolean annotationsExist=annotationsPath!=null&&Files.isRegularFile(annotationsPath,LinkOption.NOFOLLOW_LINKS);
         if(annotationsPreserved!=annotationsExist)throw new IOException("Arquivo de anotações legadas diverge dos metadados da migração.");
         if(annotationsPreserved){
-            if(Files.size(annotationsPath)>MAX_METADATA_BYTES)throw new IOException("Anotações legadas excedem o limite de metadados.");
+            if(safeRegularFileSize(annotationsPath)>MAX_METADATA_BYTES)throw new IOException("Anotações legadas excedem o limite de metadados.");
             parseBoundedJson(readUtf8Limited(annotationsPath),annotationsPath);
             JSONObject annotationEntry=findIntegrityArtifact(artifacts,"legacy-annotations.json");
-            if(annotationEntry==null||annotationEntry.optLong("size",-1)!=Files.size(annotationsPath)
+            if(annotationEntry==null||annotationEntry.optLong("size",-1)!=safeRegularFileSize(annotationsPath)
                     ||!annotationEntry.optString("sha256","").equalsIgnoreCase(hash(annotationsPath)))
                 throw new IOException("legacy-annotations.json não está vinculado à cadeia local de integridade.");
             addIntegrityArtifactItem(c,"legacy-annotations.json",annotationEntry,"anotações legadas preservadas");
@@ -1121,7 +1203,7 @@ public final class IntegrityVerifier {
             throw new IOException("Inventário declara anotações legadas que o manifesto não marcou como preservadas.");
         }
         c.fileCount+=(annotationsPreserved?2:1);
-        c.bytes+=Files.size(migrationPath)+(annotationsPreserved?Files.size(annotationsPath):0);
+        c.bytes+=safeRegularFileSize(migrationPath)+(annotationsPreserved?safeRegularFileSize(annotationsPath):0);
         if(c.fileCount>MAX_CAPTURE_FILES||c.bytes>MAX_HTML_CAPTURE_BYTES)
             throw new IOException("Artefatos de migração excedem os limites totais da captura.");
     }
@@ -1137,7 +1219,7 @@ public final class IntegrityVerifier {
     private static void addIntegrityArtifactItem(Capture c,String path,JSONObject expected,String state)throws Exception{
         Item item=new Item();item.path=path;item.expected=expected.optString("sha256","");item.size=expected.optLong("size",-1);
         Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS))throw new IOException("Artefato local ausente: "+path);
-        item.actual=hash(file);item.bytes=Files.size(file);item.state=item.actual.equalsIgnoreCase(item.expected)&&item.bytes==item.size?state:"alterado";c.items.add(item);
+        item.actual=hash(file);item.bytes=safeRegularFileSize(file);item.state=item.actual.equalsIgnoreCase(item.expected)&&item.bytes==item.size?state:"alterado";c.items.add(item);
     }
 
     private static void verifyMessageCapture(Capture c,JSONObject manifest) throws Exception {
@@ -1165,7 +1247,7 @@ public final class IntegrityVerifier {
                 JSONObject attachment=attachments.optJSONObject(i);if(attachment==null)throw new IOException("Anexo inválido na mensagem "+id);
                 String path=attachment.optString("path",""),mime=attachment.optString("mime",""),sha=attachment.optString("sha256","");long size=attachment.optLong("size",-1);
                 if(!path.matches("attachments/[0-9a-fA-F]{64}\\.(?:png|jpe?g|gif|webp|ogg|wav|mp3|mp4|webm|pdf|zip|docx|xlsx|pptx|doc|xls|ppt|txt|csv|rar|7z|bin)")||!mime.matches("(?i)(?:image/(?:png|jpeg|gif|webp)|audio/(?:ogg|wav|mpeg)|video/(?:mp4|webm)|application/(?:pdf|zip|msword|vnd\\.ms-(?:excel|powerpoint)|vnd\\.openxmlformats-officedocument\\.(?:wordprocessingml\\.document|spreadsheetml\\.sheet|presentationml\\.presentation)|vnd\\.rar|x-7z-compressed|octet-stream)|text/(?:plain|csv))")||!sha.matches("(?i)[0-9a-f]{64}")||!path.substring("attachments/".length()).split("\\.",2)[0].equalsIgnoreCase(sha)||size<1||size>MAX_METADATA_BYTES)throw new IOException("Metadado de anexo inválido na mensagem "+id);
-                Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)!=size||!hash(file).equalsIgnoreCase(sha)||!mimeSignatureMatches(mime,file))throw new IOException("Anexo divergente ou MIME incompatível na mensagem "+id+": "+path);
+                Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||safeRegularFileSize(file)!=size||!hash(file).equalsIgnoreCase(sha)||!mimeSignatureMatches(mime,file))throw new IOException("Anexo divergente ou MIME incompatível na mensagem "+id+": "+path);
                 String oldMime=attachmentMimeByPath.putIfAbsent(path,mime);if(oldMime!=null&&!oldMime.equalsIgnoreCase(mime))throw new IOException("Um mesmo anexo possui MIME divergente entre mensagens: "+path);
                 if(attachmentPaths.add(path)){attachmentBytes+=size;if(attachmentBytes>MAX_METADATA_BYTES*4L)throw new IOException("Anexos da captura excedem o orçamento seguro.");Item attachmentItem=new Item();attachmentItem.path=path;attachmentItem.expected=sha;attachmentItem.actual=sha;attachmentItem.bytes=size;attachmentItem.state="anexo íntegro";c.items.add(attachmentItem);}
             }
@@ -1177,15 +1259,15 @@ public final class IntegrityVerifier {
         if((long)messages.length()+attachmentPaths.size()>MAX_SELECTED_ITEMS)throw new IOException("Mensagens e anexos excedem o limite global de itens.");
         JSONArray publicHashes=manifest.optJSONArray("messageHashes");if(publicHashes==null||publicHashes.length()!=messages.length())throw new IOException("Resumo público de hashes por mensagem ausente ou divergente.");for(int i=0;i<messages.length();i++){JSONObject summary=publicHashes.optJSONObject(i),message=messages.getJSONObject(i);if(summary==null||!summary.optString("domId","").equals(message.optString("domId"))||!summary.optString("key","").equals(message.optString("key"))||!summary.optString("messageHash","").equalsIgnoreCase(message.optString("messageHash")))throw new IOException("Resumo público de hash diverge da mensagem "+message.optString("domId"));}
         Path htmlPath=resolve(c.dir,"whatsapp.html");if(htmlPath==null||!Files.isRegularFile(htmlPath,LinkOption.NOFOLLOW_LINKS))throw new IOException("HTML da captura não encontrado.");
-        if(Files.size(htmlPath)>MAX_HTML_CAPTURE_BYTES)throw new IOException("HTML da captura excede o limite de leitura segura.");
+        if(safeRegularFileSize(htmlPath)>MAX_HTML_CAPTURE_BYTES)throw new IOException("HTML da captura excede o limite de leitura segura.");
         String html=readUtf8Limited(htmlPath,MAX_HTML_CAPTURE_BYTES);String htmlSha=manifest.optString("htmlSha256","");if(!htmlSha.matches("(?i)[0-9a-f]{64}")||!hash(htmlPath).equalsIgnoreCase(htmlSha))throw new IOException("Hash do HTML ausente ou divergente.");
         validateRenderedCaptureHtml(html,attachmentPaths,attachmentMimeByPath,keys,manifest.optInt("presentationVersion",0));
-        String annotationsSha=manifest.optString("annotationsSha256","");if(!annotationsSha.isEmpty()){if(!annotationsSha.matches("(?i)[0-9a-f]{64}"))throw new IOException("Hash de anotações inválido.");Path annotationPath=resolve(c.dir,"annotations.json");if(annotationPath==null||!Files.isRegularFile(annotationPath,LinkOption.NOFOLLOW_LINKS)||Files.size(annotationPath)>MAX_METADATA_BYTES||!hash(annotationPath).equalsIgnoreCase(annotationsSha))throw new IOException("Arquivo de anotações ausente, excessivo ou divergente.");parseBoundedJson(readUtf8Limited(annotationPath),annotationPath);Item annotationsItem=new Item();annotationsItem.path="annotations.json";annotationsItem.expected=annotationsSha;annotationsItem.actual=annotationsSha;annotationsItem.bytes=Files.size(annotationPath);annotationsItem.state="anotações íntegras";c.items.add(annotationsItem);}else if(Files.exists(c.dir.resolve("annotations.json"),LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo de anotações sem hash no manifesto.");
+        String annotationsSha=manifest.optString("annotationsSha256","");if(!annotationsSha.isEmpty()){if(!annotationsSha.matches("(?i)[0-9a-f]{64}"))throw new IOException("Hash de anotações inválido.");Path annotationPath=resolve(c.dir,"annotations.json");if(annotationPath==null||!Files.isRegularFile(annotationPath,LinkOption.NOFOLLOW_LINKS)||safeRegularFileSize(annotationPath)>MAX_METADATA_BYTES||!hash(annotationPath).equalsIgnoreCase(annotationsSha))throw new IOException("Arquivo de anotações ausente, excessivo ou divergente.");parseBoundedJson(readUtf8Limited(annotationPath),annotationPath);Item annotationsItem=new Item();annotationsItem.path="annotations.json";annotationsItem.expected=annotationsSha;annotationsItem.actual=annotationsSha;annotationsItem.bytes=safeRegularFileSize(annotationPath);annotationsItem.state="anotações íntegras";c.items.add(annotationsItem);}else if(Files.exists(c.dir.resolve("annotations.json"),LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo de anotações sem hash no manifesto.");
         String reconciliationSha=manifest.optString("reconciliationSha256","");
         Map<String,String> reconciliationStates=verifyMessageReconciliation(c,manifest,currentMessages,reconciliationSha);
         for(Item item:c.items){if(item.path.startsWith("mensagem:")){String id=item.path.substring("mensagem:".length());String state=reconciliationStates.get(id);if(state!=null)item.state=state;}}
         c.hash=htmlCaptureRootHash(messages,htmlSha,annotationsSha,reconciliationSha,manifest);
-        c.items.sort(Comparator.comparing(i->i.path));c.fileCount=messages.length()+attachmentPaths.size()+2+(annotationsSha.isEmpty()?0:1)+(reconciliationSha.isEmpty()?0:1);c.bytes=Files.size(htmlPath)+Files.size(messagesPath)+Files.size(c.dir.resolve("manifest.json"))+attachmentBytes+(annotationsSha.isEmpty()?0:Files.size(c.dir.resolve("annotations.json")))+(reconciliationSha.isEmpty()?0:Files.size(c.dir.resolve("message-reconciliation.json")));if(c.bytes>MAX_HTML_CAPTURE_BYTES||c.fileCount>MAX_CAPTURE_FILES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
+        c.items.sort(Comparator.comparing(i->i.path));c.fileCount=messages.length()+attachmentPaths.size()+2+(annotationsSha.isEmpty()?0:1)+(reconciliationSha.isEmpty()?0:1);c.bytes=safeRegularFileSize(htmlPath)+safeRegularFileSize(messagesPath)+safeRegularFileSize(c.dir.resolve("manifest.json"))+attachmentBytes+(annotationsSha.isEmpty()?0:safeRegularFileSize(c.dir.resolve("annotations.json")))+(reconciliationSha.isEmpty()?0:safeRegularFileSize(c.dir.resolve("message-reconciliation.json")));if(c.bytes>MAX_HTML_CAPTURE_BYTES||c.fileCount>MAX_CAPTURE_FILES)throw new IOException("Captura HTML ultrapassa os limites totais de bytes ou arquivos.");
         c.allowedFiles.clear();
         c.allowedFiles.add("manifest.json");
         c.allowedFiles.add(messagesName);
@@ -1214,7 +1296,7 @@ public final class IntegrityVerifier {
         if((long)c.items.size()+extras.size()>maxItemsAllowed)throw new IOException("O limite global de itens selecionados foi excedido antes de montar os resultados.");
         for(Path f:extras){
             String rel=c.dir.relativize(f).toString().replace('\\','/');
-            long size=Files.size(f);
+            long size=safeRegularFileSize(f);
             String sha=hash(f);
             Item x=new Item();
             x.path=rel;
@@ -1237,12 +1319,13 @@ public final class IntegrityVerifier {
         if(lowerHtml.contains("<!--")||lowerHtml.contains("-->")||lowerHtml.contains("<![cdata[")||lowerHtml.contains("<?")){
             throw new IOException("HTML da captura contém comentários, CDATA ou instruções de processamento não permitidos.");
         }
-        if(presentationVersion==0){validateLegacyRenderedHtml(html,attachmentPaths,messageKeys);return;}
-        if(presentationVersion!=2)throw new IOException("Versão de apresentação HTML desconhecida.");
-        String csp=validateCaptureMeta(html,true);
-        Matcher scripts=HTML_SCRIPT_ELEMENT_PATTERN.matcher(html);int scriptCount=0;String script="";while(scripts.find()){scriptCount++;if(!scripts.group(1).trim().isEmpty())throw new IOException("Atributos de script não são permitidos.");script=scripts.group(2);}Matcher scriptOpen=Pattern.compile("(?is)<script\\b").matcher(html);int scriptOpenCount=0;while(scriptOpen.find())scriptOpenCount++;if(scriptCount!=1||scriptOpenCount!=1)throw new IOException("HTML deve conter somente um script fixo de mídia.");boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(script),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(script);if(!currentScript&&!legacyScript)throw new IOException("HTML contém script diferente dos scripts fixos autorizados.");if(currentScript&&!CAPTURE_CSP.equals(csp)||legacyScript&&!LEGACY_CAPTURE_CSP.equals(csp))throw new IOException("A CSP não corresponde ao script fixo autorizado.");
-        validateHtmlStructure(html,attachmentPaths,mimeByPath,messageKeys,true);
-        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;while(styles.find()){styleCount++;if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");validateCaptureCss(styles.group(2));}Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=2||styleOpenCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
+        if(presentationVersion!=0&&presentationVersion!=2)throw new IOException("Versão de apresentação HTML desconhecida.");
+        boolean modern=presentationVersion==2;
+        if(!modern&&Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math|template|input|button|select|textarea)\\b|(?:[\\s/])on[a-z0-9_-]+\\s*=|javascript\\s*:|vbscript\\s*:").matcher(html).find()){
+            throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
+        }
+        List<HtmlElementToken> tokens=scanHtmlElements(html);
+        validateCaptureHtmlTokens(tokens,attachmentPaths,mimeByPath,messageKeys,modern);
     }
 
     private static final Pattern CSS_FORBIDDEN_CONTENT_PATTERN = Pattern.compile("(?is)</style|@import|expression\\s*\\(|(?:^|[;{])\\s*behavior\\s*:|-moz-binding|javascript\\s*:|vbscript\\s*:");
@@ -1251,37 +1334,124 @@ public final class IntegrityVerifier {
             "script", "foreignobject", "iframe", "object", "embed", "style", "animate", "animatemotion", "animatetransform", "set", "mpath"
     )));
 
-    private static void validateLegacyRenderedHtml(String html,Set<String> attachmentPaths,Set<String> messageKeys)throws Exception{
-        validateCaptureMeta(html,false);
-        if(Pattern.compile("(?is)<(script|iframe|object|embed|form|link|base|svg|math|template|input|button|select|textarea)\\b|(?:[\\s/])on[a-z0-9_-]+\\s*=|javascript\\s*:|vbscript\\s*:").matcher(html).find())throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
-        validateHtmlStructure(html,attachmentPaths,Collections.emptyMap(),messageKeys,false);
-        Matcher styles=HTML_STYLE_ELEMENT_PATTERN.matcher(html);int styleCount=0;
-        int headStart=html.toLowerCase(Locale.ROOT).indexOf("<head");
-        int headEnd=html.toLowerCase(Locale.ROOT).indexOf("</head>");
-        while(styles.find()){
-            styleCount++;
-            if(!styles.group(1).trim().isEmpty())throw new IOException("Atributos de estilo não são permitidos.");
-            if(headStart<0||headEnd<0||styles.start()<headStart||styles.end()>headEnd)throw new IOException("Elemento de estilo não é permitido no corpo do HTML legado.");
-            validateCaptureCss(styles.group(2));
+    private static boolean isAsciiHtmlLetter(char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z');}
+    private static boolean isHtmlTagNameChar(char c){return isAsciiHtmlLetter(c)||(c>='0'&&c<='9');}
+    private static boolean isHtmlAttrStart(char c){return isAsciiHtmlLetter(c)||c=='_'||c==':';}
+    private static boolean isHtmlAttrChar(char c){return isHtmlAttrStart(c)||(c>='0'&&c<='9')||c=='.'||c=='-';}
+    private static int indexOfIgnoreCase(String s,String needle,int from){int n=needle.length(),max=s.length()-n;for(int i=from;i<=max;i++)if(s.regionMatches(true,i,needle,0,n))return i;return -1;}
+
+    /** Tokenizes HTML tags with strict attribute-state rules so unclosed or single-quote-broken tags cannot hide elements from validation. */
+    private static List<HtmlElementToken> scanHtmlElements(String html)throws IOException{
+        List<HtmlElementToken> tokens=new ArrayList<>();
+        int len=html.length(),i=0;
+        while(i<len){
+            int lt=html.indexOf('<',i);
+            if(lt<0)break;
+            if(lt+1>=len)throw new IOException("Tag HTML malformada ou truncada.");
+            char next=html.charAt(lt+1);
+            if(next=='!'){
+                if(!html.regionMatches(true,lt,"<!doctype",0,9))throw new IOException("Declaração HTML não permitida.");
+                if(lt+9>=len||(!Character.isWhitespace(html.charAt(lt+9))&&html.charAt(lt+9)!='>'))throw new IOException("Declaração DOCTYPE HTML malformada.");
+                int p=lt+9;
+                while(p<len){
+                    char dc=html.charAt(p);
+                    if(dc=='>')break;
+                    if(dc=='<'||dc=='"'||dc=='\'')throw new IOException("Declaração DOCTYPE HTML malformada.");
+                    p++;
+                }
+                if(p>=len)throw new IOException("Declaração DOCTYPE HTML não fechada.");
+                i=p+1;
+                continue;
+            }
+            if(next=='?')throw new IOException("Instrução de processamento HTML não permitida.");
+            if(next=='/'){
+                int nameStart=lt+2,pos=nameStart;
+                if(nameStart>=len||!isAsciiHtmlLetter(html.charAt(nameStart)))throw new IOException("Tag de fechamento HTML malformada.");
+                while(pos<len&&isHtmlTagNameChar(html.charAt(pos)))pos++;
+                int p=pos;
+                while(p<len&&Character.isWhitespace(html.charAt(p)))p++;
+                if(p>=len||html.charAt(p)!='>')throw new IOException("Tag de fechamento HTML malformada.");
+                tokens.add(new HtmlElementToken(html.substring(nameStart,pos).toLowerCase(Locale.ROOT),true,Collections.emptyMap(),lt,p+1,""));
+                i=p+1;
+                continue;
+            }
+            if(!isAsciiHtmlLetter(next)){
+                i=lt+1;
+                continue;
+            }
+            int pos=lt+1;
+            while(pos<len&&isHtmlTagNameChar(html.charAt(pos)))pos++;
+            String tag=html.substring(lt+1,pos).toLowerCase(Locale.ROOT);
+            if(pos<len){
+                char boundary=html.charAt(pos);
+                if(!Character.isWhitespace(boundary)&&boundary!='>'&&boundary!='/')throw new IOException("Nome ou separador de tag HTML inválido.");
+            }
+            Map<String,String> attrs=new LinkedHashMap<>();
+            int tagClosePos=parseHtmlTagAttributesStrict(html,pos,attrs);
+            if("script".equals(tag)||"style".equals(tag)){
+                String closeNeedle="</"+tag;
+                int search=tagClosePos,closeLt=-1,closeEnd=-1;
+                while(search<len){
+                    int cand=indexOfIgnoreCase(html,closeNeedle,search);
+                    if(cand<0)throw new IOException("HTML contém elemento <"+tag+"> malformado ou não fechado.");
+                    int p=cand+closeNeedle.length();
+                    while(p<len&&Character.isWhitespace(html.charAt(p)))p++;
+                    if(p<len&&html.charAt(p)=='>'){closeLt=cand;closeEnd=p+1;break;}
+                    search=cand+2;
+                }
+                if(closeLt<0)throw new IOException("HTML contém elemento <"+tag+"> malformado ou não fechado.");
+                tokens.add(new HtmlElementToken(tag,false,attrs,lt,closeEnd,html.substring(tagClosePos,closeLt)));
+                i=closeEnd;
+            }else{
+                tokens.add(new HtmlElementToken(tag,false,attrs,lt,tagClosePos,""));
+                i=tagClosePos;
+            }
         }
-        Matcher styleOpen=Pattern.compile("(?is)<style\\b").matcher(html);int styleOpenCount=0;while(styleOpen.find())styleOpenCount++;if(styleCount!=styleOpenCount)throw new IOException("HTML contém elemento de estilo malformado.");
+        return tokens;
     }
 
-    private static String validateCaptureMeta(String html,boolean modern)throws IOException{
-        Matcher tags=HTML_META_TAG_PATTERN.matcher(html);int count=0,charset=0,csp=0;
-        String legacyCsp="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'";
-        String cspContent="";
-        while(tags.find()){
-            count++;Map<String,String> attrs=parseHtmlAttributes(tags.group(1));
-            if(attrs.containsKey("charset")){
-                if(attrs.size()!=1||!"utf-8".equalsIgnoreCase(attrs.get("charset")))throw new IOException("Meta charset fora da allowlist.");charset++;
-            }else if(attrs.containsKey("http-equiv")){
-                String content=attrs.get("content");boolean allowed=modern?(CAPTURE_CSP.equals(content)||LEGACY_CAPTURE_CSP.equals(content)):legacyCsp.equals(content);
-                if(attrs.size()!=2||!"content-security-policy".equalsIgnoreCase(attrs.get("http-equiv"))||!allowed)throw new IOException("Política CSP ausente ou não canônica.");csp++;cspContent=content;
-            }else throw new IOException("Meta não permitido no HTML da captura.");
+    private static int parseHtmlTagAttributesStrict(String html,int startPos,Map<String,String> attrs)throws IOException{
+        int len=html.length(),i=startPos;
+        while(i<len){
+            while(i<len&&Character.isWhitespace(html.charAt(i)))i++;
+            if(i>=len)throw new IOException("Tag HTML não fechada.");
+            char c=html.charAt(i);
+            if(c=='>')return i+1;
+            if(c=='/'){
+                if(i+1<len&&html.charAt(i+1)=='>')return i+2;
+                throw new IOException("Atributo HTML malformado.");
+            }
+            if(!isHtmlAttrStart(c))throw new IOException("Atributo HTML malformado.");
+            int nameStart=i++;
+            while(i<len&&isHtmlAttrChar(html.charAt(i)))i++;
+            String attrName=html.substring(nameStart,i).toLowerCase(Locale.ROOT);
+            while(i<len&&Character.isWhitespace(html.charAt(i)))i++;
+            String rawValue="";
+            if(i<len&&html.charAt(i)=='='){
+                i++;
+                while(i<len&&Character.isWhitespace(html.charAt(i)))i++;
+                if(i>=len)throw new IOException("Atributo HTML sem valor.");
+                char q=html.charAt(i);
+                if(q=='"'||q=='\''){
+                    i++;
+                    int close=html.indexOf(q,i);
+                    if(close<0)throw new IOException("Atributo HTML com aspas não fechadas.");
+                    rawValue=html.substring(i,close);
+                    i=close+1;
+                }else{
+                    int valStart=i;
+                    while(i<len&&!Character.isWhitespace(html.charAt(i))&&html.charAt(i)!='>'){
+                        char vc=html.charAt(i);
+                        if(vc=='"'||vc=='\''||vc=='`'||vc=='<'||vc=='=')throw new IOException("Atributo HTML sem aspas malformado.");
+                        i++;
+                    }
+                    if(i==valStart)throw new IOException("Atributo HTML sem valor entre aspas.");
+                    rawValue=html.substring(valStart,i);
+                }
+            }
+            if(attrs.put(attrName,decodeHtmlAttributeValue(rawValue))!=null)throw new IOException("Atributo HTML duplicado.");
         }
-        if(modern?(count!=2||charset!=1||csp!=1):!((count==0)||(count==2&&charset==1&&csp==1)))throw new IOException("Quantidade de metadados HTML fora da allowlist.");
-        return cspContent;
+        throw new IOException("Tag HTML não fechada.");
     }
 
     private static final Pattern HTML_ENTITY_PATTERN = Pattern.compile("&(?:(amp|lt|gt|quot|apos)|#([0-9]{1,7})|#[xX]([0-9a-fA-F]{1,6}));");
@@ -1320,20 +1490,50 @@ public final class IntegrityVerifier {
         return out.toString();
     }
 
-    private static Map<String,String> parseHtmlAttributes(String input)throws IOException{
-        Map<String,String> attrs=new HashMap<>();Matcher matcher=Pattern.compile("(?is)([a-z_:][a-z0-9_:.-]*)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>\"'`=]+)))?").matcher(input);int end=0;
-        while(matcher.find()){String gap=input.substring(end,matcher.start()).trim();if(!gap.isEmpty())throw new IOException("Atributo HTML malformado.");String name=matcher.group(1).toLowerCase(Locale.ROOT);String rawValue=matcher.group(2)!=null?matcher.group(2):matcher.group(3)!=null?matcher.group(3):matcher.group(4)!=null?matcher.group(4):"";String value=decodeHtmlAttributeValue(rawValue);if(attrs.put(name,value)!=null)throw new IOException("Atributo HTML duplicado.");end=matcher.end();}
-        String tail=input.substring(end).trim();if(!tail.isEmpty()&&!tail.matches("(?is)/?"))throw new IOException("Atributo HTML sem valor entre aspas.");return attrs;
-    }
-
-    private static void validateHtmlStructure(String html,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,boolean modern)throws Exception{
-        Matcher tags=HTML_TAG_PATTERN.matcher(html);Set<String> ids=new HashSet<>(),renderedKeys=new HashSet<>(),resources=new HashSet<>();List<String> pendingFragments=new ArrayList<>();
-        while(tags.find()){
-            String tag=tags.group(1).toLowerCase(Locale.ROOT);Map<String,String> attrs=parseHtmlAttributes(tags.group(2));
-            if("meta".equals(tag)||"style".equals(tag)||(modern&&"script".equals(tag)))continue;
+    private static void validateCaptureHtmlTokens(List<HtmlElementToken> tokens,Set<String> attachmentPaths,Map<String,String> mimeByPath,Set<String> messageKeys,boolean modern)throws Exception{
+        int metaCount=0,charsetCount=0,cspMetaCount=0,scriptCount=0,styleCount=0,headStart=-1,headEnd=-1,headOpenCount=0,headCloseCount=0;
+        String cspContent="",legacyCsp="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'";
+        Set<String> ids=new HashSet<>(),renderedKeys=new HashSet<>(),resources=new HashSet<>();
+        List<String> pendingFragments=new ArrayList<>();
+        for(HtmlElementToken t:tokens){
+            if(t.closing){
+                if("head".equals(t.tag)){headEnd=t.end;headCloseCount++;}
+                continue;
+            }
+            String tag=t.tag;
+            Map<String,String> attrs=t.attrs;
+            if("head".equals(tag)){headStart=t.start;headOpenCount++;}
+            if("meta".equals(tag)){
+                metaCount++;
+                if(attrs.containsKey("charset")){
+                    if(attrs.size()!=1||!"utf-8".equalsIgnoreCase(attrs.get("charset")))throw new IOException("Meta charset fora da allowlist.");
+                    charsetCount++;
+                }else if(attrs.containsKey("http-equiv")){
+                    String content=attrs.get("content");
+                    boolean allowed=modern?(CAPTURE_CSP.equals(content)||LEGACY_CAPTURE_CSP.equals(content)):legacyCsp.equals(content);
+                    if(attrs.size()!=2||!"content-security-policy".equalsIgnoreCase(attrs.get("http-equiv"))||!allowed)throw new IOException("Política CSP ausente ou não canônica.");
+                    cspMetaCount++;cspContent=content;
+                }else throw new IOException("Meta não permitido no HTML da captura.");
+                continue;
+            }
+            if("script".equals(tag)){
+                if(!modern)throw new IOException("HTML da captura possui conteúdo ativo ou dependência externa.");
+                scriptCount++;
+                if(!attrs.isEmpty())throw new IOException("Atributos de script não são permitidos.");
+                boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(t.body),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(t.body);
+                if(!currentScript&&!legacyScript)throw new IOException("HTML contém script diferente dos scripts fixos autorizados.");
+                continue;
+            }
+            if("style".equals(tag)){
+                styleCount++;
+                if(!attrs.isEmpty())throw new IOException("Atributos de estilo não são permitidos.");
+                validateCaptureCss(t.body);
+                continue;
+            }
             Set<String> allowedAttrs=ALLOWED_HTML_ATTRIBUTES.get(tag);
             if(allowedAttrs==null)throw new IOException("HTML contém elemento ativo ou não permitido: "+tag);
-            for(String name:attrs.keySet())if(!allowedAttrs.contains(name))throw new IOException("HTML contém atributo não permitido: "+name);
+            for(String name:attrs.keySet())if(!allowedAttrs.contains(name)&&!isAllowedSafeDataAttr(tag,name))throw new IOException("HTML contém atributo não permitido: "+name);
+            for(String dimAttr:new String[]{"width","height","colspan","rowspan"}){String dimVal=attrs.get(dimAttr);if(dimVal!=null&&!dimVal.matches("\\d{1,5}"))throw new IOException("Atributo de dimensão HTML inválido: "+dimAttr);}
             String id=attrs.get("id");if(id!=null&&!ids.add(id))throw new IOException("HTML contém ID duplicado.");
             String key=attrs.get("data-capture-message-key");if(key!=null&&!renderedKeys.add(key))throw new IOException("HTML contém chave de mensagem duplicada.");
             if("iframe".equals(tag)){
@@ -1353,6 +1553,18 @@ public final class IntegrityVerifier {
                 if("iframe".equals(tag)&&!"application/pdf".equals(mime))throw new IOException("Iframe só pode referenciar PDF inventariado.");
             }
             if(attrs.containsKey("target")&&(!"_blank".equals(attrs.get("target"))||!Arrays.asList(attrs.getOrDefault("rel","").toLowerCase(Locale.ROOT).split("\\s+")).containsAll(Arrays.asList("noopener","noreferrer"))))throw new IOException("Link em nova aba sem noopener/noreferrer.");
+        }
+        if(modern?(metaCount!=2||charsetCount!=1||cspMetaCount!=1):!((metaCount==0)||(metaCount==2&&charsetCount==1&&cspMetaCount==1)))throw new IOException("Quantidade de metadados HTML fora da allowlist.");
+        if(modern){
+            if(scriptCount!=1)throw new IOException("HTML deve conter somente um script fixo de mídia.");
+            for(HtmlElementToken t:tokens)if(!t.closing&&"script".equals(t.tag)){
+                boolean currentScript=CAPTURE_MEDIA_STOP_SCRIPT.equals(t.body),legacyScript=LEGACY_CAPTURE_MEDIA_STOP_SCRIPT.equals(t.body);
+                if(currentScript&&!CAPTURE_CSP.equals(cspContent)||legacyScript&&!LEGACY_CAPTURE_CSP.equals(cspContent))throw new IOException("A CSP não corresponde ao script fixo autorizado.");
+            }
+            if(styleCount!=2)throw new IOException("HTML deve conter o tema IPED e uma folha de estilos do visualizador.");
+        }else if(styleCount>0){
+            if(headOpenCount!=1||headCloseCount!=1||headStart<0||headEnd<0)throw new IOException("Elemento de estilo não é permitido no corpo do HTML legado.");
+            for(HtmlElementToken t:tokens)if(!t.closing&&"style".equals(t.tag)&&(t.start<headStart||t.end>headEnd))throw new IOException("Elemento de estilo não é permitido no corpo do HTML legado.");
         }
         if(!renderedKeys.equals(messageKeys))throw new IOException("HTML não corresponde exatamente às mensagens do manifesto.");
         if(!resources.equals(attachmentPaths))throw new IOException("Recursos locais do HTML não correspondem aos anexos do manifesto.");
@@ -1414,8 +1626,9 @@ public final class IntegrityVerifier {
 
     private static String htmlMessageHash(JSONObject message)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-message\n");appendHtmlField(canonical,message.optString("domId",""));appendHtmlField(canonical,Integer.toString(message.optInt("order",-1)));appendHtmlField(canonical,message.optString("timestamp",""));appendHtmlField(canonical,message.optString("sender",""));appendHtmlField(canonical,message.optString("direction",""));appendHtmlField(canonical,message.optString("type",""));appendHtmlField(canonical,Integer.toString(message.optInt("duplicateOrdinal",-1)));appendHtmlField(canonical,message.optString("text",""));appendHtmlField(canonical,message.optString("classes",""));JSONArray attachments=message.optJSONArray("attachments");for(int i=0;attachments!=null&&i<attachments.length();i++){JSONObject a=attachments.getJSONObject(i);appendHtmlField(canonical,a.optString("path",""));appendHtmlField(canonical,a.optString("mime",""));appendHtmlField(canonical,Long.toString(a.optLong("size",-1)));appendHtmlField(canonical,a.optString("sha256",""));}return hashText(canonical.toString());}
     private static boolean mimeSignatureMatches(String mime,Path file)throws IOException{
+        if(file==null||isLinkOrReparse(file)||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS))throw new IOException("Anexo inválido ou link não permitido: "+file);
         byte[] b=new byte[12];int length=0;
-        try(InputStream in=Files.newInputStream(file)){while(length<b.length){int n=in.read(b,length,b.length-length);if(n<0)break;length+=n;}}
+        try(InputStream in=Files.newInputStream(file,LinkOption.NOFOLLOW_LINKS)){while(length<b.length){int n=in.read(b,length,b.length-length);if(n<0)break;length+=n;}}
         if("image/png".equalsIgnoreCase(mime))return length>=8&&(b[0]&255)==0x89&&b[1]=='P'&&b[2]=='N'&&b[3]=='G'&&b[4]==13&&b[5]==10&&b[6]==26&&b[7]==10;
         if("image/jpeg".equalsIgnoreCase(mime))return length>=3&&(b[0]&255)==0xff&&(b[1]&255)==0xd8&&(b[2]&255)==0xff;
         if("image/gif".equalsIgnoreCase(mime)){String s=length<6?"":new String(b,0,6,StandardCharsets.US_ASCII);return "GIF87a".equals(s)||"GIF89a".equals(s);}
@@ -1440,7 +1653,7 @@ public final class IntegrityVerifier {
             if(!reconciliationName.isEmpty()||Files.exists(path,LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo de reconciliação sem hash no manifesto.");
             return statesById;
         }
-        if(!reconciliationSha.matches("(?i)[0-9a-f]{64}")||!"message-reconciliation.json".equals(reconciliationName)||!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)||Files.size(path)>MAX_METADATA_BYTES||!hash(path).equalsIgnoreCase(reconciliationSha))throw new IOException("Arquivo de reconciliação ausente, excessivo ou divergente.");
+        if(!reconciliationSha.matches("(?i)[0-9a-f]{64}")||!"message-reconciliation.json".equals(reconciliationName)||!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)||safeRegularFileSize(path)>MAX_METADATA_BYTES||!hash(path).equalsIgnoreCase(reconciliationSha))throw new IOException("Arquivo de reconciliação ausente, excessivo ou divergente.");
         JSONObject reconciliation=parseBoundedJson(readUtf8Limited(path),path);JSONArray entries=reconciliation.optJSONArray("entries");
         if(reconciliation.optInt("schemaVersion",0)!=1||!"html-message-v1".equals(reconciliation.optString("captureFormat"))||entries==null||entries.length()>MAX_SELECTED_ITEMS*2)throw new IOException("Estrutura de reconciliação inválida.");
         String previousRoot=reconciliation.optString("previousCaptureRootHash","");String previousReconciliation=reconciliation.optString("previousReconciliationSha256","");String source=reconciliation.optString("currentSourceFingerprint","");
@@ -1460,7 +1673,7 @@ public final class IntegrityVerifier {
         }
         for(Map.Entry<String,JSONObject> current:currentMessages.entrySet())if(!seen.contains(current.getKey()))throw new IOException("Mensagem atual ausente da reconciliação: "+current.getValue().optString("domId",""));
         JSONObject counts=reconciliation.optJSONObject("counts");if(counts==null||counts.optInt("unchanged",-1)!=unchanged||counts.optInt("changed",-1)!=changed||counts.optInt("missingInCurrentSource",-1)!=missing||counts.optInt("newInInterval",-1)!=added)throw new IOException("Contagens da reconciliação divergem dos registros.");
-        Item report=new Item();report.path="message-reconciliation.json";report.expected=reconciliationSha;report.actual=reconciliationSha;report.bytes=Files.size(path);report.state="reconciliação por mensagem íntegra";c.items.add(report);return statesById;
+        Item report=new Item();report.path="message-reconciliation.json";report.expected=reconciliationSha;report.actual=reconciliationSha;report.bytes=safeRegularFileSize(path);report.state="reconciliação por mensagem íntegra";c.items.add(report);return statesById;
     }
     private static String htmlCaptureRootHash(JSONArray messages,String htmlSha,String annotationsSha,String reconciliationSha,JSONObject manifest)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-root\n");appendHtmlField(canonical,htmlSha);appendHtmlField(canonical,annotationsSha);appendHtmlField(canonical,reconciliationSha);appendHtmlField(canonical,manifest.optString("conversationKey",""));appendHtmlField(canonical,manifest.optString("sourceFingerprint",""));JSONObject source=manifest.optJSONObject("sourceMetadata");appendHtmlField(canonical,source==null?"":source.optString("name",""));appendHtmlField(canonical,source==null?"":Long.toString(source.optLong("size",-1)));appendHtmlField(canonical,source==null?"":source.optString("type",""));appendHtmlField(canonical,source==null?"":source.optString("itemHash",""));appendHtmlField(canonical,source==null?"":Boolean.toString(source.optBoolean("deleted",false)));appendHtmlField(canonical,manifest.optString("ipedVersion",""));appendHtmlField(canonical,manifest.optString("pluginVersion",""));JSONObject anchors=manifest.optJSONObject("anchors");appendHtmlField(canonical,anchors==null?"":anchors.optString("start",""));appendHtmlField(canonical,anchors==null?"":anchors.optString("end",""));for(int i=0;i<messages.length();i++){JSONObject message=messages.getJSONObject(i);appendHtmlField(canonical,message.optString("key",""));appendHtmlField(canonical,message.optString("messageHash",""));}return hashText(canonical.toString());}
     private static void appendHtmlField(StringBuilder canonical,String value){String field=value==null?"":value;canonical.append(field.length()).append(':').append(field).append('\n');}
@@ -1521,13 +1734,19 @@ public final class IntegrityVerifier {
         }
         c.historyHash=previous;
         if(!lastEventRoot.equalsIgnoreCase(declaredRoot)){c.historyStatus="cadeia do histórico divergente do estado atual";return;}
-        StringBuilder current=new StringBuilder();for(JSONObject item:sorted){String path=item.optString("path","");Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)){c.historyStatus="arquivo ausente: "+path;return;}String actual=hash(file);if(!actual.equalsIgnoreCase(item.optString("sha256",""))||Files.size(file)!=item.optLong("size",-1)){c.historyStatus="arquivo divergente: "+path;return;}current.append(path).append('|').append(Files.size(file)).append('|').append(actual).append('\n');}
+        StringBuilder current=new StringBuilder();for(JSONObject item:sorted){String path=item.optString("path","");Path file=resolve(c.dir,path);if(file==null||!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)){c.historyStatus="arquivo ausente: "+path;return;}long fileSize=safeRegularFileSize(file);String actual=hash(file);if(!actual.equalsIgnoreCase(item.optString("sha256",""))||fileSize!=item.optLong("size",-1)){c.historyStatus="arquivo divergente: "+path;return;}current.append(path).append('|').append(fileSize).append('|').append(actual).append('\n');}
         c.historyStatus=hashText(current.toString()).equalsIgnoreCase(declaredRoot)?"consistente com registro local":"conteúdo diverge do registro local";
     }
     static boolean isLinkOrReparse(Path p)throws IOException{
         if(Files.isSymbolicLink(p))return true;
         if(!Files.exists(p,LinkOption.NOFOLLOW_LINKS))return false;
         return Files.readAttributes(p,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS).isOther();
+    }
+    static long safeRegularFileSize(Path p)throws IOException{
+        if(p==null)throw new IOException("Caminho de arquivo nulo");
+        BasicFileAttributes attrs=Files.readAttributes(p,BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS);
+        if(attrs.isSymbolicLink()||attrs.isOther()||!attrs.isRegularFile())throw new IOException("Arquivo inválido ou link simbólico: "+p);
+        return attrs.size();
     }
     private static void validateRootDirectory(Path root)throws IOException{
         if(root==null||!Files.exists(root,LinkOption.NOFOLLOW_LINKS)||isLinkOrReparse(root)||!Files.isDirectory(root,LinkOption.NOFOLLOW_LINKS)){
@@ -1556,9 +1775,7 @@ public final class IntegrityVerifier {
             return f;
         }catch(Exception e){return null;}
     }
-    private static String field(String s,String name){Matcher m=Pattern.compile("\\\""+Pattern.quote(name)+"\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"").matcher(s);return m.find()?m.group(1).replace("\\/","/").replace("\\\"","\"").replace("\\\\","\\"):null;}
-    private static long number(String s,String n){Matcher m=Pattern.compile("\\\""+n+"\\\"\\s*:\\s*(\\d+)").matcher(s);return m.find()?Long.parseLong(m.group(1)): -1;}
-    private static String hash(Path p)throws Exception{MessageDigest d=MessageDigest.getInstance(ALG);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS)){byte[]b=new byte[32768];int n;while((n=in.read(b))>0)d.update(b,0,n);}return hex(d.digest());}
+    private static String hash(Path p)throws Exception{if(p==null||isLinkOrReparse(p)||!Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS))throw new IOException("Arquivo inválido ou link simbólico para SHA-256: "+p);MessageDigest d=MessageDigest.getInstance(ALG);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS)){byte[]b=new byte[32768];int n;while((n=in.read(b))!=-1){if(n>0)d.update(b,0,n);}}return hex(d.digest());}
     private static final class InvalidJsonException extends IOException {
         InvalidJsonException(String message){super(message);}
         InvalidJsonException(String message,Throwable cause){super(message,cause);}
@@ -1615,7 +1832,7 @@ public final class IntegrityVerifier {
     }
 
     private static String readUtf8Limited(Path p)throws IOException{return readUtf8Limited(p,MAX_METADATA_BYTES);}
-    private static String readUtf8Limited(Path p,long maxBytes)throws IOException{if(maxBytes<=0||maxBytes>MAX_HTML_CAPTURE_BYTES)throw new IllegalArgumentException("Limite de leitura inválido: "+maxBytes);long size=Files.size(p);if(size>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS);ByteArrayOutputStream out=new ByteArrayOutputStream((int)Math.min(size,maxBytes))){byte[]buffer=new byte[8192];int n;long total=0;while((n=in.read(buffer))!=-1){total+=n;if(total>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);out.write(buffer,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
+    private static String readUtf8Limited(Path p,long maxBytes)throws IOException{if(maxBytes<=0||maxBytes>MAX_HTML_CAPTURE_BYTES)throw new IllegalArgumentException("Limite de leitura inválido: "+maxBytes);long size=safeRegularFileSize(p);if(size>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);try(InputStream in=Files.newInputStream(p,LinkOption.NOFOLLOW_LINKS);ByteArrayOutputStream out=new ByteArrayOutputStream((int)Math.min(size,maxBytes))){byte[]buffer=new byte[8192];int n;long total=0;while((n=in.read(buffer))!=-1){if(n==0)continue;total+=n;if(total>maxBytes)throw new IOException("Arquivo de metadados excede o limite de "+maxBytes+" bytes: "+p);out.write(buffer,0,n);}return new String(out.toByteArray(),StandardCharsets.UTF_8);}}
     private static JSONObject parseBoundedJson(String json,Path source)throws IOException{int depth=0;boolean quoted=false,escaped=false;for(int i=0;i<json.length();i++){char ch=json.charAt(i);if(quoted){if(escaped)escaped=false;else if(ch=='\\')escaped=true;else if(ch=='"')quoted=false;continue;}if(ch=='"'){quoted=true;continue;}if(ch=='{'||ch=='['){if(++depth>MAX_JSON_DEPTH)throw new InvalidJsonException("JSON excede a profundidade máxima de "+MAX_JSON_DEPTH+" níveis: "+source);}else if(ch=='}'||ch==']'){if(--depth<0)throw new InvalidJsonException("JSON malformado: "+source);}}if(quoted||depth!=0)throw new InvalidJsonException("JSON incompleto: "+source);try{return new JSONObject(json);}catch(RuntimeException invalid){throw new InvalidJsonException("JSON inválido: "+source,invalid);}}
     static List<Path> listCaptureFiles(Path root)throws IOException{
         Path normalizedRoot=root.toAbsolutePath().normalize();
@@ -1642,7 +1859,7 @@ public final class IntegrityVerifier {
         return files;
     }
     private static String quietHash(Path p){try{return hash(p);}catch(Exception e){return null;}}
-    private static long quietSize(Path p){try{return Files.size(p);}catch(Exception e){return 0;}}
+    private static long quietSize(Path p){try{return safeRegularFileSize(p);}catch(Exception e){return 0;}}
     private static String hashText(String s)throws Exception{return hex(MessageDigest.getInstance(ALG).digest(s.getBytes(StandardCharsets.UTF_8)));}
     private static String sha256Base64(String s)throws Exception{return Base64.getEncoder().encodeToString(MessageDigest.getInstance(ALG).digest(s.getBytes(StandardCharsets.UTF_8)));}
     private static String hex(byte[]b){StringBuilder s=new StringBuilder();for(byte v:b)s.append(String.format("%02x",v&255));return s.toString();}
@@ -1699,6 +1916,8 @@ public final class IntegrityVerifier {
         String historyPublicHash=hashText(normalizePublicRecord(publicHistory));
         writeReports(root,cs,rootHash,time,history,publicHistory,historyFullHash,historyPublicHash);
     }
+    @FunctionalInterface
+    private interface ReportWriter{void writeTo(java.io.BufferedWriter out)throws IOException;}
     private static void writeReports(Path root,List<Capture> cs,String rootHash,String time,String history,String publicHistory,String historyFullHash,String historyPublicHash)throws Exception{
         enforceReportBudget(cs);
         StringBuilder reportScript=new StringBuilder();
@@ -1713,26 +1932,62 @@ public final class IntegrityVerifier {
         reportScript.append("var btnCmp=document.getElementById('btnCompareHash');if(btnCmp&&btnCmp.addEventListener)btnCmp.addEventListener('click',compareHash);");
         reportScript.append("var btnHist=document.getElementById('btnCompareHistory');if(btnHist&&btnHist.addEventListener)btnHist.addEventListener('click',compareHistory);");
         reportScript.append("var cpBtns=document.querySelectorAll('.copy-btn');for(var ci=0;ci<cpBtns.length;ci++){if(cpBtns[ci]&&cpBtns[ci].addEventListener){(function(b){b.addEventListener('click',function(){copyValue(b);});})(cpBtns[ci]);}}");
-        String scriptStr=reportScript.toString();
-        String reportCsp="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-"+sha256Base64(scriptStr)+"'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
-        StringBuilder html=new StringBuilder("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"").append(reportCsp).append("\"><title>Integridade das capturas</title><style>body{font:16px Arial;margin:2em;color:#20313a}table{border-collapse:collapse;width:100%;margin-bottom:1em}td,th{border:1px solid #bbb;padding:.5em;text-align:left;overflow-wrap:anywhere}.ok{color:green}.bad,.diverge{color:#8b0000;font-weight:700}.match{color:#006400;font-weight:700}input{padding:.5em;width:min(40em,90%)}code{overflow-wrap:anywhere}</style><h1>Relatório de integridade</h1><p>Verificação e relatório gerados em: ").append(esc(time)).append("</p><p>Hash geral Público: <code id=\"publicSummaryHash\">").append(historyPublicHash).append("</code> <button class=\"copy-btn\" data-value=\"").append(historyPublicHash).append("\">Copiar hash público</button></p><label>Hash geral Público (ou SHA-256 do histórico completo): <input id=\"publicHash\" placeholder=\"Cole aqui o SHA-256 recebido\"></label> <button id=\"btnCompareHash\">Comparar hash geral</button><p id=\"comparison\">Nenhum hash geral informado.</p>");
-        StringBuilder txt=new StringBuilder("Verificado: ").append(time).append("\nTODAS_AS_CAPTURAS|").append(rootHash).append("\n");StringBuilder json=new StringBuilder("{\"generatedAt\":\"").append(jsonEsc(time)).append("\",\"rootHash\":\"").append(rootHash).append("\",\"historyPublicHash\":\"").append(historyPublicHash).append("\",\"captures\":[");
-        html.append("<label for=\"historyInput\">Cole o histórico de capturas completo ou público (historico-capturas.txt):</label><br><textarea id=\"historyInput\" rows=\"7\" style=\"width:min(70em,95%)\" placeholder=\"HISTORICO_PUBLICO_V1&#10;SHA256|...&#10;&#10;CAPTURA|... (ou CAPTURA|*-YYYYMMDD-HHMMSS)\"></textarea><br><button id=\"btnCompareHistory\">Comparar histórico em todas as capturas</button> <span id=\"historyResult\"></span><table><tr><th>Captura</th><th>Hash calculado</th><th>Arquivos</th><th>Comparação com histórico</th></tr>");
-        boolean first=true;for(Capture c:cs){long good=c.items.stream().filter(i->isHealthyVerifierItemState(i.state)).count();
-            String blockFullSha=hashText(captureHistoryBlock(c,false));
-            String blockPublicSha=hashText(captureHistoryBlock(c,true));
-            html.append("<tr class=\"capture-row\" data-capture=\"").append(esc(c.name)).append("\" data-block-full=\"").append(blockFullSha).append("\" data-block-public=\"").append(blockPublicSha).append("\"><td>").append(esc(c.name)).append("</td><td><code>").append(c.hash).append("</code> <button class=\"copy-btn\" data-value=\"").append(c.hash).append("\">Copiar hash</button></td><td>").append(good).append(" íntegros / ").append(c.items.size()).append(" verificados<br>Histórico: ").append(esc(c.historyStatus)).append(c.historyHash.isEmpty()?"":"<br>Hash do registro: <code>"+esc(c.historyHash)+"</code> <button class=\"copy-btn\" data-value=\""+esc(c.historyHash)+"\">Copiar</button>").append("</td><td><span class=\"cmp\">Não comparado</span></td></tr>");
-            txt.append(recordField(c.name)).append(" | ").append(c.hash).append("\n");
-            if(!first)json.append(',');first=false;json.append("{\"name\":\"").append(jsonEsc(c.name)).append("\",\"hash\":\"").append(c.hash).append("\",\"files\":[");boolean f=true;for(Item i:c.items){if(!f)json.append(',');f=false;json.append("{\"path\":\"").append(jsonEsc(i.path)).append("\",\"status\":\"").append(jsonEsc(i.state)).append("\",\"expected\":\"").append(jsonEsc(i.expected==null?"":i.expected)).append("\",\"actual\":\"").append(jsonEsc(i.actual==null?"":i.actual)).append("\"}");}json.append("]}");
-        }
-        html.append("</table><h2>Arquivos</h2>");for(Capture c:cs){html.append("<h3>").append(esc(c.name)).append("</h3><table><tr><th>Arquivo</th><th>Estado</th><th>Esperado</th><th>Encontrado</th></tr>");for(Item i:c.items)html.append("<tr><td>").append(esc(i.path)).append("</td><td class=\"").append(isHealthyVerifierItemState(i.state)?"ok":"bad").append("\">").append(esc(i.state)).append("</td><td><code>").append(esc(i.expected)).append("</code></td><td><code>").append(esc(i.actual)).append("</code></td></tr>");html.append("</table>");}
-        html.append("<p>Este relatório é um retrato desta execução. O hash é um código de comparação, não uma assinatura digital.</p><p>Arquivos: <a href=\"integridade/hashes-capturas.txt\">lista de hashes</a> · <a href=\"integridade/verificacao-integridade.txt\">resumo TXT</a> · <a href=\"integridade/verificacao-integridade.json\">detalhes JSON</a></p><script>");
-        html.append(scriptStr).append("</script></html>");
-        json.append("]}");Path reportDir=root.resolve("integridade");createDirectoriesSafe(root,reportDir);Map<Path,String> outputs=new LinkedHashMap<>();outputs.put(root.resolve("integridade.html"),html.toString());outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt.toString());outputs.put(reportDir.resolve("verificacao-integridade.json"),json.toString());outputs.put(reportDir.resolve("hashes-capturas.txt"),publicHashList(cs,rootHash));outputs.put(reportDir.resolve("historico-capturas.txt"),history);atomicBatch(root,outputs);
+        final String scriptStr=reportScript.toString();
+        final String reportCsp="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-"+sha256Base64(scriptStr)+"'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
+        Path reportDir=root.resolve("integridade");createDirectoriesSafe(root,reportDir);
+        Map<Path,ReportWriter> outputs=new LinkedHashMap<>();
+        outputs.put(root.resolve("integridade.html"),html->{
+            html.write("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"");
+            html.write(reportCsp);
+            html.write("\"><title>Integridade das capturas</title><style>body{font:16px Arial;margin:2em;color:#20313a}table{border-collapse:collapse;width:100%;margin-bottom:1em}td,th{border:1px solid #bbb;padding:.5em;text-align:left;overflow-wrap:anywhere}.ok{color:green}.bad,.diverge{color:#8b0000;font-weight:700}.match{color:#006400;font-weight:700}input{padding:.5em;width:min(40em,90%)}code{overflow-wrap:anywhere}</style><h1>Relatório de integridade</h1><p>Verificação e relatório gerados em: ");
+            html.write(esc(time));
+            html.write("</p><p>Hash geral Público: <code id=\"publicSummaryHash\">");
+            html.write(historyPublicHash);
+            html.write("</code> <button class=\"copy-btn\" data-value=\"");
+            html.write(historyPublicHash);
+            html.write("\">Copiar hash público</button></p><label>Hash geral Público (ou SHA-256 do histórico completo): <input id=\"publicHash\" placeholder=\"Cole aqui o SHA-256 recebido\"></label> <button id=\"btnCompareHash\">Comparar hash geral</button><p id=\"comparison\">Nenhum hash geral informado.</p>");
+            html.write("<label for=\"historyInput\">Cole o histórico de capturas completo ou público (historico-capturas.txt):</label><br><textarea id=\"historyInput\" rows=\"7\" style=\"width:min(70em,95%)\" placeholder=\"HISTORICO_PUBLICO_V1&#10;SHA256|...&#10;&#10;CAPTURA|... (ou CAPTURA|*-YYYYMMDD-HHMMSS)\"></textarea><br><button id=\"btnCompareHistory\">Comparar histórico em todas as capturas</button> <span id=\"historyResult\"></span><table><tr><th>Captura</th><th>Hash calculado</th><th>Arquivos</th><th>Comparação com histórico</th></tr>");
+            for(Capture c:cs){
+                long good=c.items.stream().filter(i->isHealthyVerifierItemState(i.state)).count();
+                String blockFullSha,blockPublicSha;
+                try{blockFullSha=hashText(captureHistoryBlock(c,false));blockPublicSha=hashText(captureHistoryBlock(c,true));}
+                catch(Exception e){throw new IOException("Falha ao calcular hash de bloco do histórico.",e);}
+                html.write("<tr class=\"capture-row\" data-capture=\"");html.write(esc(c.name));html.write("\" data-block-full=\"");html.write(blockFullSha);html.write("\" data-block-public=\"");html.write(blockPublicSha);html.write("\"><td>");html.write(esc(c.name));html.write("</td><td><code>");html.write(c.hash);html.write("</code> <button class=\"copy-btn\" data-value=\"");html.write(c.hash);html.write("\">Copiar hash</button></td><td>");html.write(Long.toString(good));html.write(" íntegros / ");html.write(Integer.toString(c.items.size()));html.write(" verificados<br>Histórico: ");html.write(esc(c.historyStatus));
+                if(!c.historyHash.isEmpty()){html.write("<br>Hash do registro: <code>");html.write(esc(c.historyHash));html.write("</code> <button class=\"copy-btn\" data-value=\"");html.write(esc(c.historyHash));html.write("\">Copiar</button>");}
+                html.write("</td><td><span class=\"cmp\">Não comparado</span></td></tr>");
+            }
+            html.write("</table><h2>Arquivos</h2>");
+            for(Capture c:cs){
+                html.write("<h3>");html.write(esc(c.name));html.write("</h3><table><tr><th>Arquivo</th><th>Estado</th><th>Esperado</th><th>Encontrado</th></tr>");
+                for(Item i:c.items){html.write("<tr><td>");html.write(esc(i.path));html.write("</td><td class=\"");html.write(isHealthyVerifierItemState(i.state)?"ok":"bad");html.write("\">");html.write(esc(i.state));html.write("</td><td><code>");html.write(esc(i.expected));html.write("</code></td><td><code>");html.write(esc(i.actual));html.write("</code></td></tr>");}
+                html.write("</table>");
+            }
+            html.write("<p>Este relatório é um retrato desta execução. O hash é um código de comparação, não uma assinatura digital.</p><p>Arquivos: <a href=\"integridade/hashes-capturas.txt\">lista de hashes</a> · <a href=\"integridade/verificacao-integridade.txt\">resumo TXT</a> · <a href=\"integridade/verificacao-integridade.json\">detalhes JSON</a></p><script>");
+            html.write(scriptStr);html.write("</script></html>");
+        });
+        outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt->{
+            txt.write("Verificado: ");txt.write(time);txt.write("\nTODAS_AS_CAPTURAS|");txt.write(rootHash);txt.write("\n");
+            for(Capture c:cs){txt.write(recordField(c.name));txt.write(" | ");txt.write(c.hash);txt.write("\n");}
+        });
+        outputs.put(reportDir.resolve("verificacao-integridade.json"),json->{
+            json.write("{\"generatedAt\":\"");json.write(jsonEsc(time));json.write("\",\"rootHash\":\"");json.write(rootHash);json.write("\",\"historyPublicHash\":\"");json.write(historyPublicHash);json.write("\",\"captures\":[");
+            boolean first=true;
+            for(Capture c:cs){
+                if(!first)json.write(',');first=false;
+                json.write("{\"name\":\"");json.write(jsonEsc(c.name));json.write("\",\"hash\":\"");json.write(c.hash);json.write("\",\"files\":[");
+                boolean f=true;
+                for(Item i:c.items){if(!f)json.write(',');f=false;json.write("{\"path\":\"");json.write(jsonEsc(i.path));json.write("\",\"status\":\"");json.write(jsonEsc(i.state));json.write("\",\"expected\":\"");json.write(jsonEsc(i.expected==null?"":i.expected));json.write("\",\"actual\":\"");json.write(jsonEsc(i.actual==null?"":i.actual));json.write("\"}");}
+                json.write("]}");
+            }
+            json.write("]}");
+        });
+        outputs.put(reportDir.resolve("hashes-capturas.txt"),w->w.write(publicHashList(cs,rootHash)));
+        outputs.put(reportDir.resolve("historico-capturas.txt"),w->w.write(history));
+        atomicBatchStreaming(root,outputs);
     }
     private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{Files.deleteIfExists(t);}}
     private static void atomicBatch(Map<Path,String> outputs)throws IOException{
-        if(outputs.isEmpty())return;
+        if(outputs==null||outputs.isEmpty())return;
         Path common=null;
         for(Path p:outputs.keySet()){
             Path parent=p.toAbsolutePath().normalize().getParent();
@@ -1744,18 +1999,26 @@ public final class IntegrityVerifier {
         atomicBatch(common,outputs);
     }
     private static void atomicBatch(Path root,Map<Path,String> outputs)throws IOException{
+        if(outputs==null||outputs.isEmpty())return;
+        Map<Path,ReportWriter> writers=new LinkedHashMap<>();
+        for(Map.Entry<Path,String> entry:outputs.entrySet()){final String content=entry.getValue();writers.put(entry.getKey(),w->w.write(content));}
+        atomicBatchStreaming(root,writers);
+    }
+    private static void atomicBatchStreaming(Path root,Map<Path,ReportWriter> outputs)throws IOException{
+        if(outputs==null||outputs.isEmpty())return;
         Map<Path,Path> staged=new LinkedHashMap<>(),backups=new LinkedHashMap<>();List<Path> promoted=new ArrayList<>();
         try{
-            for(Map.Entry<Path,String> entry:outputs.entrySet()){
+            for(Map.Entry<Path,ReportWriter> entry:outputs.entrySet()){
                 Path target=entry.getKey().toAbsolutePath().normalize(),parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+target);
-                byte[] data=entry.getValue().getBytes(StandardCharsets.UTF_8);
                 createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
                 Path temp=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");staged.put(target,temp);
-                try(OutputStream out=Files.newOutputStream(temp,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}
-                if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)){if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path backup=Files.createTempFile(parent,"."+target.getFileName()+".",".bak");Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING);backups.put(target,backup);}
+                try(OutputStream raw=Files.newOutputStream(temp,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS);
+                        java.io.BufferedWriter writer=new java.io.BufferedWriter(new java.io.OutputStreamWriter(raw,StandardCharsets.UTF_8),32768)){entry.getValue().writeTo(writer);}
+                if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);
+                if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)){if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path backup=Files.createTempFile(parent,"."+target.getFileName()+".",".bak");Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING,LinkOption.NOFOLLOW_LINKS);backups.put(target,backup);}
             }
             for(Map.Entry<Path,Path> entry:staged.entrySet()){
-                if(isLinkOrReparse(entry.getKey()))throw new IOException("O destino do relatório mudou para link ou junção: "+entry.getKey());
+                if(isLinkOrReparse(entry.getKey())||isLinkOrReparse(entry.getValue())||(Files.exists(entry.getKey(),LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(entry.getKey(),LinkOption.NOFOLLOW_LINKS)))throw new IOException("O destino do relatório mudou para link, junção ou diretório inválido: "+entry.getKey());
                 moveReplace(entry.getValue(),entry.getKey());promoted.add(entry.getKey());
             }
         }catch(IOException failure){
@@ -1795,6 +2058,7 @@ public final class IntegrityVerifier {
                 if(Files.isSymbolicLink(current))throw new IOException("Diretórios de saída com link simbólico não são permitidos: "+current);
             }
         }
+        if(isLinkOrReparse(normalizedRoot))throw new IOException("Raiz de saída é link ou junção: "+normalizedRoot);
         if(!normalizedDir.equals(normalizedRoot)){
             Path current=normalizedRoot;
             for(Path part:normalizedRoot.relativize(normalizedDir)){

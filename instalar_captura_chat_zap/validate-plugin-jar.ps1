@@ -1,5 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$Jar,[string]$ExpectedSha256='')
+param([string]$Jar=(Join-Path $PSScriptRoot 'iped-viewers-impl-4.3.1.jar'),[string]$ExpectedSha256='')
 $ErrorActionPreference='Stop'
+if([string]::IsNullOrWhiteSpace($Jar) -or !(Test-Path -LiteralPath $Jar -PathType Leaf)){
+ throw "Arquivo JAR do plugin nao encontrado: $Jar"
+}
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 if(![string]::IsNullOrWhiteSpace($ExpectedSha256)){
@@ -10,7 +13,7 @@ if(![string]::IsNullOrWhiteSpace($ExpectedSha256)){
 }
 $z=[IO.Compression.ZipFile]::OpenRead($Jar)
 try{
- $required=@('iped/viewers/HtmlLinkViewer.class','iped/viewers/CaptureCensorship.class','iped/viewers/CaptureBoundaryResolver.class','iped/viewers/CaptureIntegrity.class','iped/viewers/ChatCapturePanel.class','iped/viewers/ChatAnnotationStore.class','iped/viewers/AnnotationPreflight.class','iped/viewers/localization/Messages.class','iped-viewer-messages.properties','iped-viewer-messages_pt_BR.properties')
+ $required=@('iped/viewers/HtmlLinkViewer.class','iped/viewers/HtmlViewer.class','iped/viewers/HexViewerPlus.class','iped/viewers/MultiViewer.class','iped/viewers/MultiViewer$5.class','iped/viewers/MetadataViewer.class','iped/viewers/CaptureCensorship.class','iped/viewers/CaptureBoundaryResolver.class','iped/viewers/CaptureIntegrity.class','iped/viewers/ChatCapturePanel.class','iped/viewers/ChatAnnotationStore.class','iped/viewers/AnnotationPreflight.class','iped/viewers/localization/Messages.class','META-INF/jpms.args','org/opencv/core/Core.class','iped-viewer-messages.properties','iped-viewer-messages_pt_BR.properties')
  foreach($n in $required){if(!$z.GetEntry($n)){throw "Entrada obrigatoria ausente: $n"}}
  foreach($n in @('iped-viewer-messages.properties','iped-viewer-messages_pt_BR.properties')){$r=[IO.StreamReader]::new($z.GetEntry($n).Open());try{$t=$r.ReadToEnd()}finally{$r.Dispose()};if($t -notmatch '(?m)^HexViewerPlus\.appName=' -or $t -notmatch '(?m)^ChatCapturePanel\.IncludeAnnotations=' -or $t -notmatch '(?m)^ChatCapturePanel\.EndDateNotAllowed='){throw "Bundle invalido: $n"}}
 }finally{$z.Dispose()}

@@ -738,7 +738,7 @@ public final class PublicAnonHarness {
         for prefix in targets:
             ver = subprocess.run(prefix + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
-            self.assertIn("Verificador de Integridade 1.4.3", ver.stdout)
+            self.assertIn("Verificador de Integridade 1.4.4", ver.stdout)
 
             hlp = subprocess.run(prefix + ["--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(hlp.returncode, 0, hlp.stdout + hlp.stderr)
@@ -746,7 +746,7 @@ public final class PublicAnonHarness {
 
             st = subprocess.run(prefix + ["--self-test"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(st.returncode, 0, st.stdout + st.stderr)
-            self.assertIn("SELF_TEST_OK 1.4.3", st.stdout)
+            self.assertIn("SELF_TEST_OK 1.4.4", st.stdout)
 
             bad = subprocess.run(prefix + ["--nao-existe"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertNotEqual(bad.returncode, 0)

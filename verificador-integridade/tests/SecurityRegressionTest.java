@@ -46,6 +46,10 @@ public final class SecurityRegressionTest {
             writeReportsTreatsHtmlMessageAndReconciliationStatesAsHealthy(root);
             validateRenderedCaptureHtmlRejectsCommentsCdataAndProcessingInstructions();
             comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(root);
+            rejectLinksRejectsRootJunctionAndAtomicBatchStreamingMatchesBytes(root);
+            alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs();
+            unquotedQuoteHtmlBypassPayloadsAreRejected();
+            openFileGuardRejectsJunctionAndMissingFiles(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -1402,6 +1406,160 @@ public final class SecurityRegressionTest {
         String keyMismatchReport = IntegrityVerifier.comparePublicMessageManifest(manifestPath, "cap", forgedRef.toString());
         if (!keyMismatchReport.contains("101|chave_divergente") || !keyMismatchReport.contains("Integras: 0 | divergentes: 1")) {
             throw new AssertionError("Key mismatch for same domId must not report integra, got:\n" + keyMismatchReport);
+        }
+    }
+
+    private static void rejectLinksRejectsRootJunctionAndAtomicBatchStreamingMatchesBytes(Path root) throws Exception {
+        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        Path outside = Files.createDirectories(root.resolve("outside-root-junction-target"));
+        Path rootJunction = root.resolve("root-junction-for-atomic");
+        createWindowsJunction(rootJunction, outside);
+        try {
+            Method atomicMethod = IntegrityVerifier.class.getDeclaredMethod("atomic", Path.class, Path.class, String.class);
+            atomicMethod.setAccessible(true);
+            boolean rootJunctionRejected = false;
+            try {
+                atomicMethod.invoke(null, rootJunction, rootJunction.resolve("integridade.html"), "<html></html>");
+            } catch (InvocationTargetException e) {
+                if (e.getCause() instanceof IOException) {
+                    rootJunctionRejected = true;
+                } else {
+                    throw e;
+                }
+            }
+            if (!rootJunctionRejected || Files.exists(outside.resolve("integridade.html"))) {
+                throw new AssertionError("atomic() / rejectLinks() must reject when normalizedRoot itself is an NTFS junction");
+            }
+        } finally {
+            Files.deleteIfExists(rootJunction);
+        }
+    }
+
+    private static void alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs() throws Exception {
+        Field scanLimitField = IntegrityVerifier.class.getDeclaredField("MAX_SCAN_ENTRIES");
+        scanLimitField.setAccessible(true);
+        if (scanLimitField.getLong(null) != 100_000L) {
+            throw new AssertionError("MAX_SCAN_ENTRIES must be 100000");
+        }
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+
+        String key = sha256Utf8("msg-header-contract-test");
+        java.util.Set<String> keys = Collections.singleton(key);
+        String safeHeader = "<div id=\"topbar\" class=\"hdr\" dir=\"ltr\" lang=\"pt-BR\" data-iped-hdr=\"ok\">"
+                + "<h1>Chat</h1><h3>Sub</h3><table class=\"meta\" dir=\"ltr\"><tbody>"
+                + "<tr><th colspan=\"2\" width=\"120\" height=\"32\" data-col=\"a\">Cab</th></tr>"
+                + "<tr><td rowspan=\"1\" data-role=\"cell\"><em><u>Ok</u></em><hr></td></tr>"
+                + "</tbody></table></div>";
+        String modern = "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                + csp + "\"><style>body{}</style><style>.c{}</style></head><body>"
+                + safeHeader + "<div data-capture-message-key=\"" + key + "\">ok</div><script>" + stopScript + "</script></body></html>";
+        validate.invoke(null, modern, Collections.emptySet(), Collections.emptyMap(), keys, 2);
+
+        String[] badFragments = {
+            "<td width=\"120px\">bad</td>",
+            "<div data-capture-link-token=\"x\">bad</div>",
+            "<span data-capture-message-key=\"" + key + "\">bad</span>",
+            "<img src=\"x.png\" data-extra=\"1\">",
+            "<img src=\"data:image/svg+xml;base64,PHN2Zz4=\">"
+        };
+        for (String frag : badFragments) {
+            String invalid = "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                    + csp + "\"><style>body{}</style><style>.c{}</style></head><body>"
+                    + frag + "<div data-capture-message-key=\"" + key + "\">ok</div><script>" + stopScript + "</script></body></html>";
+            assertValidateHtmlRejected(validate, invalid, keys, 2);
+        }
+    }
+
+    private static void unquotedQuoteHtmlBypassPayloadsAreRejected() throws Exception {
+        Method validate = IntegrityVerifier.class.getDeclaredMethod(
+                "validateRenderedCaptureHtml", String.class, java.util.Set.class, Map.class, java.util.Set.class, int.class);
+        validate.setAccessible(true);
+        Field cspField = IntegrityVerifier.class.getDeclaredField("CAPTURE_CSP");
+        cspField.setAccessible(true);
+        String csp = (String) cspField.get(null);
+        Field scriptField = IntegrityVerifier.class.getDeclaredField("CAPTURE_MEDIA_STOP_SCRIPT");
+        scriptField.setAccessible(true);
+        String stopScript = (String) scriptField.get(null);
+
+        String key = sha256Utf8("msg-f01-quote-bypass");
+        java.util.Set<String> keys = Collections.singleton(key);
+        String modernHead = "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
+                + csp + "\">";
+        String modernTail = "<style>body{}</style><style>.c{}</style></head><body><div data-capture-message-key=\"" + key
+                + "\">2 &lt; 3</div><script>" + stopScript + "</script></body></html>";
+        validate.invoke(null, modernHead + modernTail, Collections.emptySet(), Collections.emptyMap(), keys, 2);
+
+        String[] modernBypasses = {
+            modernHead + "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.invalid\" a=b'>" + modernTail,
+            modernHead + "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.invalid\" a=b\">" + modernTail,
+            modernHead + "<meta '>" + modernTail,
+            modernHead + modernTail.replace(">2 &lt; 3</div>", ">2 &lt; 3<iframe src=\"evil.html\" a=b'></iframe></div>"),
+            modernHead + modernTail.replace(">2 &lt; 3</div>", ">2 &lt; 3<a href=\"https://evil.invalid\" a=b'>phish</a></div>"),
+            modernHead + modernTail.replace(">2 &lt; 3</div>", ">2 &lt; 3<svg onload=\"alert(1)\" a=b'></div>"),
+            modernHead + modernTail.replace(">2 &lt; 3</div>", ">2 &lt; 3<div title=\"a\" onClick=\"alert(1)\" a=b'>x</div></div>"),
+            modernHead + "<!bad-decl>" + modernTail,
+            modernHead + modernTail.replace("</div>", "</div extra=1>")
+        };
+        for (String payload : modernBypasses) {
+            assertValidateHtmlRejected(validate, payload, keys, 2);
+        }
+
+        String legacyBase = "<!doctype html><div class=\"linha\" data-capture-message-key=\"" + key + "\">ok</div>";
+        validate.invoke(null, legacyBase, Collections.emptySet(), Collections.emptyMap(), keys, 0);
+        String[] legacyBypasses = {
+            legacyBase + "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.invalid\" a=b'>",
+            legacyBase + "<a href=\"https://evil.invalid\" a=b'>link</a>",
+            legacyBase + "<div data-x=\"unclosed>"
+        };
+        for (String payload : legacyBypasses) {
+            assertValidateHtmlRejected(validate, payload, keys, 0);
+        }
+    }
+
+    private static void openFileGuardRejectsJunctionAndMissingFiles(Path root) throws Exception {
+        Method guard = IntegrityVerifier.class.getDeclaredMethod("validateOpenableRegularFile", Path.class);
+        guard.setAccessible(true);
+        Path dir = Files.createDirectories(root.resolve("open-file-guard"));
+        Path regular = Files.write(dir.resolve("historico-capturas.txt"), "ok".getBytes(StandardCharsets.UTF_8));
+        guard.invoke(null, regular);
+
+        for (Path invalid : new Path[]{null, dir, dir.resolve("missing.txt")}) {
+            boolean rejected = false;
+            try {
+                guard.invoke(null, invalid);
+            } catch (InvocationTargetException e) {
+                if (e.getCause() instanceof IOException) rejected = true;
+                else throw e;
+            }
+            if (!rejected) throw new AssertionError("validateOpenableRegularFile must reject: " + invalid);
+        }
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            Path targetDir = Files.createDirectories(root.resolve("open-file-target"));
+            Files.write(targetDir.resolve("historico-capturas.txt"), "outside".getBytes(StandardCharsets.UTF_8));
+            Path junctionDir = root.resolve("open-file-junc");
+            createWindowsJunction(junctionDir, targetDir);
+            try {
+                boolean rejected = false;
+                try {
+                    guard.invoke(null, junctionDir.resolve("historico-capturas.txt"));
+                } catch (InvocationTargetException e) {
+                    if (e.getCause() instanceof IOException) rejected = true;
+                    else throw e;
+                }
+                if (!rejected) throw new AssertionError("validateOpenableRegularFile must reject file inside NTFS junction parent");
+            } finally {
+                Files.deleteIfExists(junctionDir);
+            }
         }
     }
 

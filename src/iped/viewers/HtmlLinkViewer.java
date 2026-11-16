@@ -147,7 +147,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.8"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.6.9"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -201,6 +201,7 @@ private volatile RecaptureJob activeRecaptureJob;
 
     private final List<ChatSearchHit> searchHits = new ArrayList<>();
     private final Object searchLock = new Object();
+    private final java.util.concurrent.atomic.AtomicInteger searchGeneration = new java.util.concurrent.atomic.AtomicInteger();
     private volatile int searchTotal;
     private volatile int searchIndex = -1;
 
@@ -708,8 +709,11 @@ private void clearChatCaptureMarks() {
         int notes = 0;
         int links = 0;
         int outOfRange = 0;
-        int startIndex = getMessageIndex(captureStartMessageId);
-        int endIndex = getMessageIndex(captureEndMessageId);
+        Map<String, Integer> indexById = (captureStartMessageId != null && captureEndMessageId != null && !items.isEmpty())
+                ? getOrderedMessageIndexMap()
+                : Collections.emptyMap();
+        int startIndex = captureStartMessageId == null ? -1 : indexById.getOrDefault(captureStartMessageId, -1);
+        int endIndex = captureEndMessageId == null ? -1 : indexById.getOrDefault(captureEndMessageId, -1);
         StringBuilder badges = new StringBuilder();
         for (ChatAnnotation item : items) {
             if (item.hasNote()) {
@@ -718,7 +722,8 @@ private void clearChatCaptureMarks() {
             if (item.hasLinks()) {
                 links++;
             }
-            item.range = classifyAnnotationRange(item.messageId, startIndex, endIndex);
+            int msgIndex = item.messageId == null ? -1 : indexById.getOrDefault(item.messageId, -1);
+            item.range = classifyAnnotationRange(msgIndex, startIndex, endIndex);
             if (item.range == ChatAnnotation.RANGE_OUT) {
                 outOfRange++;
             }
@@ -730,11 +735,37 @@ private void clearChatCaptureMarks() {
         refreshAnnotationBadges(badges.toString());
     }
 
+    private Map<String, Integer> getOrderedMessageIndexMap() {
+        Map<String, Integer> indexById = new HashMap<>();
+        try {
+            Object raw = executeScriptAndWait(
+                    "(function(){if(!window.ipedChatCapture)return '[]';var m=window.ipedChatCapture.getOrderedMessages(),out=[];for(var i=0;i<m.length;i++){out.push(m[i]&&m[i].id?m[i].id:'');}return JSON.stringify(out);})()"); //$NON-NLS-1$
+            if (raw instanceof String) {
+                JSONArray ids = new JSONArray((String) raw);
+                for (int i = 0; i < ids.length(); i++) {
+                    String id = ids.optString(i, ""); //$NON-NLS-1$
+                    if (!id.isEmpty() && !indexById.containsKey(id)) {
+                        indexById.put(id, i);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Unable to build ordered message index map", e); //$NON-NLS-1$
+        }
+        return indexById;
+    }
+
     private int classifyAnnotationRange(String messageId, int startIndex, int endIndex) {
         if (captureStartMessageId == null || captureEndMessageId == null) {
             return ChatAnnotation.RANGE_IN;
         }
-        int index = getMessageIndex(messageId);
+        return classifyAnnotationRange(getMessageIndex(messageId), startIndex, endIndex);
+    }
+
+    private int classifyAnnotationRange(int index, int startIndex, int endIndex) {
+        if (captureStartMessageId == null || captureEndMessageId == null) {
+            return ChatAnnotation.RANGE_IN;
+        }
         if (index < 0) {
             return ChatAnnotation.RANGE_ORPHAN;
         }
@@ -801,7 +832,8 @@ private void clearChatCaptureMarks() {
             final String title = target.title;
             SwingUtilities.invokeLater(() -> {
                 if (item == null) {
-                    JOptionPane.showMessageDialog(chatCapturePanel, Messages.getString("ChatCaptureLink.OpenFailed"),
+                    JOptionPane.showMessageDialog(chatCapturePanel,
+                            ChatCapturePanel.plainMessageComponent(Messages.getString("ChatCaptureLink.OpenFailed")),
                             Messages.getString("ChatCaptureLink.Title"), JOptionPane.WARNING_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
                     return;
                 }
@@ -809,7 +841,8 @@ private void clearChatCaptureMarks() {
                     File destination = resolveLinkedDestination();
                     if (destination == null) {
                         JOptionPane.showMessageDialog(chatCapturePanel,
-                                Messages.getString("ChatCaptureLink.SetDestinationFirst"), //$NON-NLS-1$
+                                ChatCapturePanel.plainMessageComponent(
+                                        Messages.getString("ChatCaptureLink.SetDestinationFirst")), //$NON-NLS-1$
                                 Messages.getString("ChatCaptureLink.Title"), JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
                         return;
                     }
@@ -829,7 +862,8 @@ private void clearChatCaptureMarks() {
                             new AnnotationPendingLink(originChatKey, originMessageId, target.chatRefId, title));
                 } catch (Throwable e) {
                     LOGGER.warn("Unable to open linked chat capture window", e); //$NON-NLS-1$
-                    JOptionPane.showMessageDialog(chatCapturePanel, Messages.getString("ChatCaptureLink.OpenFailed"),
+                    JOptionPane.showMessageDialog(chatCapturePanel,
+                            ChatCapturePanel.plainMessageComponent(Messages.getString("ChatCaptureLink.OpenFailed")),
                             Messages.getString("ChatCaptureLink.Title"), JOptionPane.WARNING_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
                 }
             });
@@ -887,14 +921,20 @@ private void clearChatCaptureMarks() {
 
     private AnnotationPreflight buildAnnotationPreflight() {
         AnnotationPreflight preflight = new AnnotationPreflight();
-        int startIndex = getMessageIndex(captureStartMessageId);
-        int endIndex = getMessageIndex(captureEndMessageId);
-        for (ChatAnnotation item : annotationStore.itemsFor(currentChatKey())) {
+        List<ChatAnnotation> items = annotationStore.itemsFor(currentChatKey());
+        if (items.isEmpty()) {
+            return preflight;
+        }
+        Map<String, Integer> indexById = getOrderedMessageIndexMap();
+        int startIndex = captureStartMessageId == null ? -1 : indexById.getOrDefault(captureStartMessageId, -1);
+        int endIndex = captureEndMessageId == null ? -1 : indexById.getOrDefault(captureEndMessageId, -1);
+        for (ChatAnnotation item : items) {
             if (item.isEmpty()) {
                 continue;
             }
-            item.range = classifyAnnotationRange(item.messageId, startIndex, endIndex);
-            preflight.add(item, getMessageIndex(item.messageId));
+            int msgIndex = item.messageId == null ? -1 : indexById.getOrDefault(item.messageId, -1);
+            item.range = classifyAnnotationRange(msgIndex, startIndex, endIndex);
+            preflight.add(item, msgIndex);
         }
         return preflight;
     }
@@ -951,10 +991,13 @@ private void clearChatCaptureMarks() {
             return;
         }
         String id = messageId;
-        SwingUtilities.invokeLater(() -> showAnnotationActions(id));
+        runOffEdtIfNeeded(() -> {
+            String preview = getMessagePreviewText(id);
+            SwingUtilities.invokeLater(() -> showAnnotationActions(id, preview));
+        });
     }
 
-    private void showAnnotationActions(String messageId) {
+    private void showAnnotationActions(String messageId, String preview) {
         if (captureRunning || linkedCaptureViewer) {
             return;
         }
@@ -964,7 +1007,7 @@ private void clearChatCaptureMarks() {
             return;
         }
         ChatAnnotationActionDialog dialog = new ChatAnnotationActionDialog(
-                SwingUtilities.getWindowAncestor(chatCapturePanel), annotation, getMessagePreviewText(messageId));
+                SwingUtilities.getWindowAncestor(chatCapturePanel), annotation, preview);
         dialog.setVisible(true);
         boolean changed = false;
         if (dialog.isNoteRemoved()) {
@@ -1021,7 +1064,8 @@ private void clearChatCaptureMarks() {
         }
         if (outputRoot == null || !outputRoot.isDirectory()) {
             JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(chatCapturePanel),
-                    "Pasta de saida invalida.", "Anotar chat salvo", JOptionPane.ERROR_MESSAGE);
+                    ChatCapturePanel.plainMessageComponent("Pasta de saida invalida."), "Anotar chat salvo",
+                    JOptionPane.ERROR_MESSAGE);
             return;
         }
         SavedChatPickerDialog dialog = new SavedChatPickerDialog(SwingUtilities.getWindowAncestor(chatCapturePanel), outputRoot);
@@ -1033,15 +1077,16 @@ private void clearChatCaptureMarks() {
         if (folderName == null || folderName.isBlank()) {
             return;
         }
-        java.io.File savedFolder = new java.io.File(outputRoot, folderName);
-        java.io.File manifest = new java.io.File(savedFolder, "manifest.json");
         String title = "";
         String sourceName = "";
         String sourceHash = "";
         String sourcePath = "";
         try {
-            if (manifest.isFile()) {
-                String content = CaptureIntegrity.readJsonUtf8Limited(manifest.toPath());
+            Path rootPath = outputRoot.toPath().toAbsolutePath().normalize();
+            Path savedFolderPath = CaptureIntegrity.resolveContained(rootPath, folderName);
+            Path manifestPath = CaptureIntegrity.resolveContained(savedFolderPath, "manifest.json"); //$NON-NLS-1$
+            if (CaptureIntegrity.isSafeDirectory(savedFolderPath) && CaptureIntegrity.isSafeRegularFile(manifestPath)) {
+                String content = CaptureIntegrity.readJsonUtf8Limited(manifestPath);
                 JSONObject root = new JSONObject(content);
                 title = jsonString(root, "title"); //$NON-NLS-1$
                 if (title.isEmpty()) {
@@ -1067,7 +1112,7 @@ private void clearChatCaptureMarks() {
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to read manifest of saved chat {}", savedFolder, e);
+            LOGGER.warn("Unable to read manifest of saved chat {}", folderName, e);
         }
 
         java.util.List<String> queries = new java.util.ArrayList<>();
@@ -1100,7 +1145,8 @@ private void clearChatCaptureMarks() {
         }
         if (item == null) {
             JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(chatCapturePanel),
-                    "Nao foi possivel localizar o chat de origem no caso.", "Anotar chat salvo", JOptionPane.ERROR_MESSAGE);
+                    ChatCapturePanel.plainMessageComponent("Nao foi possivel localizar o chat de origem no caso."),
+                    "Anotar chat salvo", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
@@ -1362,12 +1408,14 @@ private void clearChatCaptureMarks() {
             folders = runRecaptureLoad("Re-Extrair — procurando capturas", progress -> readCaptureFolders(outputRoot, progress));
         } catch (Exception e) {
             LOGGER.warn("Unable to load recapture jobs from {}", outputRoot, e); //$NON-NLS-1$
-            JOptionPane.showMessageDialog(chatCapturePanel, e.getMessage() == null ? e.toString() : e.getMessage(),
+            JOptionPane.showMessageDialog(chatCapturePanel,
+                    ChatCapturePanel.plainMessageComponent(e.getMessage() == null ? e.toString() : e.getMessage()),
                     "Re-Extrair", JOptionPane.ERROR_MESSAGE); //$NON-NLS-1$
             return;
         }
         if (folders.isEmpty()) {
-            JOptionPane.showMessageDialog(chatCapturePanel, "Nenhuma captura valida encontrada para re-extrair.", //$NON-NLS-1$
+            JOptionPane.showMessageDialog(chatCapturePanel,
+                    ChatCapturePanel.plainMessageComponent("Nenhuma captura valida encontrada para re-extrair."), //$NON-NLS-1$
                     "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$
             return;
         }
@@ -1377,6 +1425,8 @@ private void clearChatCaptureMarks() {
         final boolean[] allFuture = {false};
         boolean accepted = false;
         Set<String> selectedIds = new HashSet<>();
+        Set<String> knownValidIds = new HashSet<>();
+        Set<String> knownInvalidIds = new HashSet<>();
         boolean annotationsEnabled = true;
         boolean migrateLegacyToHtml = false;
         boolean resetLegacyRecords = false;
@@ -1386,15 +1436,24 @@ private void clearChatCaptureMarks() {
             List<String> pageFolders = folders.subList(start, Math.min(folders.size(), start + pageSize));
             List<RecaptureJob> jobs;
             try { jobs = runRecaptureLoad("Re-Extrair — validando página", progress -> loadRecaptureJobs(outputRoot, pageFolders, true, progress)); }
-            catch (Exception e) { JOptionPane.showMessageDialog(chatCapturePanel, e.getMessage(), "Re-Extrair", JOptionPane.ERROR_MESSAGE); return; }
+            catch (Exception e) { JOptionPane.showMessageDialog(chatCapturePanel, ChatCapturePanel.plainMessageComponent(e.getMessage()), "Re-Extrair", JOptionPane.ERROR_MESSAGE); return; }
             JPanel list = new JPanel();
             list.setLayout(new javax.swing.BoxLayout(list, javax.swing.BoxLayout.Y_AXIS));
             List<JCheckBox> checks = new ArrayList<>();
             for (RecaptureJob job : jobs) {
+                if (job.valid) {
+                    knownValidIds.add(job.folder);
+                    knownInvalidIds.remove(job.folder);
+                } else {
+                    knownInvalidIds.add(job.folder);
+                    knownValidIds.remove(job.folder);
+                    selectedIds.remove(job.folder);
+                }
                 String normalizedFolder = job.folder == null ? "" : job.folder.replace('\\', '/'); //$NON-NLS-1$
                 int separator = normalizedFolder.lastIndexOf('/');
                 String label = separator >= 0 ? normalizedFolder.substring(separator + 1) : normalizedFolder;
-                JCheckBox check = ChatCapturePanel.plainCheckBox(label, allFuture[0] || selectedIds.contains(job.folder));
+                JCheckBox check = ChatCapturePanel.plainCheckBox(label,
+                        shouldSelectRecaptureCheckBox(job.valid, allFuture[0], selectedIds.contains(job.folder)));
                 check.setEnabled(job.valid);
                 check.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
                 checks.add(check); list.add(check);
@@ -1405,7 +1464,7 @@ private void clearChatCaptureMarks() {
             JLabel count = ChatCapturePanel.plainLabel("Exibindo " + (start + 1) + "–" + (start + jobs.size()) + " de " + folders.size() + " capturas");
             JButton bulk = new JButton(allFuture[0] ? "Desmarcar todos" : "Marcar todos");
             bulk.addActionListener(e -> { allFuture[0] = !allFuture[0]; selectedIds.clear(); for(int i=0;i<checks.size();i++) if(checks.get(i).isEnabled())checks.get(i).setSelected(allFuture[0]); bulk.setText(allFuture[0] ? "Desmarcar todos" : "Marcar todos"); });
-            for (int i=0;i<checks.size();i++) { final String id=jobs.get(i).folder; checks.get(i).addActionListener(e -> { boolean checked=((JCheckBox)e.getSource()).isSelected();if(allFuture[0]){for(String existing:folders)if(!existing.equals(id))selectedIds.add(existing);allFuture[0]=false;bulk.setText("Marcar todos");}if(checked)selectedIds.add(id);else selectedIds.remove(id); }); }
+            for (int i=0;i<checks.size();i++) { final String id=jobs.get(i).folder; checks.get(i).addActionListener(e -> { boolean checked=((JCheckBox)e.getSource()).isSelected();if(allFuture[0]){for(String existing:folders)if(!existing.equals(id)&&!knownInvalidIds.contains(existing))selectedIds.add(existing);allFuture[0]=false;bulk.setText("Marcar todos");}if(checked)selectedIds.add(id);else selectedIds.remove(id); }); }
             JButton prev = new JButton("Anterior"); prev.setEnabled(page > 0);
             JButton next = new JButton("Próximo"); next.setEnabled(start + pageSize < folders.size());
             JPanel header = new JPanel(new BorderLayout()); header.add(count,BorderLayout.CENTER); header.add(bulk,BorderLayout.EAST);
@@ -1417,15 +1476,37 @@ private void clearChatCaptureMarks() {
             annotationsEnabled = recaptureAnnotationsToggle != null && recaptureAnnotationsToggle.isSelected();
             migrateLegacyToHtml = recaptureLegacyMigrationToggle != null && recaptureLegacyMigrationToggle.isSelected();
             resetLegacyRecords = recaptureLegacyResetToggle != null && recaptureLegacyResetToggle.isSelected();
-            for(int i=0;i<checks.size();i++){String id=jobs.get(i).folder;if(checks.get(i).isSelected())selectedIds.add(id);else selectedIds.remove(id);}
+            for(int i=0;i<checks.size();i++){String id=jobs.get(i).folder;if(checks.get(i).isEnabled()&&checks.get(i).isSelected())selectedIds.add(id);else selectedIds.remove(id);}
             if(option==0){page=Math.max(0,page-1);continue;}
             if(option==1){page=Math.min((folders.size()-1)/pageSize,page+1);continue;}
             if(option!=2)return;
             accepted=true;
         }
-        for (String folder : folders) if (allFuture[0] || selectedIds.contains(folder)) selectedFolders.add(folder);
+        List<String> candidateFolders = collectSelectedRecaptureFolders(folders, selectedIds, knownInvalidIds, allFuture[0]);
+        List<String> unvalidated = new ArrayList<>();
+        for (String folder : candidateFolders) {
+            if (!knownValidIds.contains(folder)) unvalidated.add(folder);
+        }
+        if (unvalidated.isEmpty()) {
+            selectedFolders.addAll(candidateFolders);
+        } else {
+            try {
+                Set<String> validSet = runRecaptureLoad("Re-Extrair — filtrando válidas",
+                        progress -> filterValidRecaptureFolders(outputRoot, unvalidated, pageSize, knownValidIds, progress));
+                for (String folder : candidateFolders) {
+                    if (knownValidIds.contains(folder) || validSet.contains(folder)) selectedFolders.add(folder);
+                }
+            } catch (Exception e) {
+                JOptionPane.showMessageDialog(chatCapturePanel,
+                        ChatCapturePanel.plainMessageComponent(e.getMessage() == null ? e.toString() : e.getMessage()),
+                        "Re-Extrair", JOptionPane.ERROR_MESSAGE); //$NON-NLS-1$
+                return;
+            }
+        }
         if (selectedFolders.isEmpty()) {
-            JOptionPane.showMessageDialog(chatCapturePanel, "Nenhuma captura selecionada.", "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
+            JOptionPane.showMessageDialog(chatCapturePanel,
+                    ChatCapturePanel.plainMessageComponent("Nenhuma captura selecionada."),
+                    "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
             return;
         }
         this.sensitiveImagesFolder = sensitiveImagesFolder == null || sensitiveImagesFolder.getPath().isBlank() ? null
@@ -1434,11 +1515,54 @@ private void clearChatCaptureMarks() {
         this.sensitiveBlurPercent = normalizeBlurPercent(sensitiveBlurPercent);
         if (migrateLegacyToHtml && this.sensitiveImagesFolder == null) {
             int answer = JOptionPane.showConfirmDialog(chatCapturePanel,
-                    Messages.getString("ChatCapturePanel.MigrateLegacyNoReferenceWarning"), //$NON-NLS-1$
+                    ChatCapturePanel.plainMessageComponent(
+                            Messages.getString("ChatCapturePanel.MigrateLegacyNoReferenceWarning")), //$NON-NLS-1$
                     "Re-Extrair", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE); //$NON-NLS-1$
             if (answer != JOptionPane.YES_OPTION) return;
         }
         startRecaptureBatch(outputRoot, selectedFolders, annotationsEnabled, migrateLegacyToHtml, resetLegacyRecords);
+    }
+
+    static boolean shouldSelectRecaptureCheckBox(boolean valid, boolean allFutureSelected, boolean explicitlySelected) {
+        return valid && (allFutureSelected || explicitlySelected);
+    }
+
+    static List<String> collectSelectedRecaptureFolders(List<String> folders, Set<String> selectedIds,
+            Set<String> knownInvalidIds, boolean allFutureSelected) {
+        List<String> selected = new ArrayList<>();
+        if (folders == null) {
+            return selected;
+        }
+        for (String folder : folders) {
+            if (knownInvalidIds != null && knownInvalidIds.contains(folder)) {
+                continue;
+            }
+            if (allFutureSelected || (selectedIds != null && selectedIds.contains(folder))) {
+                selected.add(folder);
+            }
+        }
+        return selected;
+    }
+
+    private Set<String> filterValidRecaptureFolders(Path outputRoot, List<String> candidateFolders, int chunkSize,
+            Set<String> knownInvalidIds, java.util.function.IntConsumer progress) throws IOException {
+        Set<String> valid = new HashSet<>();
+        int processed = 0;
+        int step = Math.max(1, chunkSize);
+        for (int start = 0; start < candidateFolders.size(); start += step) {
+            List<String> slice = candidateFolders.subList(start, Math.min(candidateFolders.size(), start + step));
+            List<RecaptureJob> jobs = loadRecaptureJobs(outputRoot, slice, true, null);
+            for (RecaptureJob job : jobs) {
+                if (job.valid) {
+                    valid.add(job.folder);
+                } else if (knownInvalidIds != null) {
+                    knownInvalidIds.add(job.folder);
+                }
+                processed++;
+                if (progress != null) progress.accept(processed);
+            }
+        }
+        return valid;
     }
 
     /**
@@ -1548,9 +1672,9 @@ private void clearChatCaptureMarks() {
                 jobs.add(job);
                 continue;
             }
-            pageMetadataBytes += Files.size(manifest);
+            pageMetadataBytes += CaptureIntegrity.safeRegularFileSize(manifest);
             Path coordinates = folderPath.resolve("whatsapp-coordinates.json"); //$NON-NLS-1$
-            if (CaptureIntegrity.isSafeRegularFile(coordinates)) pageMetadataBytes += Files.size(coordinates);
+            if (CaptureIntegrity.isSafeRegularFile(coordinates)) pageMetadataBytes += CaptureIntegrity.safeRegularFileSize(coordinates);
             if (pageMetadataBytes > 16L * 1024L * 1024L) {
                 throw new IOException("Os metadados desta página excedem o orçamento seguro de 16 MiB; selecione uma página menor.");
             }
@@ -1780,7 +1904,7 @@ private void clearChatCaptureMarks() {
             }
         }
         if (folders.isEmpty() && CaptureIntegrity.isSafeDirectory(normalizedRoot)) {
-            try (Stream<Path> stream = Files.list(normalizedRoot)) {
+            try (Stream<Path> stream = Files.list(normalizedRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
                 List<Path> candidates = new ArrayList<>();
                 java.util.Iterator<Path> iterator = stream.iterator();
                 while (iterator.hasNext()) {
@@ -2228,7 +2352,7 @@ private void clearChatCaptureMarks() {
         if (!htmlSha.equalsIgnoreCase(manifest.optString("htmlSha256"))) {
             throw new IOException("O SHA-256 do whatsapp.html não corresponde ao manifesto."); //$NON-NLS-1$
         }
-        if (Files.size(htmlPath) > MAX_HTML_MESSAGE_CAPTURE_BYTES
+        if (CaptureIntegrity.safeRegularFileSize(htmlPath) > MAX_HTML_MESSAGE_CAPTURE_BYTES
                 || !containsUtf8(htmlPath, "Content-Security-Policy") //$NON-NLS-1$
                 || !containsUtf8(htmlPath, CAPTURE_CSP)
                 || !containsUtf8(htmlPath, CAPTURE_MEDIA_STOP_SCRIPT)) {
@@ -2266,7 +2390,7 @@ private void clearChatCaptureMarks() {
                 Path file = CaptureIntegrity.resolveContained(candidate, relative);
                 if (!relative.matches("attachments/[0-9a-fA-F]{64}\\.[a-z0-9]{1,10}") //$NON-NLS-1$
                         || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(file) != attachment.optLong("size", -1)
+                        || CaptureIntegrity.safeRegularFileSize(file) != attachment.optLong("size", -1)
                         || !CaptureIntegrity.sha256(file).equalsIgnoreCase(attachment.optString("sha256"))) { //$NON-NLS-1$
                     throw new IOException("Anexo da candidata está ausente ou diverge do manifesto: " + relative); //$NON-NLS-1$
                 }
@@ -2489,7 +2613,7 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
             }
             job.luceneQuery = query;
             LOGGER.info("Trying to re-extract chat {} with query {}", job.folder, query); //$NON-NLS-1$
-            if (!attachSearcher.openItem(query, null, job.sourceName)) {
+            if (!openSearcherItem(attachSearcher, query, null, job.sourceName)) {
                 continue;
             }
             if (waitUntilCaptureSourceMatches(job, 3000)) {
@@ -3342,7 +3466,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             long storedBytes = capturedHtml.getBytes(StandardCharsets.UTF_8).length + messagesJson.getBytes(StandardCharsets.UTF_8).length;
             for (byte[] attachment : attachments.values()) storedBytes += attachment.length;
             if (migrationJob != null) for (String relative : migrationJob.stagedReusableAttachmentPaths) {
-                storedBytes += Files.size(staging.resolve(relative));
+                storedBytes += CaptureIntegrity.safeRegularFileSize(staging.resolve(relative));
             }
             if (storedBytes > MAX_HTML_MESSAGE_CAPTURE_BYTES) throw new IOException("Captura HTML ultrapassa o limite total de 64 MiB."); //$NON-NLS-1$
             for (Map.Entry<String, byte[]> attachment : attachments.entrySet()) {
@@ -3525,7 +3649,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             "div", "span", "p", "b", "strong", "i", "em", "u", "small", "br", "hr")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$ //$NON-NLS-11$
     private static final Set<String> VOID_HTML_TAGS = new HashSet<>(Arrays.asList("img", "br", "hr")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     private static final Set<String> ALLOWED_HEADER_ATTRS = new HashSet<>(Arrays.asList(
-            "class", "title", "alt", "width", "height", "dir", "lang", "colspan", "rowspan")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
+            "class", "title", "dir", "lang")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
     private static final Set<String> ALLOWED_SEPARATOR_ATTRS = new HashSet<>(Arrays.asList(
             "class", "title", "dir", "lang")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 
@@ -3737,7 +3861,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 }
                 try {
                     DecodedHtmlAttachment image = decodeHtmlAttachment(decoded);
-                    if (!image.mime.startsWith("image/")) { //$NON-NLS-1$
+                    if (!isSupportedEmbeddedRasterMime(image.mime)) {
                         throw new IOException(errorMessage);
                     }
                     emittedValue = "data:" + image.mime + ";base64," //$NON-NLS-1$ //$NON-NLS-2$
@@ -3745,15 +3869,17 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 } catch (IOException invalid) {
                     throw new IOException("Cabeçalho contém imagem não validada.", invalid); //$NON-NLS-1$
                 }
-            } else if (headerMode && ("width".equals(attr) || "height".equals(attr) //$NON-NLS-1$ //$NON-NLS-2$
-                    || "colspan".equals(attr) || "rowspan".equals(attr))) { //$NON-NLS-1$ //$NON-NLS-2$
+            } else if (headerMode && (("width".equals(attr) || "height".equals(attr)) && ("img".equals(tagName) || "td".equals(tagName) || "th".equals(tagName)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                    || ("colspan".equals(attr) || "rowspan".equals(attr)) && ("td".equals(tagName) || "th".equals(tagName)))) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
                 if (!decoded.matches("\\d{1,5}")) { //$NON-NLS-1$
                     throw new IOException(errorMessage);
                 }
                 emittedValue = decoded;
+            } else if (headerMode && "alt".equals(attr) && "img".equals(tagName)) { //$NON-NLS-1$ //$NON-NLS-2$
+                emittedValue = decoded;
             } else {
                 Set<String> allowedAttrs = headerMode ? ALLOWED_HEADER_ATTRS : ALLOWED_SEPARATOR_ATTRS;
-                boolean isSafeDataAttr = attr.matches("data-[a-z0-9_-]{1,64}"); //$NON-NLS-1$
+                boolean isSafeDataAttr = isSafePassiveHeaderDataAttr(tagName, attr);
                 if (!allowedAttrs.contains(attr) && !isSafeDataAttr) {
                     throw new IOException(errorMessage);
                 }
@@ -4173,6 +4299,26 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         return value != null && value.trim().matches("attachments/[0-9a-f]{64}\\.[a-z0-9]{1,10}"); //$NON-NLS-1$
     }
 
+    private static boolean isSupportedEmbeddedRasterMime(String mime) {
+        if (mime == null) {
+            return false;
+        }
+        String normalized = mime.toLowerCase(Locale.ROOT);
+        return "image/png".equals(normalized) || "image/jpeg".equals(normalized) //$NON-NLS-1$ //$NON-NLS-2$
+                || "image/gif".equals(normalized) || "image/webp".equals(normalized); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static boolean isSafePassiveHeaderDataAttr(String tagName, String attr) {
+        if (tagName == null || attr == null || !attr.matches("data-[a-z0-9_-]{1,64}")) { //$NON-NLS-1$
+            return false;
+        }
+        if ("data-capture-message-key".equals(attr) || "data-capture-link-token".equals(attr) //$NON-NLS-1$ //$NON-NLS-2$
+                || "data-capture-src-token".equals(attr) || "data-capture-censored".equals(attr)) { //$NON-NLS-1$ //$NON-NLS-2$
+            return false;
+        }
+        return !"img".equals(tagName) && !"br".equals(tagName) && !"hr".equals(tagName); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
     private static boolean isSafeCaptureMessageMediaSrc(String tag, String value) {
         if (value == null) {
             return false;
@@ -4184,7 +4330,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         if ("img".equals(tag) && trimmed.toLowerCase(Locale.ROOT).startsWith("data:")) { //$NON-NLS-1$ //$NON-NLS-2$
             try {
                 DecodedHtmlAttachment decoded = decodeHtmlAttachment(trimmed);
-                return decoded.mime != null && decoded.mime.startsWith("image/"); //$NON-NLS-1$
+                return isSupportedEmbeddedRasterMime(decoded.mime);
             } catch (IOException ignored) {
                 return false;
             }
@@ -4218,7 +4364,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             String source = null;
             Matcher src = Pattern.compile("(?is)\\bsrc=([\\\"])(attachments/[0-9a-f]{64}\\.[a-z0-9]{1,10})\\1").matcher(tag); //$NON-NLS-1$
             if (src.find()) source = src.group(2);
-            boolean insideAnchor = before.lastIndexOf("<a") > before.toLowerCase(Locale.ROOT).lastIndexOf("</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+            boolean insideAnchor = isInsideOpenAnchorTag(before);
             if (source != null && !insideAnchor) {
                 String hash = source.substring("attachments/".length(), source.lastIndexOf('.')); //$NON-NLS-1$
                 String replacement = "<a class=\"capture-media-link\" href=\"#preview-" + hash + "\">" + tag + "</a>"; //$NON-NLS-1$ //$NON-NLS-2$
@@ -4238,7 +4384,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             if (!src.find()) { players.appendReplacement(result, Matcher.quoteReplacement("")); continue; } //$NON-NLS-1$
             String path = src.group(2), hash = src.group(3), kind = lower.startsWith("<audio") ? "Áudio" : "Vídeo"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             String before = fragment.substring(0, players.start());
-            boolean insideAnchor = before.lastIndexOf("<a") > before.toLowerCase(Locale.ROOT).lastIndexOf("</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+            boolean insideAnchor = isInsideOpenAnchorTag(before);
             String replacement = insideAnchor ? "<span class=\"capture-file-card\">" + kind + "</span>" //$NON-NLS-1$ //$NON-NLS-2$
                     : "<a class=\"capture-file-card capture-media-link\" href=\"#preview-" + hash + "\">" + kind + "</a>"; //$NON-NLS-1$ //$NON-NLS-2$
             if (!modals.containsKey(path)) replacement = ""; //$NON-NLS-1$
@@ -4337,7 +4483,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                     throw new IOException("Caminho de anexo legado excede o limite seguro."); //$NON-NLS-1$
                 }
                 CaptureIntegrity.resolveContained(root, relative);
-                long size = Files.size(path);
+                long size = CaptureIntegrity.safeRegularFileSize(path);
                 if (size < 1 || size > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) continue;
                 if (++files > 25000) throw new IOException("A captura legada excede o limite de anexos para reuso."); //$NON-NLS-1$
                 totalBytes += size;
@@ -4408,7 +4554,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             Path target = null;
             try {
                 if (Files.isSymbolicLink(candidate.path) || !Files.isRegularFile(candidate.path, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(candidate.path) != declaredLength
+                        || CaptureIntegrity.safeRegularFileSize(candidate.path) != declaredLength
                         || !CaptureIntegrity.sha256(candidate.path).equalsIgnoreCase(expectedSha256)) continue;
                 if (job.folderPath == null) continue;
                 CaptureIntegrity.resolveContained(job.folderPath,
@@ -4422,7 +4568,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 if (CaptureIntegrity.isLinkOrReparse(candidate.path) || CaptureIntegrity.isLinkOrReparse(target)) continue;
                 CaptureIntegrity.createDirectoriesSafe(job.reusableAttachmentStaging, target.getParent());
                 if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
-                        && Files.size(target) == declaredLength
+                        && CaptureIntegrity.safeRegularFileSize(target) == declaredLength
                         && CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
                     job.stagedReusableAttachmentPaths.add(relative);
                     return new DecodedHtmlAttachment(mime, null, expectedSha256.toLowerCase(Locale.ROOT), extension, declaredLength);
@@ -4442,7 +4588,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                     }
                     if (copied != declaredLength) throw new IOException("Anexo reutilizado terminou antes do tamanho esperado."); //$NON-NLS-1$
                 }
-                if (Files.size(temporary) != declaredLength
+                if (CaptureIntegrity.safeRegularFileSize(temporary) != declaredLength
                         || !CaptureIntegrity.sha256(temporary).equalsIgnoreCase(expectedSha256)) continue;
                 if (CaptureIntegrity.isLinkOrReparse(target)) {
                     throw new IOException("Symbolic links or junctions are not allowed as attachment target"); //$NON-NLS-1$
@@ -4455,7 +4601,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 temporary = null;
                 if (CaptureIntegrity.isLinkOrReparse(target)
                         || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(target) != declaredLength
+                        || CaptureIntegrity.safeRegularFileSize(target) != declaredLength
                         || !CaptureIntegrity.sha256(target).equalsIgnoreCase(expectedSha256)) {
                     Files.deleteIfExists(target);
                     continue;
@@ -4473,6 +4619,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
     }
 
     private byte[] readFilePrefix(Path file, int maximum) throws IOException {
+        CaptureIntegrity.safeRegularFileSize(file);
         byte[] buffer = new byte[maximum];
         int total = 0;
         try (InputStream input = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
@@ -4758,7 +4905,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             return;
         }
         List<CaptureRootEntry> captures = new ArrayList<>();
-        try (Stream<Path> children = Files.list(outputRoot)) {
+        try (Stream<Path> children = Files.list(outputRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
             children.filter(CaptureIntegrity::isSafeDirectory)
                     .filter(path -> !path.getFileName().toString().startsWith("_backup_chat_capture_")) //$NON-NLS-1$
 .filter(path -> !isRecaptureAuxiliaryFolder(path))
@@ -4981,7 +5128,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         if (!CaptureIntegrity.isSafeDirectory(outputRoot)) {
             return;
         }
-        try (Stream<Path> children = Files.list(outputRoot)) {
+        try (Stream<Path> children = Files.list(outputRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
             children.filter(CaptureIntegrity::isSafeDirectory).filter(HtmlLinkViewer::isRecaptureAuxiliaryFolder).forEach(path -> {
                 try {
                     deleteDirectoryIfExists(path);
@@ -5113,7 +5260,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         }
         for (Path file : files) {
             String relative = folder.relativize(file).toString().replace('\\', '/');
-            long size = Files.size(file);
+            long size = CaptureIntegrity.safeRegularFileSize(file);
             String sha256 = digest(file, "SHA-256"); //$NON-NLS-1$
             canonical.update((relative + '|' + size + '|' + sha256 + '\n').getBytes(StandardCharsets.UTF_8));
             result.fileCount++;
@@ -5691,7 +5838,7 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
         file.relativePath = relativePath.replace('\\', '/');
         file.absolutePath = path.toAbsolutePath().toString();
         file.chatHash = chatHash;
-        file.size = Files.size(path);
+        file.size = CaptureIntegrity.safeRegularFileSize(path);
         file.md5 = digest(path, "MD5"); //$NON-NLS-1$
         file.sha256 = digest(path, "SHA-256"); //$NON-NLS-1$
         applyExportedMetadata(file, path, sourceItem);
@@ -6508,7 +6655,7 @@ out.append("{\n"); //$NON-NLS-1$
         if (!CaptureIntegrity.isSafeDirectory(outputRoot)) {
             return entries;
         }
-        try (Stream<Path> children = Files.list(outputRoot)) {
+        try (Stream<Path> children = Files.list(outputRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
             List<Path> roots = children.filter(CaptureIntegrity::isSafeDirectory).filter(path -> !isRecaptureAuxiliaryFolder(path))
                     .sorted().collect(java.util.stream.Collectors.toList());
             for (Path folder : roots) {
@@ -6521,7 +6668,7 @@ out.append("{\n"); //$NON-NLS-1$
                 if (isLinkedCaptureFolder(folder) || !CaptureIntegrity.isSafeDirectory(linkedDir)) {
                     continue;
                 }
-                try (Stream<Path> linked = Files.list(linkedDir)) {
+                try (Stream<Path> linked = Files.list(linkedDir).limit(MAX_RECAPTURE_CANDIDATES)) {
                     List<Path> linkedFolders = linked.filter(CaptureIntegrity::isSafeDirectory).sorted()
                             .collect(java.util.stream.Collectors.toList());
                     for (Path linkedFolder : linkedFolders) {
@@ -6670,7 +6817,7 @@ out.append("{\n"); //$NON-NLS-1$
         } catch (IOException unsafe) {
             return frames;
         }
-        try (Stream<Path> stream = Files.list(screenshots)) {
+        try (Stream<Path> stream = Files.list(screenshots).limit(MAX_RECAPTURE_CANDIDATES)) {
             stream.filter(CaptureIntegrity::isSafeRegularFile).filter(path -> {
                 String name = path.getFileName().toString().toLowerCase();
                 return name.endsWith(".png") || name.endsWith(".jpg"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -7792,11 +7939,14 @@ private void setCaptureInteractionEnabled(boolean enabled) {
     }
 
     private void runOffEdtIfNeeded(Runnable task) {
-        if (task == null) {
+        if (task == null || disposed || uiScriptExecutor.isShutdown()) {
             return;
         }
         if (SwingUtilities.isEventDispatchThread() && !Platform.isFxApplicationThread()) {
-            uiScriptExecutor.execute(task);
+            try {
+                uiScriptExecutor.execute(task);
+            } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            }
         } else {
             task.run();
         }
@@ -7939,18 +8089,36 @@ private String js(String value) {
             clearChatSearchResults();
             return;
         }
-        new Thread(() -> {
-            Object raw = executeScriptAndWait("if(window.ipedChatCapture){window.ipedChatCapture.searchMessages(" //$NON-NLS-1$
-                    + js(query) + "," + SEARCH_RESULT_LIMIT + ");}else{'';}"); //$NON-NLS-1$ //$NON-NLS-2$
-            ChatSearchResult result = parseSearchResult(raw == null ? "" : raw.toString()); //$NON-NLS-1$
-            synchronized (searchLock) {
-                searchHits.clear();
-                searchHits.addAll(result.hits);
-                searchTotal = result.total;
-                searchIndex = -1;
-            }
-            chatCapturePanel.setSearchResults(query, result.total, new ArrayList<>(result.hits));
-        }, "IPED-chat-search").start(); //$NON-NLS-1$
+        final int gen;
+        synchronized (searchLock) {
+            gen = searchGeneration.incrementAndGet();
+        }
+        if (disposed || uiScriptExecutor.isShutdown()) {
+            return;
+        }
+        try {
+            uiScriptExecutor.execute(() -> {
+                if (disposed || gen != searchGeneration.get()) {
+                    return;
+                }
+                Object raw = executeScriptAndWait("if(window.ipedChatCapture){window.ipedChatCapture.searchMessages(" //$NON-NLS-1$
+                        + js(query) + "," + SEARCH_RESULT_LIMIT + ");}else{'';}"); //$NON-NLS-1$ //$NON-NLS-2$
+                ChatSearchResult result = parseSearchResult(raw == null ? "" : raw.toString()); //$NON-NLS-1$
+                List<ChatSearchHit> hitsCopy;
+                synchronized (searchLock) {
+                    if (gen != searchGeneration.get()) {
+                        return;
+                    }
+                    searchHits.clear();
+                    searchHits.addAll(result.hits);
+                    searchTotal = result.total;
+                    searchIndex = -1;
+                    hitsCopy = new ArrayList<>(result.hits);
+                }
+                chatCapturePanel.setSearchResults(query, result.total, hitsCopy);
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+        }
     }
 
     private static class ChatSearchResult {
@@ -7993,6 +8161,7 @@ private String js(String value) {
 
     private void clearChatSearchResults() {
         synchronized (searchLock) {
+            searchGeneration.incrementAndGet();
             searchHits.clear();
             searchTotal = 0;
             searchIndex = -1;
@@ -8638,6 +8807,7 @@ String invalidReason;
 
     static class SensitiveImageMatcher implements AutoCloseable {
         static final int MAX_SENSITIVE_IMAGE_BYTES = 32 * 1024 * 1024;
+        static final int MAX_REFERENCE_IMAGES = 512;
         static final int MAX_IMAGE_DIMENSION = 8192;
         static final long MAX_IMAGE_PIXELS = 33_554_432L;
         private static final int MIN_FEATURES = 20;
@@ -8687,8 +8857,8 @@ String invalidReason;
             try {
                 orb = ORB.create(3000);
                 matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING);
-                try (Stream<Path> stream = Files.list(folder)) {
-                    stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).forEach(path -> {
+                try (Stream<Path> stream = Files.list(folder).limit(10_000L)) {
+                    stream.filter(CaptureIntegrity::isSafeRegularFile).filter(SensitiveImageMatcher::isSupportedImage).limit(MAX_REFERENCE_IMAGES).forEach(path -> {
                         byte[] content = readBoundedImageBytes(path.toFile());
                         if (content == null || detectSupportedImageFormat(content) == null) {
                             return;
@@ -8836,15 +9006,19 @@ String invalidReason;
         }
 
         static byte[] readBoundedImageBytes(File file) {
-            if (file == null) {
-                return null;
-            }
-            Path path = file.toPath();
-            if (!CaptureIntegrity.isSafeRegularFile(path)) {
+            return file == null ? null : readBoundedImageBytes(file.toPath());
+        }
+
+        static byte[] readBoundedImageBytes(Path path) {
+            if (path == null) {
                 return null;
             }
             try {
-                long declaredSize = Files.size(path);
+                BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                if (attrs.isSymbolicLink() || attrs.isOther() || !attrs.isRegularFile() || CaptureIntegrity.isLinkOrReparse(path)) {
+                    return null;
+                }
+                long declaredSize = attrs.size();
                 if (declaredSize <= 0L || declaredSize > MAX_SENSITIVE_IMAGE_BYTES) {
                     return null;
                 }
@@ -8863,7 +9037,7 @@ String invalidReason;
                     return total == 0L ? null : out.toByteArray();
                 }
             } catch (IOException e) {
-                LOGGER.debug("Unable to read image file {}", file, e); //$NON-NLS-1$
+                LOGGER.debug("Unable to read image file {}", path, e); //$NON-NLS-1$
                 return null;
             }
         }
@@ -8942,22 +9116,17 @@ String invalidReason;
         }
 
         static BufferedImage readBoundedImageFile(Path source) {
-            if (source == null || !CaptureIntegrity.isSafeRegularFile(source)) {
+            byte[] content = readBoundedImageBytes(source);
+            if (content == null || detectSupportedImageFormat(content) == null) {
                 return null;
             }
-            try {
-                long declaredSize = Files.size(source);
-                if (declaredSize <= 0L || declaredSize > MAX_SENSITIVE_IMAGE_BYTES) {
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(content);
+                    ImageInputStream iis = ImageIO.createImageInputStream(bais)) {
+                BufferedImage[] decoded = new BufferedImage[1];
+                if (readBoundedImageFromStream(iis, null, decoded, source.getFileName().toString()) == null) {
                     return null;
                 }
-                try (InputStream imgIn = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS);
-                        ImageInputStream iis = ImageIO.createImageInputStream(imgIn)) {
-                    BufferedImage[] decoded = new BufferedImage[1];
-                    if (readBoundedImageFromStream(iis, null, decoded, source.getFileName().toString()) == null) {
-                        return null;
-                    }
-                    return decoded[0];
-                }
+                return decoded[0];
             } catch (IOException | RuntimeException e) {
                 LOGGER.debug("Rejected malformed or oversized report image {}", source, e); //$NON-NLS-1$
                 return null;
@@ -9209,6 +9378,67 @@ String invalidReason;
         }
     }
 
+    private static volatile boolean loggedMissingOpenItem;
+    private static final Pattern OPEN_ANCHOR_TAG_PATTERN = Pattern.compile("(?i)<a(?=[\\s>/])"); //$NON-NLS-1$
+    private static final Pattern CLOSE_ANCHOR_TAG_PATTERN = Pattern.compile("(?i)</a\\s*>"); //$NON-NLS-1$
+
+    static boolean isInsideOpenAnchorTag(String beforeHtml) {
+        if (beforeHtml == null || beforeHtml.isEmpty()) {
+            return false;
+        }
+        int lastOpen = -1;
+        Matcher openMatcher = OPEN_ANCHOR_TAG_PATTERN.matcher(beforeHtml);
+        while (openMatcher.find()) {
+            lastOpen = openMatcher.start();
+        }
+        if (lastOpen < 0) {
+            return false;
+        }
+        int lastClose = -1;
+        Matcher closeMatcher = CLOSE_ANCHOR_TAG_PATTERN.matcher(beforeHtml);
+        while (closeMatcher.find()) {
+            lastClose = closeMatcher.start();
+        }
+        return lastOpen > lastClose;
+    }
+
+    private static boolean openSearcherItem(AttachmentSearcher searcher, String query, String highlightTerm,
+            String sourceName) {
+        if (searcher == null || query == null) {
+            return false;
+        }
+        try {
+            java.lang.reflect.Method open3 = searcher.getClass().getMethod("openItem", String.class, String.class,
+                    String.class);
+            if (!open3.canAccess(searcher)) {
+                open3.setAccessible(true);
+            }
+            Object result = open3.invoke(searcher, query, highlightTerm, sourceName);
+            return Boolean.TRUE.equals(result);
+        } catch (NoSuchMethodException ignored3) {
+            try {
+                java.lang.reflect.Method open2 = searcher.getClass().getMethod("openItem", String.class, String.class);
+                if (!open2.canAccess(searcher)) {
+                    open2.setAccessible(true);
+                }
+                Object result = open2.invoke(searcher, query, highlightTerm);
+                return Boolean.TRUE.equals(result);
+            } catch (NoSuchMethodException ignored2) {
+                if (!loggedMissingOpenItem) {
+                    loggedMissingOpenItem = true;
+                    LOGGER.warn("AttachmentSearcher.openItem indisponivel nesta versao base do IPED 4.3.1."); //$NON-NLS-1$
+                }
+                return false;
+            } catch (Exception e) {
+                LOGGER.warn("Falha ao invocar AttachmentSearcher.openItem(query, highlight)", e); //$NON-NLS-1$
+                return false;
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Falha ao invocar AttachmentSearcher.openItem(query, highlight, sourceName)", e); //$NON-NLS-1$
+            return false;
+        }
+    }
+
     private static final String OPENCV_DLL_NAME = "opencv_java4120.dll"; //$NON-NLS-1$
     static final String OPENCV_DLL_SHA256 = "ACA5D9A9BC8067434D793402269A18AA18A4E033C96D44707686D30FF162ABB9"; //$NON-NLS-1$
 
@@ -9286,9 +9516,19 @@ String invalidReason;
                 || ShareazaDownloadParser.SHAREAZA_DOWNLOAD_META.equals(contentType);
     }
 
+    private volatile boolean disposed;
+
     @Override
     public String getName() {
         return this.getClass().getSimpleName();
+    }
+
+    @Override
+    public void dispose() {
+        disposed = true;
+        closeSensitiveImageMatcher();
+        uiScriptExecutor.shutdownNow();
+        super.dispose();
     }
 
     @Override
@@ -9298,6 +9538,9 @@ String invalidReason;
 
     @Override
     public void loadFile(final IStreamSource content, final Set<String> terms) {
+        if (disposed) {
+            return;
+        }
         captureSourceItem = content instanceof IItem ? (IItem) content : null;
         if (content != null) {
             attachSearcher.updateSelectionCache();
@@ -9316,17 +9559,17 @@ String invalidReason;
         }
 
         private void showAttachNotFound(final String luceneQuery) {
-            try {
-                SwingUtilities.invokeAndWait(new Runnable() {
-                    @Override
-                    public void run() {
-                        LOGGER.info("Attachment not found by query " + luceneQuery); //$NON-NLS-1$
-                        JOptionPane.showMessageDialog(null, Messages.getString("HtmlLinkViewer.AttachNotFound")); //$NON-NLS-1$
-                    }
-                });
-            } catch (InvocationTargetException | InterruptedException e) {
-                e.printStackTrace();
+            LOGGER.info("Attachment not found by query " + luceneQuery); //$NON-NLS-1$
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                return;
             }
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    JOptionPane.showMessageDialog(null, ChatCapturePanel
+                            .plainMessageComponent(Messages.getString("HtmlLinkViewer.AttachNotFound"))); //$NON-NLS-1$
+                }
+            });
         }
 
         public void open(final String luceneQuery) {

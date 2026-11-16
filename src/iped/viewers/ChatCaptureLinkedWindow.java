@@ -5,6 +5,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Window;
 import java.io.File;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -12,6 +13,7 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
+import javax.swing.WindowConstants;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,11 +43,14 @@ class ChatCaptureLinkedWindow extends JDialog {
     static final int MIN_HEIGHT = 640;
 
     private final HtmlLinkViewer linkedViewer;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private volatile Thread loadThread;
 
     ChatCaptureLinkedWindow(Window owner, AttachmentSearcher attachSearcher, IItem linkedItem, String chatTitle,
             File destination, String folderName) {
         super(owner, Messages.getString("ChatCaptureLink.WindowTitle") + " - " + safe(chatTitle), //$NON-NLS-1$
                 ModalityType.MODELESS);
+        setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout(6, 6));
         ((javax.swing.JComponent) getContentPane()).setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
@@ -90,17 +95,44 @@ class ChatCaptureLinkedWindow extends JDialog {
      * o trabalho no EDT, que precisa estar livre para executa-lo.
      */
     private void loadLinkedChat(IItem linkedItem) {
-        if (linkedItem == null) {
+        if (linkedItem == null || closed.get()) {
             return;
         }
-        new Thread(() -> {
+        Thread thread = new Thread(() -> {
             try {
                 Thread.sleep(300);
+                if (closed.get() || Thread.currentThread().isInterrupted()) {
+                    return;
+                }
                 linkedViewer.loadFile(linkedItem, null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (Exception e) {
-                LOGGER.warn("Unable to load linked chat in capture window", e); //$NON-NLS-1$
+                if (!closed.get()) {
+                    LOGGER.warn("Unable to load linked chat in capture window", e); //$NON-NLS-1$
+                }
             }
-        }, "IPED-chat-linked-load").start(); //$NON-NLS-1$
+        }, "IPED-chat-linked-load"); //$NON-NLS-1$
+        thread.setDaemon(true);
+        loadThread = thread;
+        thread.start();
+    }
+
+    @Override
+    public void dispose() {
+        closed.set(true);
+        Thread thread = loadThread;
+        loadThread = null;
+        if (thread != null) {
+            thread.interrupt();
+        }
+        try {
+            if (linkedViewer != null) {
+                linkedViewer.dispose();
+            }
+        } finally {
+            super.dispose();
+        }
     }
 
     HtmlLinkViewer getLinkedViewer() {

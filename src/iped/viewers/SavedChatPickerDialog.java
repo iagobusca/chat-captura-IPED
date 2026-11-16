@@ -25,6 +25,7 @@ import iped.viewers.localization.Messages;
 class SavedChatPickerDialog extends JDialog {
 
     private static final long serialVersionUID = 1L;
+    private static final int MAX_PICKER_CAPTURES = 10000;
 
     private final DefaultListModel<String> model = new DefaultListModel<>();
     private final JList<String> list = new JList<>(model);
@@ -45,9 +46,14 @@ class SavedChatPickerDialog extends JDialog {
         list.setCellRenderer(new javax.swing.DefaultListCellRenderer() {
             private static final long serialVersionUID = 1L;
 
+            {
+                putClientProperty("html.disable", Boolean.TRUE);
+            }
+
             @Override
             public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index,
                     boolean isSelected, boolean cellHasFocus) {
+                putClientProperty("html.disable", Boolean.TRUE);
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                 putClientProperty("html.disable", Boolean.TRUE);
                 return this;
@@ -102,7 +108,7 @@ class SavedChatPickerDialog extends JDialog {
             return result;
         }
         try (java.util.stream.Stream<Path> stream = Files.list(rootPath)) {
-            stream.filter(CaptureIntegrity::isSafeDirectory).forEach(path -> {
+            stream.filter(CaptureIntegrity::isSafeDirectory).limit(MAX_PICKER_CAPTURES).forEach(path -> {
                 Path manifest;
                 try {
                     manifest = CaptureIntegrity.resolveContained(path, "manifest.json");
