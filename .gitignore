@@ -21,6 +21,8 @@ __pycache__/
 
 # Build outputs and release assets
 /build/
+/out/
+/ci-deps/
 /release-assets/
 
 # Installer artifacts and versioned verifier archives (publish via Gitea releases)
