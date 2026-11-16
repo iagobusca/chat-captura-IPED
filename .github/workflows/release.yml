@@ -468,7 +468,8 @@ jobs:
           }
           Copy-Item -LiteralPath "$($env:IPED_HOME)\lib\iped-viewers-impl-4.3.1.jar" -Destination "$e2eIped\lib\iped-viewers-impl-4.3.1.jar" -Force
           Copy-Item -LiteralPath "$($env:IPED_HOME)\lib\json-20250517.jar" -Destination "$e2eIped\lib\json-20250517.jar" -Force
-          Copy-Item -LiteralPath "$($env:IPED_HOME)\localization\iped-viewer-messages*.properties" -Destination "$e2eIped\localization\" -Force -ErrorAction SilentlyContinue
+          Copy-Item -LiteralPath "$($env:IPED_HOME)\localization\iped-viewer-messages.properties" -Destination "$e2eIped\localization\iped-viewer-messages.properties" -Force
+          Copy-Item -LiteralPath "$($env:IPED_HOME)\localization\iped-viewer-messages_pt_BR.properties" -Destination "$e2eIped\localization\iped-viewer-messages_pt_BR.properties" -Force
           $zipPath = "out\release\$($env:ZIP_ASSET_NAME)"
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $zipPath).Path, $e2eRoot)
