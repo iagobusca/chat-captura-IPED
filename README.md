@@ -16,6 +16,10 @@ Veja abaixo a abertura offline da captura (`index.html` e `whatsapp.html` com mo
 
 ![Demonstração do resultado offline do Chat Captura IPED e auditoria no Verificador de Integridade](imagens_doc/edit/resultado_e_verificador-integridade.gif)
 
+Veja também o fluxo completo da **Auditoria de Origem** (`v2.8.7` / **Verificador `1.5.5`**) conferindo a extração Avilla (`Hashs.txt`, `Hashs.avilla`, `report.pdf`, `msgstore.db`) contra as capturas geradas:
+
+![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.5](imagens_doc/edit/Auditoria_origem.gif)
+
 Para instruções ilustradas passo a passo de instalação, captura, notas, censura e auditoria, consulte o guia completo em [GUIA_DE_USO.md](GUIA_DE_USO.md).
 
 <p align="center">

@@ -158,7 +158,19 @@ Use o modo **Integridade Público** quando receber uma pasta de capturas de terc
    - **2. Histórico de capturas completo (historico-capturas.txt):** cole o texto completo ou o formato público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS`) e clique em **Comparar histórico completo**.
 4. Quando o conteúdo confere integralmente, uma mensagem verde é exibida (*"CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado."*). Clique em **Continuar para o resumo** para visualizar e exportar o relatório final.
 
-### 4.4. Uso em linha de comando (CLI)
+### 4.4. Auditoria de Origem Avilla / Caso IPED (`Verificador 1.5.5`)
+
+Use o modo **Auditoria de origem...** (disponível na tela inicial do **Verificador `1.5.5`** ao lado de **Integridade Local** e **Integridade Público**) para confrontar as capturas extraídas diretamente com a extração original Avilla (`Hashs.txt` UTF-16LE, `Hashs.avilla`, `report.pdf`, `msgstore.db`) e, opcionalmente, com o caso IPED pai (`Lista de Arquivos.csv` e `Exportados`):
+
+![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.5](imagens_doc/edit/Auditoria_origem.gif)
+
+1. Na tela inicial do `integridade-verifier.exe` (ou `.jar`), clique em **Auditoria de origem...**.
+2. Informe a **Pasta de origem** (contendo os arquivos Avilla obrigatórios) e, se desejar correlação completa com o caso original, a **Pasta do caso (opcional)**.
+3. Clique em **Validar Auditoria** para visualizar a pré-conferência dos arquivos encontrados (**`VÁLIDA`** / inválidos) antes de iniciar.
+4. Estando tudo certo, clique em **Começar Auditoria** e acompanhe o progresso por etapa (`1/9..9/9`) e tempo decorrido na janela de carregamento.
+5. Ao finalizar com **`VÁLIDO — Tudo íntegro e válido: CONFERE`**, revise/copie o conteúdo diretamente na janela ou clique em **Exportar Auditoria** para salvar **`Auditoria_relatorio.htm`** offline (além do registro em `integridade/auditoria-origem.txt`).
+
+### 4.5. Uso em linha de comando (CLI)
 
 Para automação ou conferência sem interface gráfica:
 
@@ -167,10 +179,12 @@ integridade-verifier.exe --version
 integridade-verifier.exe --self-test
 integridade-verifier.exe --verify-only
 integridade-verifier.exe --export-history
+integridade-verifier.exe --audit-origin --origin <pasta-avila>
 ```
 
 - `--verify-only`: valida localmente todas as capturas descobertas na pasta atual e retorna código diferente de zero em qualquer divergência ou falha (*fail-closed*).
 - `--export-history`: emite no stdout os registros e o `SHA-256_HISTORICO_PUBLICO=...`.
+- `--audit-origin --origin <pasta-avila>` *(opcional `--parent-iped <caso-pai>`)*: executa a Auditoria de Origem sem interface gráfica e grava `integridade/auditoria-origem.txt`.
 
 ---
 
