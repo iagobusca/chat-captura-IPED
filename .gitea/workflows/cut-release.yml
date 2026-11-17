@@ -31,6 +31,10 @@ on:
         description: 'Pastas IPED alvo separadas por ponto e virgula (;)'
         required: false
         default: 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1;F:\Download\Avilla-Acquisitions\IPED_v10;F:\Download\Avilla-Acquisitions\IPED_v11;F:\Download\Avilla-Acquisitions\Prova_v2;F:\Download\Avilla-Acquisitions\Prova_v3'
+      mirror_to_github:
+        description: 'Espelhar branch alvo e tag para github.com/iagobusca/chat-captura-IPED apos sucesso (true/false)'
+        required: false
+        default: 'false'
       dry_run:
         description: 'Modo simulacao: faz bump, build duplo e testes sem push/release/deploy real (true/false)'
         required: false
@@ -70,6 +74,7 @@ jobs:
           IN_PUBLISH_PACKAGES: ${{ inputs.publish_gitea_packages }}
           IN_DEPLOY_LOCAL: ${{ inputs.deploy_local_iped }}
           IN_TARGETS: ${{ inputs.local_iped_targets }}
+          IN_MIRROR_GITHUB: ${{ inputs.mirror_to_github }}
           IN_DRY_RUN: ${{ inputs.dry_run }}
         shell: powershell
         run: |
@@ -82,6 +87,7 @@ jobs:
           }
           $pubPkg = ($env:IN_PUBLISH_PACKAGES.Trim().ToLowerInvariant() -eq 'true')
           $depLoc = ($env:IN_DEPLOY_LOCAL.Trim().ToLowerInvariant() -eq 'true')
+          $mirGh = ($env:IN_MIRROR_GITHUB.Trim().ToLowerInvariant() -eq 'true')
           $isDry = ($env:IN_DRY_RUN.Trim().ToLowerInvariant() -eq 'true')
 
           $cutParams = @{
@@ -96,6 +102,7 @@ jobs:
             PublishGiteaPackages = $pubPkg
             DeployLocalIped      = $depLoc
             LocalIpedTargets     = $env:IN_TARGETS
+            MirrorToGitHub       = $mirGh
             DryRun               = $isDry
           }
           & (Join-Path $repo '.gitea\scripts\Invoke-CutRelease.ps1') @cutParams

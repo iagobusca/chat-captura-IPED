@@ -1,0 +1,362 @@
+name: Cortar Nova Versao (1-Click Bump, Build, Tag e Release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_version:
+        description: 'Nova versao do plugin (ex.: 2.7.1 ou 2.7.1-beta)'
+        required: true
+        type: string
+        default: '2.7.1'
+      verifier_version:
+        description: 'Versao do Verificador de Integridade (ex.: 1.4.6 ou manter 1.4.5)'
+        required: true
+        type: string
+        default: '1.4.5'
+      channel:
+        description: 'Canal de publicacao: estavel (branch main) ou beta (branch beta + Pre-Release)'
+        required: true
+        type: choice
+        options:
+          - estavel
+          - beta
+        default: estavel
+      summary_notes:
+        description: 'Resumo curto das novidades (opcional)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Modo simulacao: faz bump, build duplo e testes sem commit/push/release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  prepare-build-and-tag:
+    if: github.server_url == 'https://github.com'
+    runs-on: windows-latest
+    outputs:
+      plugin_version: ${{ steps.cut.outputs.plugin_version }}
+      verifier_version: ${{ steps.cut.outputs.verifier_version }}
+      tag_name: ${{ steps.cut.outputs.tag_name }}
+      target_branch: ${{ steps.cut.outputs.target_branch }}
+      is_prerelease: ${{ steps.cut.outputs.is_prerelease }}
+      zip_asset: ${{ steps.cut.outputs.zip_asset }}
+      zip_bytes: ${{ steps.cut.outputs.zip_bytes }}
+      zip_sha: ${{ steps.cut.outputs.zip_sha }}
+      exe_asset: ${{ steps.cut.outputs.exe_asset }}
+      exe_bytes: ${{ steps.cut.outputs.exe_bytes }}
+      exe_sha: ${{ steps.cut.outputs.exe_sha }}
+      jar_asset: ${{ steps.cut.outputs.jar_asset }}
+      jar_bytes: ${{ steps.cut.outputs.jar_bytes }}
+      jar_sha: ${{ steps.cut.outputs.jar_sha }}
+      plugin_asset: ${{ steps.cut.outputs.plugin_asset }}
+      plugin_bytes: ${{ steps.cut.outputs.plugin_bytes }}
+      plugin_sha: ${{ steps.cut.outputs.plugin_sha }}
+      summary_desc: ${{ steps.cut.outputs.summary_desc }}
+      commit_sha: ${{ steps.cut.outputs.commit_sha }}
+    steps:
+      - name: Checkout completo do repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar JDK 8 (Testes do Verificador)
+        id: jdk8
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+
+      - name: Configurar .NET 10.0.403 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.403'
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache de IPED 4.3.1 oficial, OpenJFX 21.0.5 e Temurin 21.0.13+9
+        uses: actions/cache@v4
+        with:
+          path: ci-deps
+          key: repro-iped-4.3.1-jfx-21.0.5-temurin-21.0.13_9
+
+      - name: Baixar e verificar SHA-256 de IPED 4.3.1 oficial e OpenJFX 21.0.5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force -Path 'ci-deps' | Out-Null
+
+          $ipedZip = 'ci-deps\IPED-4.3.1_and_java_plugins.zip'
+          $ipedExpected = 'E8EE71E7E2E41A770B521BFBAABF0CF0B88ADD5FEBFF27C5A5AD375248CFEF8E'
+          if (!(Test-Path -LiteralPath $ipedZip) -or (Get-FileHash -LiteralPath $ipedZip -Algorithm SHA256).Hash -ne $ipedExpected) {
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/sepinf-inc/IPED/releases/download/4.3.1/IPED-4.3.1_and_java_plugins.zip' -OutFile $ipedZip
+            $actual = (Get-FileHash -LiteralPath $ipedZip -Algorithm SHA256).Hash
+            if ($actual -ne $ipedExpected) { throw "SHA-256 invalido para IPED 4.3.1 oficial: $actual" }
+          }
+
+          $jfxZip = 'ci-deps\openjfx-21.0.5-windows-x64.zip'
+          $jfxExpected = '237DBAA24AC05557A65540B5E9EBC6FF5BC011BF0F7B06F5637EAC31AC7235D3'
+          if (!(Test-Path -LiteralPath $jfxZip) -or (Get-FileHash -LiteralPath $jfxZip -Algorithm SHA256).Hash -ne $jfxExpected) {
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://download2.gluonhq.com/openjfx/21.0.5/openjfx-21.0.5_windows-x64_bin-sdk.zip' -OutFile $jfxZip
+            $actual = (Get-FileHash -LiteralPath $jfxZip -Algorithm SHA256).Hash
+            if ($actual -ne $jfxExpected) { throw "SHA-256 invalido para OpenJFX 21.0.5: $actual" }
+          }
+
+          $ipedDir = Join-Path $env:RUNNER_TEMP 'iped-official'
+          $jfxDir = Join-Path $env:RUNNER_TEMP 'javafx-sdk'
+          Remove-Item -LiteralPath $ipedDir, $jfxDir -Recurse -Force -ErrorAction SilentlyContinue
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $ipedZip).Path, $ipedDir)
+          [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $jfxZip).Path, $jfxDir)
+
+          $apiJar = Get-ChildItem -LiteralPath $ipedDir -Filter 'iped-viewers-api-4.3.1.jar' -Recurse -File | Select-Object -First 1
+          if (!$apiJar) { throw 'iped-viewers-api-4.3.1.jar nao encontrado no pacote oficial IPED 4.3.1' }
+          $ipedHome = Split-Path -Parent (Split-Path -Parent $apiJar.FullName)
+
+          $jfxWeb = Get-ChildItem -LiteralPath $jfxDir -Filter 'javafx.web.jar' -Recurse -File | Select-Object -First 1
+          if (!$jfxWeb) { throw 'javafx.web.jar nao encontrado no pacote OpenJFX 21.0.5' }
+          $jfxLib = Split-Path -Parent $jfxWeb.FullName
+
+          @(
+            "IPED_HOME=$ipedHome",
+            "JAVAFX_LIB=$jfxLib",
+            "JAVA8_HOME=${{ steps.jdk8.outputs.path }}"
+          ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
+
+      - name: Executar corte 1-click (bump, build deterministico, suites, commit e tag)
+        id: cut
+        env:
+          IN_PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          IN_VERIFIER_VERSION: ${{ inputs.verifier_version }}
+          IN_CHANNEL: ${{ inputs.channel }}
+          IN_SUMMARY: ${{ inputs.summary_notes }}
+          IN_DRY_RUN: ${{ inputs.dry_run }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $pVer = $env:IN_PLUGIN_VERSION.Trim()
+          $vVer = $env:IN_VERIFIER_VERSION.Trim()
+          $chan = $env:IN_CHANNEL.Trim().ToLowerInvariant()
+          $isDry = ($env:IN_DRY_RUN.Trim().ToLowerInvariant() -eq 'true')
+          $tag = "v$pVer"
+
+          if (-not $isDry) {
+            $remoteTag = (& git ls-remote origin "refs/tags/$tag") | Out-String
+            if (-not [string]::IsNullOrWhiteSpace($remoteTag)) {
+              throw "A tag $tag ja existe no repositorio GitHub."
+            }
+          }
+
+          $metaJson = Join-Path $repo 'out\cut-metadata.json'
+          $coreParams = @{
+            RepoRoot        = $repo
+            RepoUrlBase     = 'https://github.com'
+            RepoSlug        = $env:GITHUB_REPOSITORY
+            PluginVersion   = $pVer
+            VerifierVersion = $vVer
+            Channel         = $chan
+            SummaryNotes    = $env:IN_SUMMARY
+            CacheDir        = (Join-Path $repo 'ci-deps')
+            IpedHome        = $env:IPED_HOME
+            JavaFxLib       = $env:JAVAFX_LIB
+            Java8Home       = $env:JAVA8_HOME
+            TestMode        = 'cloud'
+            StageReleaseDir = (Join-Path $repo 'out\release')
+            OutMetadataJson = $metaJson
+            DownloadDeps    = $true
+          }
+          & (Join-Path $repo 'scripts\ci\Invoke-CutReleaseCore.ps1') @coreParams
+          $meta = Get-Content -LiteralPath $metaJson -Raw | ConvertFrom-Json
+
+          $commitSha = (& git rev-parse HEAD).Trim()
+          if (-not $isDry) {
+            Remove-Item -LiteralPath (Join-Path $repo 'tmp') -Recurse -Force -ErrorAction SilentlyContinue
+            & git config user.name 'github-actions[bot]'
+            & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+            $relBranch = "release/$($meta.tag)"
+            & git checkout -B $relBranch
+            if ($LASTEXITCODE -ne 0) { throw "git checkout -B $relBranch falhou" }
+            & git add -A
+            if ($LASTEXITCODE -ne 0) { throw 'git add -A falhou' }
+            & git commit -m "release($($meta.tag)): corte automatizado plugin $($meta.pluginVersion) / verificador $($meta.verifierVersion)"
+            if ($LASTEXITCODE -ne 0) { throw 'git commit falhou' }
+
+            $target = $meta.targetBranch
+            $hasRemoteTarget = (& git ls-remote --heads origin $target) | Out-String
+            if (-not [string]::IsNullOrWhiteSpace($hasRemoteTarget)) {
+              & git fetch origin $target
+              if ($LASTEXITCODE -ne 0) { throw "git fetch origin $target falhou" }
+              & git merge-base --is-ancestor FETCH_HEAD $relBranch
+              if ($LASTEXITCODE -eq 0) {
+                & git checkout -B $target FETCH_HEAD
+                if ($LASTEXITCODE -ne 0) { throw "git checkout $target falhou" }
+                & git merge --ff-only $relBranch
+                if ($LASTEXITCODE -ne 0) { throw "git merge --ff-only $relBranch falhou" }
+              } else {
+                & git checkout -B $target $relBranch
+                if ($LASTEXITCODE -ne 0) { throw "git checkout -B $target falhou" }
+                & git merge --no-edit -s ours FETCH_HEAD -m "chore: reconciliar $target antes de $($meta.tag)"
+                if ($LASTEXITCODE -ne 0) { throw "git merge -s ours falhou" }
+              }
+            } else {
+              & git checkout -B $target $relBranch
+              if ($LASTEXITCODE -ne 0) { throw "git checkout -B $target falhou" }
+            }
+
+            & git tag -f -a $meta.tag -m "Release $($meta.tag) ($chan) - Plugin $($meta.pluginVersion) / Verificador $($meta.verifierVersion)"
+            if ($LASTEXITCODE -ne 0) { throw "git tag $($meta.tag) falhou" }
+            & git push origin $relBranch $target "refs/tags/$($meta.tag)"
+            if ($LASTEXITCODE -ne 0) { throw 'git push origin falhou' }
+            $commitSha = (& git rev-parse HEAD).Trim()
+          } else {
+            Write-Host "DRY_RUN_GITHUB_CUT_RELEASE=PASS ($($meta.tag) | ZIP=$($meta.zipSha))"
+          }
+
+          $summarySafe = ($meta.summaryDesc -replace "[\r\n]+", ' ').Trim()
+          @(
+            "plugin_version=$($meta.pluginVersion)",
+            "verifier_version=$($meta.verifierVersion)",
+            "tag_name=$($meta.tag)",
+            "target_branch=$($meta.targetBranch)",
+            "is_prerelease=$(if ($meta.isPrerelease) { 'true' } else { 'false' })",
+            "zip_asset=$($meta.zipName)",
+            "zip_bytes=$($meta.zipBytes)",
+            "zip_sha=$($meta.zipSha)",
+            "exe_asset=$($meta.exeName)",
+            "exe_bytes=$($meta.exeBytes)",
+            "exe_sha=$($meta.exeSha)",
+            "jar_asset=$($meta.jarName)",
+            "jar_bytes=$($meta.jarBytes)",
+            "jar_sha=$($meta.jarSha)",
+            "plugin_asset=$($meta.pluginName)",
+            "plugin_bytes=$($meta.pluginBytes)",
+            "plugin_sha=$($meta.pluginSha)",
+            "summary_desc=$summarySafe",
+            "commit_sha=$commitSha"
+          ) | Add-Content -Path $env:GITHUB_OUTPUT -Encoding UTF8
+
+      - name: Enviar artefatos verificados para etapa de Deployment
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ steps.cut.outputs.tag_name }}
+          path: out/release/*
+          retention-days: 1
+
+  deploy-github-release:
+    needs: prepare-build-and-tag
+    if: ${{ github.server_url == 'https://github.com' && !inputs.dry_run }}
+    runs-on: windows-latest
+    environment:
+      name: ${{ needs.prepare-build-and-tag.outputs.is_prerelease == 'true' && 'release-beta' || 'release-production' }}
+      url: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-build-and-tag.outputs.tag_name }}
+    steps:
+      - name: Checkout da tag recem-criada
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-build-and-tag.outputs.tag_name }}
+
+      - name: Baixar artefatos verificados do build
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-${{ needs.prepare-build-and-tag.outputs.tag_name }}
+          path: out/release
+
+      - name: Gerar atestado de proveniencia Sigstore (Build Provenance Attestation)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'out/release/*'
+
+      - name: Publicar Release oficial no GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare-build-and-tag.outputs.tag_name }}
+          TARGET_BRANCH: ${{ needs.prepare-build-and-tag.outputs.target_branch }}
+          IS_PRERELEASE: ${{ needs.prepare-build-and-tag.outputs.is_prerelease }}
+          P_VER: ${{ needs.prepare-build-and-tag.outputs.plugin_version }}
+          V_VER: ${{ needs.prepare-build-and-tag.outputs.verifier_version }}
+          ZIP_ASSET: ${{ needs.prepare-build-and-tag.outputs.zip_asset }}
+          ZIP_BYTES: ${{ needs.prepare-build-and-tag.outputs.zip_bytes }}
+          ZIP_SHA: ${{ needs.prepare-build-and-tag.outputs.zip_sha }}
+          EXE_ASSET: ${{ needs.prepare-build-and-tag.outputs.exe_asset }}
+          EXE_BYTES: ${{ needs.prepare-build-and-tag.outputs.exe_bytes }}
+          EXE_SHA: ${{ needs.prepare-build-and-tag.outputs.exe_sha }}
+          JAR_ASSET: ${{ needs.prepare-build-and-tag.outputs.jar_asset }}
+          JAR_BYTES: ${{ needs.prepare-build-and-tag.outputs.jar_bytes }}
+          JAR_SHA: ${{ needs.prepare-build-and-tag.outputs.jar_sha }}
+          PLUGIN_ASSET: ${{ needs.prepare-build-and-tag.outputs.plugin_asset }}
+          PLUGIN_BYTES: ${{ needs.prepare-build-and-tag.outputs.plugin_bytes }}
+          PLUGIN_SHA: ${{ needs.prepare-build-and-tag.outputs.plugin_sha }}
+          SUMMARY_DESC: ${{ needs.prepare-build-and-tag.outputs.summary_desc }}
+          COMMIT_SHA: ${{ needs.prepare-build-and-tag.outputs.commit_sha }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Format-DotBytes([string]$raw) {
+            return ([long]$raw).ToString('#,0').Replace(',', '.')
+          }
+          $tag = $env:TAG_NAME
+          $repoFull = $env:GITHUB_REPOSITORY
+          $runUrl = "$($env:GITHUB_SERVER_URL)/$repoFull/actions/runs/$($env:GITHUB_RUN_ID)"
+          $pFmt = Format-DotBytes $env:PLUGIN_BYTES
+          $vJarFmt = Format-DotBytes $env:JAR_BYTES
+          $vExeFmt = Format-DotBytes $env:EXE_BYTES
+          $zFmt = Format-DotBytes $env:ZIP_BYTES
+
+          $notes = @(
+            '## Otimizado',
+            ("- Vers" + [char]0x00E3 + "o **$($env:P_VER)** na branch ``$($env:TARGET_BRANCH)`` compilada deterministicamente via [``build-reproducible.ps1``](https://github.com/$repoFull/blob/$tag/build-reproducible.ps1) com dupla verifica" + [char]0x00E7 + [char]0x00E3 + "o bit a bit (``REPRODUCIBLE_BUILD_VERIFIED=PASS``) pelo GitHub Actions ([workflow](https://github.com/$repoFull/blob/$tag/.github/workflows/cut-release.yml) | [build run]($runUrl)), acompanhando o **Verificador de Integridade $($env:V_VER)**."),
+            "- $($env:SUMMARY_DESC)",
+            ("- **Auditoria Multiplataforma**: timestamps UTC fixos (``1980-02-01T00:00:00Z``), ordena" + [char]0x00E7 + [char]0x00E3 + "o lexicogr" + [char]0x00E1 + "fica (``ReproducibleZipPacker``) e toolchain pinada (``Temurin 21.0.13+9`` + ``OpenJFX 21.0.5`` + ``.NET 10.0.15`` com ``-p:Deterministic=true``)."),
+            '',
+            '## Corrigido',
+            ("- Allowlist exclusiva de bin" + [char]0x00E1 + "rios confi" + [char]0x00E1 + "veis em ``VerifierIntegrity.java``, ``instalar_captura_chat_zap.bat`` e ``VerifierIntegrityHashTest.java`` sincronizada exclusivamente com os bin" + [char]0x00E1 + "rios oficiais do Verificador **$($env:V_VER)** (``$($env:JAR_SHA.Substring(0,8))...`` e ``$($env:EXE_SHA.Substring(0,8))...``)."),
+            ("- Su" + [char]0x00ED + "tes completas de seguran" + [char]0x00E7 + "a, integra" + [char]0x00E7 + [char]0x00E3 + "o e instala" + [char]0x00E7 + [char]0x00E3 + "o E2E em c" + [char]0x00F3 + "pia limpa do IPED 4.3.1 aprovadas antes da publica" + [char]0x00E7 + [char]0x00E3 + "o."),
+            '',
+            '## Incluido',
+            "- Plugin Chat Captura IPED ``$($env:P_VER)`` (``$($env:PLUGIN_ASSET)`` | ``$pFmt`` bytes | SHA-256: ``$($env:PLUGIN_SHA)``).",
+            "- Verificador de Integridade ``$($env:V_VER)`` em JAR (``$vJarFmt`` bytes) e EXE Windows x64 autocontido (``$vExeFmt`` bytes).",
+            "- ZIP instalador completo (``$($env:ZIP_ASSET)`` | ``$zFmt`` bytes | SHA-256: ``$($env:ZIP_SHA)``).",
+            '',
+            "## SHA-256 do Verificador $($env:V_VER)",
+            "- JAR: ``$($env:JAR_SHA)``",
+            "- EXE: ``$($env:EXE_SHA)``",
+            '',
+            ('Todos os 4 ativos possuem **Build Provenance Attestation (Sigstore)** gerada neste workflow. Veja ``versao_hash.md`` e ``CHECKSUMS.md`` para o hist' + [char]0x00F3 + 'rico.')
+          ) -join "`n"
+          [IO.File]::WriteAllText('out\release-notes.md', $notes, [Text.UTF8Encoding]::new($false))
+
+          $assets = @(
+            "out\release\$($env:ZIP_ASSET)",
+            "out\release\$($env:EXE_ASSET)",
+            "out\release\$($env:JAR_ASSET)",
+            "out\release\$($env:PLUGIN_ASSET)"
+          )
+          $preFlag = if ($env:IS_PRERELEASE -eq 'true') { '--prerelease' } else { '--latest' }
+          & gh release create $tag @assets --repo $repoFull --target $env:COMMIT_SHA --title $tag --notes-file 'out\release-notes.md' $preFlag
+          if ($LASTEXITCODE -ne 0) { throw "gh release create falhou ($LASTEXITCODE)" }
+
+          $summary = @(
+            "### Release GitHub ``$tag`` publicada via 1-Click Cut Release + Sigstore",
+            '',
+            '| Artefato | Bytes | SHA-256 |',
+            '|---|---|---|',
+            "| ``$($env:ZIP_ASSET)`` | ``$zFmt`` | ``$($env:ZIP_SHA)`` |",
+            "| ``$($env:EXE_ASSET)`` | ``$vExeFmt`` | ``$($env:EXE_SHA)`` |",
+            "| ``$($env:JAR_ASSET)`` | ``$vJarFmt`` | ``$($env:JAR_SHA)`` |",
+            "| ``$($env:PLUGIN_ASSET)`` | ``$pFmt`` | ``$($env:PLUGIN_SHA)`` |"
+          ) -join "`n"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding UTF8
