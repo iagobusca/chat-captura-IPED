@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.7 (Estável / `main`) / Verificador 1.5.5
+
+- **Tag**: [v2.8.7](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.7) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.7-verificador-1.5.5.zip](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.7/instalador-chat-captura-IPED-2.8.7-verificador-1.5.5.zip) (`94.536.182` bytes | SHA-256: `3D05CF198ECE7852954DCD3CBBAB683821D10E0CD86FEA1601914A3938197EA4`)
+- [integridade-verifier-1.5.5.exe](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.7/integridade-verifier-1.5.5.exe) (`77.658.202` bytes | SHA-256: `639CE7B5A78D0C4DA1D55D28ACE317F342C93F7BFF13A28F5B33D45DB8BE39D1`)
+- [integridade-verifier-1.5.5.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.7/integridade-verifier-1.5.5.jar) (`202.850` bytes | SHA-256: `827B4580836D7CE0811DB1975E5971A610C0C946D9DBDBECD4CCEAFB275FBEED`)
+- [iped-viewers-impl-4.3.1-2.8.7.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.7/iped-viewers-impl-4.3.1-2.8.7.jar) (`1.555.213` bytes | SHA-256: `680E031B29214376907662DDAC0FA83E34BA2B72895556DB1E8BF5F02AF47F46`)
+
+### Resumo
+- Verificador 1.5.5 nunca cria arquivos *.bak (e remove eventuais sobras .integridade.html.*.bak de versões anteriores), compara o integridade.html existente com o resultado da verificação para preservar o arquivo se idêntico ou editá-lo/substituí-lo se diferente, e limpa o atributo somente leitura antes de atualizar relatórios.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.5**.
+
+---
 ## v2.8.6 (Estável / `main`) / Verificador 1.5.4
 
 - **Tag**: [v2.8.6](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.6) (Corte automatizado via `build-reproducible.ps1`)

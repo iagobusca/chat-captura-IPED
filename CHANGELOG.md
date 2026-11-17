@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.7] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Verificador 1.5.5 nunca cria arquivos *.bak (e remove eventuais sobras .integridade.html.*.bak de versões anteriores), compara o integridade.html existente com o resultado da verificação para preservar o arquivo se idêntico ou editá-lo/substituí-lo se diferente, e limpa o atributo somente leitura antes de atualizar relatórios.
+- Verificador **1.5.5** (`202.850` bytes JAR `827B4580...` | `77.658.202` bytes EXE `639CE7B5...`) e Plugin **2.8.7** (`1.555.213` bytes `680E031B...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.7-verificador-1.5.5.zip` (`94.536.182` bytes `3D05CF19...`).
 ## [2.8.6] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

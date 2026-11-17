@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.5] - 2026-11-17
+
+### Corte Automatizado (v2.8.7)
+- Verificador 1.5.5 nunca cria arquivos *.bak (e remove eventuais sobras .integridade.html.*.bak de versões anteriores), compara o integridade.html existente com o resultado da verificação para preservar o arquivo se idêntico ou editá-lo/substituí-lo se diferente, e limpa o atributo somente leitura antes de atualizar relatórios. (`build-reproducible.ps1`; JAR `827B4580...` / EXE `639CE7B5...`).
 ## [1.5.4] - 2026-11-17
 
 ### Corte Automatizado (v2.8.5)

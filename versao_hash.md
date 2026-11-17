@@ -1,6 +1,6 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.4 acompanha a release `v2.8.6` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.5 acompanha a release `v2.8.7` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
 
 > **Nota de publicação:** As releases públicas no GitHub iniciam na série estável `v2.6.8` / Verificador `1.4.3` (`1.4.3`, `1.4.4`, `1.4.5`). As linhas `<= 1.4.2` documentam o histórico anterior mantido para auditoria e verificação de rejeição em `VerifierIntegrityHashTest`.
 
@@ -8,7 +8,8 @@ Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.4 acompan
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
-| 1.5.4 (release v2.8.5) | `integridade-verifier.jar` | `8180566A0BEF7D70815FBCFFA77DE37B833B9BD4B2C87B185BB1B2A5792A41EF` | Build determinístico (`build-reproducible.ps1` `--release 8`); `200.920` bytes; `SELF_TEST_OK 1.5.4` |
+| 1.5.5 (release v2.8.7) | `integridade-verifier.jar` | `827B4580836D7CE0811DB1975E5971A610C0C946D9DBDBECD4CCEAFB275FBEED` | Build determinístico (`build-reproducible.ps1` `--release 8`); `202.850` bytes; `SELF_TEST_OK 1.5.5` |
+| 1.5.5 (release v2.8.7) | `integridade-verifier.exe` | `639CE7B5A78D0C4DA1D55D28ACE317F342C93F7BFF13A28F5B33D45DB8BE39D1` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.658.202` bytes; `SELF_TEST_OK 1.5.5` || 1.5.4 (release v2.8.5) | `integridade-verifier.jar` | `8180566A0BEF7D70815FBCFFA77DE37B833B9BD4B2C87B185BB1B2A5792A41EF` | Build determinístico (`build-reproducible.ps1` `--release 8`); `200.920` bytes; `SELF_TEST_OK 1.5.4` |
 | 1.5.4 (release v2.8.5) | `integridade-verifier.exe` | `959424CFC4991148F23A4E41F167512C449128392618F3B070E3837E34FFF370` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.656.154` bytes; `SELF_TEST_OK 1.5.4` || 1.5.3 (release v2.8.4) | `integridade-verifier.jar` | `39BE8D3C8E9F5389D21659D6A1E62435C246241578E3CAB9EEA2C22D03992456` | Build determinístico (`build-reproducible.ps1` `--release 8`); `193.914` bytes; `SELF_TEST_OK 1.5.3` |
 | 1.5.3 (release v2.8.4) | `integridade-verifier.exe` | `B2A3D1CDBE36673215EFF438C24CBC636D38A578AF5C74444726041BE42E0D0F` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.649.498` bytes; `SELF_TEST_OK 1.5.3` || 1.5.2 (release v2.8.2) | `integridade-verifier.jar` | `22C207E89F56C8A35CAA327E7A491246739A81596172521E7B807EA167DDEB7F` | Build determinístico (`build-reproducible.ps1` `--release 8`); `193.537` bytes; `SELF_TEST_OK 1.5.2` |
 | 1.5.2 (release v2.8.2) | `integridade-verifier.exe` | `F3582CEFE0440B6DAA7DEA8E7F425A55C33DBC29EE2BE92DF875A2D18382B238` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.648.986` bytes; `SELF_TEST_OK 1.5.2` || 1.5.1 (release v2.8.1) | `integridade-verifier.jar` | `9809DEC2088F50F88ED1691544CEF45B029783B04498F65F43ECC5634C06C7A3` | Build determinístico (`build-reproducible.ps1` `--release 8`); `182.286` bytes; `SELF_TEST_OK 1.5.1` |

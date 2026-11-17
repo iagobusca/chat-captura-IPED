@@ -1,10 +1,10 @@
-# Verificador de Integridade 1.5.4
+# Verificador de Integridade 1.5.5
 
 Aplicativo Windows e Java para conferir a integridade de capturas de chat, consultar hashes e comparar um registro com uma referência pública recebida por outro canal.
 
 ## About the Project
 
-O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.5.4 consolida a compilação e o empacotamento determinísticos auditáveis via [`../build-reproducible.ps1`](../build-reproducible.ps1) (Temurin JDK 21.0.13+9 `--release 8` no JAR, `jlink`/`jpackage` + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true` no EXE, timestamps UTC fixos `1980-02-01T00:00:00Z`), preservando todas as proteções de segurança da série 1.4.4 (scanner HTML léxico F-01, `openFile` com `LinkOption.NOFOLLOW_LINKS` e `maxBytes`, `safeRegularFileSize`, `html.disable` Swing, `MAX_SCAN_ENTRIES`, allowlists HTML/MIME simétricas com o plugin e ausência de tetos artificiais de relatório). O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java 21 (subconjunto mínimo `jlink`) e .NET 10.0.15 necessários.
+O Verificador de Integridade é um aplicativo para Windows e Java que confere capturas de chat, calcula hashes e compara registros com referências externas. A versão 1.5.5 consolida a compilação e o empacotamento determinísticos auditáveis via [`../build-reproducible.ps1`](../build-reproducible.ps1) (Temurin JDK 21.0.13+9 `--release 8` no JAR, `jlink`/`jpackage` + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true` no EXE, timestamps UTC fixos `1980-02-01T00:00:00Z`), preservando todas as proteções de segurança da série 1.4.4 (scanner HTML léxico F-01, `openFile` com `LinkOption.NOFOLLOW_LINKS` e `maxBytes`, `safeRegularFileSize`, `html.disable` Swing, `MAX_SCAN_ENTRIES`, allowlists HTML/MIME simétricas com o plugin e ausência de tetos artificiais de relatório). O JAR funciona com Java 8 (1.8) ou superior. O EXE Windows x64 inclui os runtimes Java 21 (subconjunto mínimo `jlink`) e .NET 10.0.15 necessários.
 
 ## Getting Started
 
@@ -15,7 +15,7 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.5.4: JAR `8180566A0BEF7D70815FBCFFA77DE37B833B9BD4B2C87B185BB1B2A5792A41EF`; EXE `959424CFC4991148F23A4E41F167512C449128392618F3B070E3837E34FFF370`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.5.5: JAR `827B4580836D7CE0811DB1975E5971A610C0C946D9DBDBECD4CCEAFB275FBEED`; EXE `639CE7B5A78D0C4DA1D55D28ACE317F342C93F7BFF13A28F5B33D45DB8BE39D1`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 

@@ -1,4 +1,4 @@
-// Versão 1.5.4 — corte automatizado + empacotamento determinístico (.NET 10.0.15).
+// Versão 1.5.5 — corte automatizado + empacotamento determinístico (.NET 10.0.15).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.4";
+    private static final String VERIFIER_VERSION = "1.5.5";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -2416,6 +2416,7 @@ public final class IntegrityVerifier {
         outputs.put(reportDir.resolve("hashes-capturas.txt"),w->w.write(publicHashList(cs,rootHash)));
         outputs.put(reportDir.resolve("historico-capturas.txt"),w->w.write(history));
         atomicBatchStreaming(root,outputs);
+        cleanupObsoleteReportBakFiles(root,reportDir);
     }
     private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{try{Files.deleteIfExists(t);}catch(IOException ignored){}}}
     private static void atomicBatch(Map<Path,String> outputs)throws IOException{
@@ -2453,7 +2454,13 @@ public final class IntegrityVerifier {
                 if(isLinkOrReparse(entry.getKey())||isLinkOrReparse(entry.getValue())||(Files.exists(entry.getKey(),LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(entry.getKey(),LinkOption.NOFOLLOW_LINKS)))throw new IOException("O destino do relatório mudou para link, junção ou diretório inválido: "+entry.getKey());
             }
             for(Map.Entry<Path,Path> entry:staged.entrySet()){
-                moveReplace(entry.getValue(),entry.getKey());
+                Path target=entry.getKey();
+                Path temp=entry.getValue();
+                if(isSameReportContent(target,temp)){
+                    Files.deleteIfExists(temp);
+                    continue;
+                }
+                moveReplace(temp,target);
             }
         }finally{
             for(Path temp:staged.values()){
@@ -2461,19 +2468,165 @@ public final class IntegrityVerifier {
             }
         }
     }
+    private static final Pattern HTML_GENERATED_AT_PATTERN = Pattern.compile("<p>Verificação e relatório gerados em: [^<]*</p>");
+    private static final Pattern OBSOLETE_REPORT_BAK_PATTERN = Pattern.compile("^\\.(integridade\\.html|verificacao-integridade\\.(?:txt|json)|hashes-capturas\\.txt|historico-capturas\\.txt)\\.\\d+\\.bak$");
+
+    private static boolean isSameReportContent(Path target, Path stagedTemp) throws IOException {
+        if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(target)
+                || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        long existingSize = safeRegularFileSize(target);
+        long newSize = safeRegularFileSize(stagedTemp);
+        String name = target.getFileName() == null ? "" : target.getFileName().toString();
+        if ("integridade.html".equalsIgnoreCase(name)) {
+            if (existingSize <= MAX_HTML_CAPTURE_BYTES && newSize <= MAX_HTML_CAPTURE_BYTES) {
+                String existingHtml = new String(Files.readAllBytes(target), StandardCharsets.UTF_8);
+                String newHtml = new String(Files.readAllBytes(stagedTemp), StandardCharsets.UTF_8);
+                if (existingHtml.equals(newHtml)) {
+                    return true;
+                }
+                String normExisting = HTML_GENERATED_AT_PATTERN.matcher(existingHtml)
+                        .replaceFirst("<p>Verificação e relatório gerados em: __TIME__</p>");
+                String normNew = HTML_GENERATED_AT_PATTERN.matcher(newHtml)
+                        .replaceFirst("<p>Verificação e relatório gerados em: __TIME__</p>");
+                return normExisting.equals(normNew);
+            }
+        }
+        if (existingSize != newSize) {
+            return false;
+        }
+        return sameFileBytes(target, stagedTemp);
+    }
+
+    private static boolean sameFileBytes(Path a, Path b) throws IOException {
+        byte[] bufA = new byte[32768];
+        byte[] bufB = new byte[32768];
+        try (InputStream inA = Files.newInputStream(a, LinkOption.NOFOLLOW_LINKS);
+             InputStream inB = Files.newInputStream(b, LinkOption.NOFOLLOW_LINKS)) {
+            while (true) {
+                int rA = readFullyChunk(inA, bufA);
+                int rB = readFullyChunk(inB, bufB);
+                if (rA != rB) {
+                    return false;
+                }
+                if (rA == 0) {
+                    return true;
+                }
+                for (int i = 0; i < rA; i++) {
+                    if (bufA[i] != bufB[i]) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    private static int readFullyChunk(InputStream in, byte[] buf) throws IOException {
+        int off = 0;
+        while (off < buf.length) {
+            int n = in.read(buf, off, buf.length - off);
+            if (n < 0) {
+                break;
+            }
+            off += n;
+        }
+        return off;
+    }
+
+    private static void cleanupObsoleteReportBakFiles(Path root, Path reportDir) {
+        for (Path dir : new Path[] { root, reportDir }) {
+            if (dir == null) {
+                continue;
+            }
+            try {
+                if (isLinkOrReparse(dir) || !Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                List<Path> candidates = new ArrayList<>();
+                try (java.util.stream.Stream<Path> list = Files.list(dir)) {
+                    list.forEach(p -> {
+                        Path fname = p.getFileName();
+                        if (fname != null && OBSOLETE_REPORT_BAK_PATTERN.matcher(fname.toString()).matches()) {
+                            candidates.add(p);
+                        }
+                    });
+                }
+                for (Path p : candidates) {
+                    try {
+                        if (!isLinkOrReparse(p) && Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) {
+                            clearReadOnlyAttribute(p);
+                            Files.deleteIfExists(p);
+                        }
+                    } catch (IOException ignored) {
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private static void clearReadOnlyAttribute(Path target) {
+        try {
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(target)) {
+                Files.setAttribute(target, "dos:readonly", Boolean.FALSE, LinkOption.NOFOLLOW_LINKS);
+            }
+        } catch (UnsupportedOperationException | IOException ignored) {
+        }
+    }
+
+    private static void overwriteRegularTargetInPlace(Path source, Path target) throws IOException {
+        if (isLinkOrReparse(source) || isLinkOrReparse(target)
+                || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Destino inválido para atualização direta: " + target);
+        }
+        clearReadOnlyAttribute(target);
+        byte[] buf = new byte[32768];
+        try (InputStream in = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS);
+             OutputStream out = Files.newOutputStream(target,
+                     StandardOpenOption.WRITE,
+                     StandardOpenOption.TRUNCATE_EXISTING,
+                     LinkOption.NOFOLLOW_LINKS)) {
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                if (n > 0) {
+                    out.write(buf, 0, n);
+                }
+            }
+        }
+        Files.deleteIfExists(source);
+    }
+
     private static void moveReplace(Path source,Path target)throws IOException{
         FileSystemException lastError=null;
         for(int attempt=0;attempt<4;attempt++){
             if(isLinkOrReparse(source)||isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
+            if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)){
+                if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);
+                clearReadOnlyAttribute(target);
+            }
             try{
                 Files.move(source,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
                 return;
             }catch(AtomicMoveNotSupportedException e){
                 try{
+                    clearReadOnlyAttribute(target);
                     Files.move(source,target,StandardCopyOption.REPLACE_EXISTING);
                     return;
                 }catch(FileSystemException lockEx){
                     lastError=lockEx;
+                }
+            }catch(java.nio.file.AccessDeniedException deniedEx){
+                try{
+                    clearReadOnlyAttribute(target);
+                    Files.move(source,target,StandardCopyOption.REPLACE_EXISTING);
+                    return;
+                }catch(FileSystemException lockEx){
+                    lastError=lockEx;
+                }
+                if(attempt==3&&Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS)){
+                    overwriteRegularTargetInPlace(source,target);
+                    return;
                 }
             }catch(FileSystemException lockEx){
                 lastError=lockEx;

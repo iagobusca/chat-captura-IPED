@@ -48,6 +48,7 @@ public final class SecurityRegressionTest {
             comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(root);
             rejectLinksRejectsRootJunctionAndAtomicBatchStreamingMatchesBytes(root);
             atomicBatchNeverCreatesBakFiles(root);
+            htmlReportReadOnlyOverwriteIdenticalSkipAndStaleBakCleanup(root);
             publicHistoryContentComparisonAcrossVersionsAndOriginBinding(root);
             alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs();
             unquotedQuoteHtmlBypassPayloadsAreRejected();
@@ -1711,6 +1712,97 @@ public final class SecurityRegressionTest {
                 throw new AssertionError("Missing local capture must report DIVERGE with missingLocalCount=1");
             }
         } finally {
+            deleteTree(caseDir);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void htmlReportReadOnlyOverwriteIdenticalSkipAndStaleBakCleanup(Path root) throws Exception {
+        Path caseDir = Files.createDirectories(root.resolve("html-readonly-reuse"));
+        Path html = caseDir.resolve("integridade.html");
+        Path staleBak = caseDir.resolve(".integridade.html.205927726989895346.bak");
+        try {
+            Path cap1 = Files.createDirectories(caseDir.resolve("Chat_Ro-20261114-100000"));
+            createValidHtmlMessageCapture(cap1, "Mensagem RO");
+            Files.write(cap1.resolve("integridade.json"),
+                    buildLocalIntegrityRecordForFiles(cap1, new String[]{"whatsapp.html", "messages.json"}).toString(2).getBytes(StandardCharsets.UTF_8));
+
+            Method verify = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+            verify.setAccessible(true);
+            Method setHash = IntegrityVerifier.class.getDeclaredMethod("setHash", List.class);
+            setHash.setAccessible(true);
+            Method hist = IntegrityVerifier.class.getDeclaredMethod("historyReport", List.class, String.class);
+            hist.setAccessible(true);
+            Method writeReports = IntegrityVerifier.class.getDeclaredMethod("writeReports",
+                    Path.class, List.class, String.class, String.class, String.class);
+            writeReports.setAccessible(true);
+
+            List<IntegrityVerifier.Capture> caps = IntegrityVerifier.discover(caseDir);
+            for (IntegrityVerifier.Capture c : caps) verify.invoke(null, c);
+            String sh = (String) setHash.invoke(null, caps);
+            String h = (String) hist.invoke(null, caps, sh);
+
+            // Simulate an outdated read-only integridade.html plus a leftover .bak from older versions
+            Files.write(html, "<html>outdated</html>".getBytes(StandardCharsets.UTF_8));
+            Files.write(staleBak, "old-bak".getBytes(StandardCharsets.UTF_8));
+            for (Path ro : new Path[] { html, staleBak }) {
+                try {
+                    Files.setAttribute(ro, "dos:readonly", Boolean.TRUE);
+                } catch (UnsupportedOperationException ignored) {
+                }
+            }
+
+            writeReports.invoke(null, caseDir, caps, sh, "2026-11-17T17:00:00Z", h);
+            String firstWritten = new String(Files.readAllBytes(html), StandardCharsets.UTF_8);
+            if (!firstWritten.contains("Chat_Ro-20261114-100000") || firstWritten.contains("outdated")) {
+                throw new AssertionError("writeReports must overwrite outdated ReadOnly integridade.html");
+            }
+            if (Files.exists(staleBak)) {
+                throw new AssertionError("writeReports must remove stale leftover .integridade.html.*.bak files");
+            }
+
+            // Second run with different timestamp only: identical verification result must skip rewriting integridade.html
+            java.nio.file.attribute.FileTime mtime1 = Files.getLastModifiedTime(html);
+            try {
+                Files.setAttribute(html, "dos:readonly", Boolean.TRUE);
+            } catch (UnsupportedOperationException ignored) {
+            }
+            Thread.sleep(35L);
+            writeReports.invoke(null, caseDir, caps, sh, "2026-11-17T18:30:00Z", h);
+            if (!mtime1.equals(Files.getLastModifiedTime(html))) {
+                throw new AssertionError("Identical verification result must preserve existing integridade.html without overwriting");
+            }
+
+            // Third run with changed capture set: must update even when ReadOnly
+            Path cap2 = Files.createDirectories(caseDir.resolve("Chat_Ro2-20261114-100001"));
+            createValidHtmlMessageCapture(cap2, "Mensagem RO 2");
+            Files.write(cap2.resolve("integridade.json"),
+                    buildLocalIntegrityRecordForFiles(cap2, new String[]{"whatsapp.html", "messages.json"}).toString(2).getBytes(StandardCharsets.UTF_8));
+            List<IntegrityVerifier.Capture> caps2 = IntegrityVerifier.discover(caseDir);
+            for (IntegrityVerifier.Capture c : caps2) verify.invoke(null, c);
+            String sh2 = (String) setHash.invoke(null, caps2);
+            String h2 = (String) hist.invoke(null, caps2, sh2);
+            writeReports.invoke(null, caseDir, caps2, sh2, "2026-11-17T19:00:00Z", h2);
+            String updated = new String(Files.readAllBytes(html), StandardCharsets.UTF_8);
+            if (!updated.contains("Chat_Ro2-20261114-100001")) {
+                throw new AssertionError("Changed result must update ReadOnly integridade.html cleanly");
+            }
+            try (java.util.stream.Stream<Path> walk = Files.walk(caseDir)) {
+                List<Path> leftovers = walk
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".bak") || p.getFileName().toString().endsWith(".tmp"))
+                        .collect(java.util.stream.Collectors.toList());
+                if (!leftovers.isEmpty()) {
+                    throw new AssertionError("Zero .bak/.tmp files may exist after writeReports: " + leftovers);
+                }
+            }
+        } finally {
+            for (Path ro : new Path[] { html, staleBak }) {
+                try {
+                    if (Files.exists(ro)) Files.setAttribute(ro, "dos:readonly", Boolean.FALSE);
+                } catch (UnsupportedOperationException | IOException ignored) {
+                }
+            }
             deleteTree(caseDir);
         }
     }
