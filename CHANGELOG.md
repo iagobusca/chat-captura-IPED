@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.5] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Suporte a validação de historico-capturas.txt de versões anteriores no modo Integridade Público e em integridade.html: mantém exigência estrita para correspondência integral e valida por conteúdo criptográfico todas as mensagens (ARQUIVO|mensagem:*) e anexos (ARQUIVO|attachments/*) com detalhamento por captura, além de aceitar carregamento direto de arquivo .txt e hash de conjunto (SHA256|).
+- Verificador **1.5.4** (`200.920` bytes JAR `8180566A...` | `77.656.154` bytes EXE `959424CF...`) e Plugin **2.8.5** (`1.554.621` bytes `98668D36...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.5-verificador-1.5.4.zip` (`94.531.413` bytes `819FFDB0...`).
 ## [2.8.4] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

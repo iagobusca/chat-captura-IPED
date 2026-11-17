@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.5 (Estável / `main`) / Verificador 1.5.4
+
+- **Tag**: [v2.8.5](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.5) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.5-verificador-1.5.4.zip](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.5/instalador-chat-captura-IPED-2.8.5-verificador-1.5.4.zip) (`94.531.413` bytes | SHA-256: `819FFDB06D0A7D66547F8E9E1C2D6DF8588E2DD2851E61702FCD63280F1A8619`)
+- [integridade-verifier-1.5.4.exe](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.5/integridade-verifier-1.5.4.exe) (`77.656.154` bytes | SHA-256: `959424CFC4991148F23A4E41F167512C449128392618F3B070E3837E34FFF370`)
+- [integridade-verifier-1.5.4.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.5/integridade-verifier-1.5.4.jar) (`200.920` bytes | SHA-256: `8180566A0BEF7D70815FBCFFA77DE37B833B9BD4B2C87B185BB1B2A5792A41EF`)
+- [iped-viewers-impl-4.3.1-2.8.5.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.5/iped-viewers-impl-4.3.1-2.8.5.jar) (`1.554.621` bytes | SHA-256: `98668D3678D3338F98427C46637306BA9E5EDCC25C7877C2461DC28DF062F873`)
+
+### Resumo
+- Suporte a validação de historico-capturas.txt de versões anteriores no modo Integridade Público e em integridade.html: mantém exigência estrita para correspondência integral e valida por conteúdo criptográfico todas as mensagens (ARQUIVO|mensagem:*) e anexos (ARQUIVO|attachments/*) com detalhamento por captura, além de aceitar carregamento direto de arquivo .txt e hash de conjunto (SHA256|).
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.4**.
+
+---
 ## v2.8.4 (Estável / `main`) / Verificador 1.5.3
 
 - **Tag**: [v2.8.4](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.4) (Corte automatizado via `build-reproducible.ps1`)

@@ -14,7 +14,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 if not exist "%JSON_OUT%" mkdir "%JSON_OUT%"
 >"%MANIFEST%" echo Manifest-Version: 1.0
 >>"%MANIFEST%" echo Main-Class: IntegrityVerifier
->>"%MANIFEST%" echo Implementation-Version: 1.5.3
+>>"%MANIFEST%" echo Implementation-Version: 1.5.4
 >>"%MANIFEST%" echo.
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"

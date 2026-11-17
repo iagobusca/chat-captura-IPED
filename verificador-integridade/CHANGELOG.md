@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.4] - 2026-11-17
+
+### Corte Automatizado (v2.8.5)
+- Suporte a validação de historico-capturas.txt de versões anteriores no modo Integridade Público e em integridade.html: mantém exigência estrita para correspondência integral e valida por conteúdo criptográfico todas as mensagens (ARQUIVO|mensagem:*) e anexos (ARQUIVO|attachments/*) com detalhamento por captura, além de aceitar carregamento direto de arquivo .txt e hash de conjunto (SHA256|). (`build-reproducible.ps1`; JAR `8180566A...` / EXE `959424CF...`).
 ## [1.5.3] - 2026-11-17
 
 ### Corte Automatizado (v2.8.4)

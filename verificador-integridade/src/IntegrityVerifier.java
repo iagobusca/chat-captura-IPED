@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.3";
+    private static final String VERIFIER_VERSION = "1.5.4";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -539,7 +539,7 @@ public final class IntegrityVerifier {
             return;
         }
         if (mode == 1) {
-            comparePublicHistory(bundle.history, bundle.historyFullHash, bundle.publicHistory, bundle.historyPublicHash);
+            comparePublicHistory(bundle.selected, bundle.setHash, bundle.history, bundle.historyFullHash, bundle.publicHistory, bundle.historyPublicHash);
         }
         showSummaryDialog(root, bundle.selected, bundle.history, bundle.publicHistory, bundle.historyPublicHash, bundle.historyFile, mode);
         System.exit(0);
@@ -796,11 +796,15 @@ public final class IntegrityVerifier {
         } catch(Exception e){showTopMessage(owner,"Não foi possível abrir o arquivo. Ele foi salvo em:\n"+file+"\n\n"+e.getMessage(),"Abrir histórico",JOptionPane.ERROR_MESSAGE);}
     }
     static String classifyPublicHashMatch(String supplied, String localFullHash, String localPublicHash) {
+        return classifyPublicHashMatch(supplied, localFullHash, localPublicHash, "");
+    }
+    static String classifyPublicHashMatch(String supplied, String localFullHash, String localPublicHash, String localSetHash) {
         String trimmed = supplied == null ? "" : supplied.trim();
         if (trimmed.isEmpty()) return "EMPTY";
         if (!trimmed.matches("(?i)[0-9a-f]{64}")) return "INVALID";
         if (trimmed.equalsIgnoreCase(localFullHash)) return "MATCH_FULL";
         if (trimmed.equalsIgnoreCase(localPublicHash)) return "MATCH_PUBLIC";
+        if (localSetHash != null && !localSetHash.isEmpty() && trimmed.equalsIgnoreCase(localSetHash)) return "MATCH_SET";
         return "DIVERGE";
     }
     static String classifyPublicHistoryMatch(String supplied, String localFullHistory, String localPublicHistory) {
@@ -810,43 +814,399 @@ public final class IntegrityVerifier {
         if (normalized.equals(normalizePublicRecord(localPublicHistory))) return "MATCH_PUBLIC";
         return "DIVERGE";
     }
-    private static void comparePublicHistory(String localFullHistory,String localFullHash,String localPublicHistory,String localPublicHash) throws Exception {
+    private static final class ParsedSuppliedBlock {
+        final String displayName;
+        final String blockSha256;
+        final String contentRootHash;
+        final String contentDigest;
+        final String itemsDigest;
+        final int messageCount;
+        final int attachmentCount;
+        ParsedSuppliedBlock(String displayName, String blockSha256, String contentRootHash,
+                String contentDigest, String itemsDigest, int messageCount, int attachmentCount) {
+            this.displayName = displayName;
+            this.blockSha256 = blockSha256;
+            this.contentRootHash = contentRootHash;
+            this.contentDigest = contentDigest;
+            this.itemsDigest = itemsDigest;
+            this.messageCount = messageCount;
+            this.attachmentCount = attachmentCount;
+        }
+    }
+    static final class PublicHistoryComparisonResult {
+        final String overallKind;
+        final int localTotal;
+        final int suppliedTotal;
+        final int exactCount;
+        final int sameRootCount;
+        final int contentMatchCount;
+        final int divergedCount;
+        final int missingLocalCount;
+        final int unhealthyLocalCount;
+        final String summaryLine;
+        final String detailsText;
+        PublicHistoryComparisonResult(String overallKind, int localTotal, int suppliedTotal,
+                int exactCount, int sameRootCount, int contentMatchCount, int divergedCount,
+                int missingLocalCount, int unhealthyLocalCount, String summaryLine, String detailsText) {
+            this.overallKind = overallKind;
+            this.localTotal = localTotal;
+            this.suppliedTotal = suppliedTotal;
+            this.exactCount = exactCount;
+            this.sameRootCount = sameRootCount;
+            this.contentMatchCount = contentMatchCount;
+            this.divergedCount = divergedCount;
+            this.missingLocalCount = missingLocalCount;
+            this.unhealthyLocalCount = unhealthyLocalCount;
+            this.summaryLine = summaryLine;
+            this.detailsText = detailsText;
+        }
+        boolean isVerified() {
+            return "MATCH_FULL".equals(overallKind)
+                    || "MATCH_PUBLIC".equals(overallKind)
+                    || "MATCH_CONTENT_EQUIVALENT".equals(overallKind);
+        }
+    }
+    private static String unescapeRecordField(String s) {
+        if (s == null || s.indexOf('\\') < 0) return s == null ? "" : s;
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '\\' && i + 1 < s.length()) {
+                char next = s.charAt(++i);
+                if (next == 'n') out.append('\n');
+                else if (next == 'r') out.append('\r');
+                else out.append(next);
+            } else {
+                out.append(ch);
+            }
+        }
+        return out.toString();
+    }
+    private static List<String> splitPipeEscaped(String line) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean esc = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (esc) { cur.append('\\').append(ch); esc = false; continue; }
+            if (ch == '\\') { esc = true; continue; }
+            if (ch == '|') { parts.add(unescapeRecordField(cur.toString())); cur.setLength(0); continue; }
+            cur.append(ch);
+        }
+        if (esc) cur.append('\\');
+        parts.add(unescapeRecordField(cur.toString()));
+        return parts;
+    }
+    private static String computeContentDigest(String captureDisplayName, List<String> entries) {
+        if (entries.isEmpty()) return "";
+        List<String> sorted = new ArrayList<>(entries);
+        Collections.sort(sorted);
+        StringBuilder sb = new StringBuilder("CAPTURE_CONTENT_V1\n");
+        sb.append(anonymizeCaptureName(captureDisplayName)).append('\n');
+        for (String e : sorted) sb.append(e).append('\n');
+        try { return hashText(sb.toString()); } catch (Exception e) { return ""; }
+    }
+    static String captureContentDigest(Capture c) {
+        if (c == null || !c.error.isEmpty()) return "";
+        List<String> entries = new ArrayList<>();
+        for (Item item : c.items) {
+            if (!isHealthyVerifierItemState(item.state)) return "";
+            String p = item.path == null ? "" : item.path;
+            String act = item.actual == null ? "" : item.actual;
+            if (!act.matches("(?i)[0-9a-f]{64}")) continue;
+            if (p.startsWith("mensagem:")) {
+                entries.add("M|" + p + "|" + act.toLowerCase(Locale.ROOT));
+            } else if (p.startsWith("attachments/")) {
+                entries.add("A|" + p + "|" + item.bytes + "|" + act.toLowerCase(Locale.ROOT));
+            }
+        }
+        return computeContentDigest(c.name, entries);
+    }
+    private static String computeItemsDigest(String captureDisplayName, List<String> allItemLines) {
+        if (allItemLines.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("CAPTURE_ITEMS_V1\n");
+        sb.append(anonymizeCaptureName(captureDisplayName)).append('\n');
+        for (String line : allItemLines) sb.append(line).append('\n');
+        try { return hashText(sb.toString()); } catch (Exception e) { return ""; }
+    }
+    static String captureItemsDigest(Capture c) {
+        if (c == null || !c.error.isEmpty()) return "";
+        List<String> lines = new ArrayList<>();
+        for (Item item : c.items) {
+            if (!isHealthyVerifierItemState(item.state)) return "";
+            String row = "ARQUIVO|" + recordField(item.path) + "|" + item.size + "|"
+                    + recordField(item.expected == null ? "—" : item.expected) + "|" + item.bytes + "|"
+                    + recordField(item.actual == null ? "—" : item.actual) + "|"
+                    + recordField(item.state == null ? "desconhecido" : item.state);
+            lines.add(row);
+        }
+        return computeItemsDigest(c.name, lines);
+    }
+    private static ParsedSuppliedBlock finalizeSuppliedBlock(List<String> blockLines) throws Exception {
+        while (!blockLines.isEmpty() && blockLines.get(blockLines.size() - 1).isEmpty()) {
+            blockLines.remove(blockLines.size() - 1);
+        }
+        String joined = String.join("\n", blockLines);
+        String blockSha = hashText(joined);
+        String displayName = "";
+        String contentRoot = "";
+        List<String> entries = new ArrayList<>();
+        List<String> rawItemLines = new ArrayList<>();
+        int msgCount = 0;
+        int attCount = 0;
+        boolean broken = false;
+        for (String ln : blockLines) {
+            if (ln.startsWith("CAPTURA|")) {
+                displayName = unescapeRecordField(ln.substring("CAPTURA|".length()));
+            } else if (ln.startsWith("HASH_CONTEUDO|")) {
+                contentRoot = unescapeRecordField(ln.substring("HASH_CONTEUDO|".length())).trim().toLowerCase(Locale.ROOT);
+            } else if (ln.startsWith("ARQUIVO|")) {
+                rawItemLines.add(ln);
+                List<String> cols = splitPipeEscaped(ln);
+                if (cols.size() >= 7) {
+                    String path = cols.get(1);
+                    String actual = cols.get(5);
+                    String state = cols.get(6);
+                    long bytes = -1L;
+                    try { bytes = Long.parseLong(cols.get(4)); } catch (NumberFormatException ignored) {}
+                    if (!isHealthyVerifierItemState(state)) {
+                        broken = true;
+                    } else if (actual.matches("(?i)[0-9a-f]{64}")) {
+                        if (path.startsWith("mensagem:")) {
+                            entries.add("M|" + path + "|" + actual.toLowerCase(Locale.ROOT));
+                            msgCount++;
+                        } else if (path.startsWith("attachments/") && bytes >= 0) {
+                            entries.add("A|" + path + "|" + bytes + "|" + actual.toLowerCase(Locale.ROOT));
+                            attCount++;
+                        }
+                    }
+                } else {
+                    broken = true;
+                }
+            }
+        }
+        String digest = broken ? "" : computeContentDigest(displayName, entries);
+        String itemsDigest = broken ? "" : computeItemsDigest(displayName, rawItemLines);
+        return new ParsedSuppliedBlock(displayName, blockSha, contentRoot, digest, itemsDigest, msgCount, attCount);
+    }
+    private static List<ParsedSuppliedBlock> parseSuppliedHistoryBlocks(String supplied) throws Exception {
+        List<ParsedSuppliedBlock> out = new ArrayList<>();
+        String norm = normalizePublicRecord(supplied);
+        String[] lines = norm.split("\n", -1);
+        List<String> cur = null;
+        for (String line : lines) {
+            if (line.startsWith("CAPTURA|")) {
+                if (cur != null) out.add(finalizeSuppliedBlock(cur));
+                cur = new ArrayList<>();
+                cur.add(line);
+            } else if (line.startsWith("Nota|")) {
+                if (cur != null) out.add(finalizeSuppliedBlock(cur));
+                cur = null;
+                break;
+            } else if (cur != null) {
+                cur.add(line);
+            }
+        }
+        if (cur != null) out.add(finalizeSuppliedBlock(cur));
+        return out;
+    }
+    static PublicHistoryComparisonResult comparePublicHistoryDetailed(List<Capture> localCaptures, String setHash,
+            String localFullHistory, String localPublicHistory, String supplied) throws Exception {
+        String exactStatus = classifyPublicHistoryMatch(supplied, localFullHistory, localPublicHistory);
+        int localCount = localCaptures == null ? 0 : localCaptures.size();
+        if ("EMPTY".equals(exactStatus)) {
+            return new PublicHistoryComparisonResult("EMPTY", localCount, 0, 0, 0, 0, 0, 0, 0,
+                    "Cole o conteúdo de historico-capturas.txt.", "");
+        }
+        if ("MATCH_FULL".equals(exactStatus)) {
+            return new PublicHistoryComparisonResult("MATCH_FULL", localCount, localCount, localCount, 0, 0, 0, 0, 0,
+                    "CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado.",
+                    "Correspondência integral exata (" + localCount + "/" + localCount + " capturas).");
+        }
+        if ("MATCH_PUBLIC".equals(exactStatus)) {
+            return new PublicHistoryComparisonResult("MATCH_PUBLIC", localCount, localCount, localCount, 0, 0, 0, 0, 0,
+                    "CONFERE: o histórico completo público (anonimizado) corresponde integralmente às capturas calculadas.",
+                    "Correspondência integral pública exata (" + localCount + "/" + localCount + " capturas).");
+        }
+        List<ParsedSuppliedBlock> suppliedBlocks = parseSuppliedHistoryBlocks(supplied);
+        if (localCaptures == null || localCaptures.isEmpty() || suppliedBlocks.isEmpty()) {
+            return new PublicHistoryComparisonResult("DIVERGE", localCount, suppliedBlocks.size(), 0, 0, 0, localCount,
+                    suppliedBlocks.size(), 0,
+                    "DIVERGE: o texto informado não corresponde ao historico-capturas.txt (completo ou público) calculado.",
+                    "Nenhum bloco CAPTURA válido encontrado para comparar.");
+        }
+        boolean[] usedSupplied = new boolean[suppliedBlocks.size()];
+        int exact = 0, sameRoot = 0, contentMatch = 0, diverged = 0, unhealthy = 0;
+        StringBuilder details = new StringBuilder();
+        details.append("Capturas locais: ").append(localCount).append(" | Blocos na referência: ").append(suppliedBlocks.size()).append("\n\n");
+        for (Capture c : localCaptures) {
+            boolean captureHealthy = c.error.isEmpty() && isConsistentLocalHistoryStatus(c.historyStatus);
+            for (Item it : c.items) {
+                if (!isHealthyVerifierItemState(it.state)) { captureHealthy = false; break; }
+            }
+            String fullSha = hashText(captureHistoryBlock(c, false));
+            String pubSha = hashText(captureHistoryBlock(c, true));
+            String anonName = anonymizeCaptureName(c.name);
+            String localRoot = (c.contentRootHash.isEmpty() ? c.hash : c.contentRootHash).toLowerCase(Locale.ROOT);
+            String localContentDigest = captureHealthy ? captureContentDigest(c) : "";
+            String localItemsDigest = captureHealthy ? captureItemsDigest(c) : "";
+
+            int matchedIdx = -1;
+            String matchTier = "DIVERGE";
+            for (int pass = 0; pass < 3 && matchedIdx < 0; pass++) {
+                for (int i = 0; i < suppliedBlocks.size(); i++) {
+                    if (usedSupplied[i]) continue;
+                    ParsedSuppliedBlock sb = suppliedBlocks.get(i);
+                    boolean nameMatches = sb.displayName.equals(c.name) || sb.displayName.equals(anonName);
+                    if (!nameMatches) continue;
+                    if (pass == 0 && (sb.blockSha256.equals(fullSha) || sb.blockSha256.equals(pubSha))) {
+                        matchedIdx = i; matchTier = "EXACT_BLOCK"; break;
+                    }
+                    if (pass == 1 && !localRoot.isEmpty() && sb.contentRootHash.equals(localRoot)
+                            && !localItemsDigest.isEmpty() && sb.itemsDigest.equals(localItemsDigest)) {
+                        matchedIdx = i; matchTier = "SAME_CONTENT_ROOT"; break;
+                    }
+                    if (pass == 2 && !localContentDigest.isEmpty() && !sb.contentDigest.isEmpty()
+                            && sb.contentDigest.equals(localContentDigest)) {
+                        matchedIdx = i; matchTier = "CONTENT_MATCH"; break;
+                    }
+                }
+            }
+            if (!captureHealthy) {
+                unhealthy++;
+                diverged++;
+                details.append("[LOCAL_IRREGULAR] ").append(c.name).append(" -> ").append(c.historyStatus).append('\n');
+            } else if (matchedIdx >= 0) {
+                usedSupplied[matchedIdx] = true;
+                ParsedSuppliedBlock sb = suppliedBlocks.get(matchedIdx);
+                if ("EXACT_BLOCK".equals(matchTier)) {
+                    exact++;
+                    details.append("[EXATA] ").append(anonName).append('\n');
+                } else if ("SAME_CONTENT_ROOT".equals(matchTier)) {
+                    sameRoot++;
+                    details.append("[MESMA_RAIZ_CONTEUDO] ").append(anonName).append(" (arquivos idênticos; apenas evento/timestamp distinto)\n");
+                } else {
+                    contentMatch++;
+                    details.append("[CONTEUDO_INTEGRO] ").append(anonName).append(" (")
+                            .append(sb.messageCount).append(" mensagens e ").append(sb.attachmentCount)
+                            .append(" anexos com hashes idênticos; metadados/origem atualizados)\n");
+                }
+            } else {
+                diverged++;
+                details.append("[DIVERGE_OU_AUSENTE] ").append(c.name).append('\n');
+            }
+        }
+        int missingLocal = 0;
+        for (int i = 0; i < suppliedBlocks.size(); i++) {
+            if (!usedSupplied[i]) {
+                missingLocal++;
+                details.append("[SOMENTE_NA_REFERENCIA] ").append(suppliedBlocks.get(i).displayName).append('\n');
+            }
+        }
+        int matchedTotal = exact + sameRoot + contentMatch;
+        boolean allClean = diverged == 0 && unhealthy == 0 && missingLocal == 0 && matchedTotal == localCount && localCount > 0;
+        String kind = allClean ? "MATCH_CONTENT_EQUIVALENT" : "DIVERGE";
+        String summary;
+        if (allClean) {
+            summary = "CONFERE POR CONTEÚDO CRIPTOGRÁFICO: " + matchedTotal + "/" + localCount
+                    + " capturas íntegras e equivalentes em mensagens/anexos ("
+                    + exact + " exatas, " + sameRoot + " mesma raiz HASH_CONTEUDO, "
+                    + contentMatch + " com metadados/origem atualizados).";
+        } else {
+            summary = "DIVERGE: " + matchedTotal + "/" + localCount + " capturas coincidem ("
+                    + exact + " exatas, " + sameRoot + " raiz, " + contentMatch + " conteúdo), "
+                    + diverged + " divergiram/sem par, " + missingLocal + " da referência ausentes nesta pasta.";
+        }
+        return new PublicHistoryComparisonResult(kind, localCount, suppliedBlocks.size(), exact, sameRoot,
+                contentMatch, diverged, missingLocal, unhealthy, summary, details.toString());
+    }
+    private static void comparePublicHistory(List<Capture> selectedCaptures, String localSetHash,
+            String localFullHistory, String localFullHash, String localPublicHistory, String localPublicHash) throws Exception {
         final CountDownLatch latch=new CountDownLatch(1);
         final JFrame[] frameRef=new JFrame[1];
         runOnEdt(()->{
             JTextField publicHash=new JTextField(44);
             JTextArea publicRecord=new JTextArea(12,52);
             publicRecord.setLineWrap(false);
-            JLabel result=plainLabel("Informe um dos 3 formatos: SHA-256 público (completo ou anonimizado) ou historico-capturas.txt (normal ou anonimizado).");
+            JTextArea result=new JTextArea("Informe o SHA-256 público ou carregue/cole o historico-capturas.txt (normal, anonimizado ou versão anterior).",2,44);
+            result.setEditable(false);
+            result.setLineWrap(true);
+            result.setWrapStyleWord(true);
+            result.setOpaque(false);
             result.setForeground(java.awt.Color.DARK_GRAY);
+            final String[] lastDetails = { "" };
+            JButton detailsBtn=new JButton("Detalhes...");
+            detailsBtn.setEnabled(false);
 
             JButton compareHash=new JButton("Comparar hash público");
             compareHash.addActionListener(e->{
-                String status=classifyPublicHashMatch(publicHash.getText(),localFullHash,localPublicHash);
-                boolean ok="MATCH_FULL".equals(status)||"MATCH_PUBLIC".equals(status);
+                String status=classifyPublicHashMatch(publicHash.getText(),localFullHash,localPublicHash,localSetHash);
+                boolean ok="MATCH_FULL".equals(status)||"MATCH_PUBLIC".equals(status)||"MATCH_SET".equals(status);
+                lastDetails[0]="";
+                detailsBtn.setEnabled(false);
                 if("EMPTY".equals(status))result.setText("Informe o hash público.");
                 else if("INVALID".equals(status))result.setText("Formato inválido: informe 64 caracteres hexadecimais.");
                 else if("MATCH_FULL".equals(status))result.setText("CONFERE: o hash público corresponde ao historico-capturas.txt completo calculado.");
                 else if("MATCH_PUBLIC".equals(status))result.setText("CONFERE: o hash público corresponde ao histórico completo público calculado.");
+                else if("MATCH_SET".equals(status))result.setText("CONFERE: o hash informado corresponde ao SHA256 de conjunto do historico-capturas.txt.");
                 else result.setText("DIVERGE: o hash público não corresponde ao historico-capturas.txt calculado.");
                 result.setForeground("EMPTY".equals(status)?java.awt.Color.DARK_GRAY:ok?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
             });
 
+            Runnable runRecordCompare = () -> {
+                try {
+                    PublicHistoryComparisonResult cmp = comparePublicHistoryDetailed(
+                            selectedCaptures, localSetHash, localFullHistory, localPublicHistory, publicRecord.getText());
+                    boolean ok = cmp.isVerified();
+                    result.setText(cmp.summaryLine);
+                    result.setForeground("EMPTY".equals(cmp.overallKind)
+                            ? java.awt.Color.DARK_GRAY
+                            : ok ? new java.awt.Color(0, 100, 0) : new java.awt.Color(139, 0, 0));
+                    lastDetails[0] = cmp.detailsText == null ? "" : cmp.detailsText;
+                    detailsBtn.setEnabled(!lastDetails[0].isEmpty());
+                } catch (Exception ex) {
+                    result.setText("ERRO ao comparar histórico: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+                    result.setForeground(new java.awt.Color(139, 0, 0));
+                    lastDetails[0] = "";
+                    detailsBtn.setEnabled(false);
+                }
+            };
+
             JButton compareRecord=new JButton("Comparar histórico completo");
-            compareRecord.addActionListener(e->{
-                String status=classifyPublicHistoryMatch(publicRecord.getText(),localFullHistory,localPublicHistory);
-                boolean ok="MATCH_FULL".equals(status)||"MATCH_PUBLIC".equals(status);
-                if("EMPTY".equals(status))result.setText("Cole o conteúdo de historico-capturas.txt.");
-                else if("MATCH_FULL".equals(status))result.setText("CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado.");
-                else if("MATCH_PUBLIC".equals(status))result.setText("CONFERE: o histórico completo público (anonimizado) corresponde integralmente às capturas calculadas.");
-                else result.setText("DIVERGE: o texto informado não corresponde ao historico-capturas.txt (completo ou público) calculado.");
-                result.setForeground("EMPTY".equals(status)?java.awt.Color.DARK_GRAY:ok?new java.awt.Color(0,100,0):new java.awt.Color(139,0,0));
-            });
+            compareRecord.addActionListener(e -> runRecordCompare.run());
 
             final JFrame frame2=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Integridade Público",true);
             frameRef[0]=frame2;
             frame2.addWindowListener(new WindowAdapter(){
                 @Override public void windowClosing(WindowEvent e){latch.countDown();}
+            });
+
+            detailsBtn.addActionListener(e -> {
+                JTextArea dArea = new JTextArea(lastDetails[0], 18, 68);
+                dArea.putClientProperty("html.disable", Boolean.TRUE);
+                dArea.setEditable(false);
+                dArea.setCaretPosition(0);
+                JScrollPane detailsScroll = new JScrollPane(dArea);
+                showTopMessage(frame2, detailsScroll, "Detalhes da comparação de histórico", JOptionPane.INFORMATION_MESSAGE);
+            });
+
+            JButton loadFileBtn=new JButton("Carregar arquivo .txt...");
+            loadFileBtn.addActionListener(e -> {
+                JFileChooser ch = new JFileChooser();
+                ch.setDialogTitle("Selecione historico-capturas.txt ou referência salva");
+                if (ch.showOpenDialog(frame2) == JFileChooser.APPROVE_OPTION) {
+                    try {
+                        Path chosen = ch.getSelectedFile().toPath().toAbsolutePath().normalize();
+                        validateOpenableRegularFile(chosen);
+                        String txt = readUtf8Limited(chosen, MAX_HTML_CAPTURE_BYTES);
+                        publicRecord.setText(txt);
+                        publicRecord.setCaretPosition(0);
+                        runRecordCompare.run();
+                    } catch (Exception ex) {
+                        result.setText("ERRO ao ler arquivo: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+                        result.setForeground(new java.awt.Color(139, 0, 0));
+                    }
+                }
             });
 
             JPanel hashInputRow=new JPanel(new java.awt.BorderLayout(8,0));
@@ -857,14 +1217,16 @@ public final class IntegrityVerifier {
             sectionHash.add(plainLabel("1. Hash SHA-256 público (de historico-capturas.txt):"),java.awt.BorderLayout.NORTH);
             sectionHash.add(hashInputRow,java.awt.BorderLayout.CENTER);
 
-            JPanel recordButtonRow=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,0,0));
+            JPanel recordButtonRow=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,8,0));
+            recordButtonRow.add(detailsBtn);
+            recordButtonRow.add(loadFileBtn);
             recordButtonRow.add(compareRecord);
 
             JPanel sectionRecord=new JPanel(new java.awt.BorderLayout(0,6));
             JPanel recordHeader=new JPanel();
             recordHeader.setLayout(new BoxLayout(recordHeader,BoxLayout.Y_AXIS));
             recordHeader.add(plainLabel("2. Histórico de capturas completo (historico-capturas.txt):"));
-            JLabel formatHint=plainLabel("Aceita formato completo (CAPTURA|pasta) ou público anonimizado (CAPTURA|*-YYYYMMDD-HHMMSS).");
+            JLabel formatHint=plainLabel("Aceita formato completo (CAPTURA|pasta), público anonimizado (CAPTURA|*-YYYYMMDD-HHMMSS) e versões anteriores compatíveis em conteúdo.");
             formatHint.setForeground(java.awt.Color.DARK_GRAY);
             recordHeader.add(formatHint);
             sectionRecord.add(recordHeader,java.awt.BorderLayout.NORTH);
@@ -954,7 +1316,7 @@ public final class IntegrityVerifier {
     }
     private static Map<String,String> publicMessageMap(JSONArray rows)throws IOException{return parsePublicMessageIndex(rows).byKey;}
     private static Map<String,String> publicMessageDomMap(JSONArray rows)throws IOException{return parsePublicMessageIndex(rows).byId;}
-    private static String normalizePublicRecord(String s){String n=s.replace("\r\n","\n").replace('\r','\n');while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
+    private static String normalizePublicRecord(String s){String n=s;if(n.startsWith("\uFEFF"))n=n.substring(1);n=n.replace("\r\n","\n").replace('\r','\n');while(n.startsWith("\n"))n=n.substring(1);while(n.endsWith("\n"))n=n.substring(0,n.length()-1);return n+"\n";}
     private static String publicHashList(List<Capture> captures,String rootHash){StringBuilder out=new StringBuilder("TODAS_AS_CAPTURAS|").append(rootHash).append('\n');List<Capture> ordered=new ArrayList<>(captures);ordered.sort(Comparator.comparing(c->c.name.toLowerCase(Locale.ROOT)));for(Capture c:ordered)out.append(recordField(c.name)).append('|').append(c.hash).append('\n');return out.toString();}
     private static void copyToClipboard(java.awt.Component owner,String value,String message){
         Thread worker=new Thread(()->{
@@ -1995,8 +2357,9 @@ public final class IntegrityVerifier {
         reportScript.append("function showCmp(el,text,ok){el.className='cmp '+(ok?'match':'diverge');el.textContent=text;}");
         reportScript.append("function sha256Utf8(str){var s=unescape(encodeURIComponent(str)),K=[1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298],H=[1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225],w=[],l=s.length,i,j,a,b,c,d,e,f,g,h,t1,t2,S0,S1,ch,maj,s0,s1,r=function(x,n){return(x>>>n)|(x<<(32-n));};for(i=0;i<l;i++)w[i>>2]|=(s.charCodeAt(i)&255)<<(24-(i&3)*8);w[l>>2]|=0x80<<(24-(l&3)*8);var bl=(((l+8)>>6)+1)*16;for(i=0;i<bl;i++)if(!w[i])w[i]=0;w[bl-1]=(l*8)&0xffffffff;w[bl-2]=Math.floor(l/536870912);for(i=0;i<bl;i+=16){var M=w.slice(i,i+16);for(j=16;j<64;j++){s0=r(M[j-15],7)^r(M[j-15],18)^(M[j-15]>>>3);s1=r(M[j-2],17)^r(M[j-2],19)^(M[j-2]>>>10);M[j]=(M[j-16]+s0+M[j-7]+s1)|0;}a=H[0];b=H[1];c=H[2];d=H[3];e=H[4];f=H[5];g=H[6];h=H[7];for(j=0;j<64;j++){S1=r(e,6)^r(e,11)^r(e,25);ch=(e&f)^((~e)&g);t1=(h+S1+ch+K[j]+M[j])|0;S0=r(a,2)^r(a,13)^r(a,22);maj=(a&b)^(a&c)^(b&c);t2=(S0+maj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}H[0]=(H[0]+a)|0;H[1]=(H[1]+b)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;}var out='';for(i=0;i<8;i++)out+=('00000000'+(H[i]>>>0).toString(16)).slice(-8);return out;}");
         reportScript.append("function compareHash(){var v=document.getElementById('publicHash').value.trim().toLowerCase(),r=document.getElementById('comparison');if(!v){r.className='';r.textContent='Informe um hash geral.';return;}if(v===HISTORY_PUBLIC_HASH){show(r,'CONFERE com o Hash geral Público calculado.',true);return;}if(v===HISTORY_FULL_HASH){show(r,'CONFERE com o SHA-256 do histórico completo calculado.',true);return;}show(r,'DIVERGE do Hash geral Público e do histórico completo calculados.',false);}");
-        reportScript.append("function extractCaptureBlocks(text){var norm=text.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'),lines=norm.split('\\n'),blocks=[],cur=null,i,line;for(i=0;i<lines.length;i++){line=lines[i];if(line.indexOf('CAPTURA|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=[line];}else if(line.indexOf('Nota|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=null;break;}else if(cur){cur.push(line);}}if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}return blocks;}");
-        reportScript.append("function compareHistory(){var raw=document.getElementById('historyInput').value,rr=document.getElementById('historyResult');if(!raw||!raw.trim()){rr.className='';rr.textContent='Cole o conteúdo de historico-capturas.txt (completo ou público).';document.querySelectorAll('.capture-row .cmp').forEach(function(el){el.className='cmp';el.textContent='Não comparado';});return;}var blocks=extractCaptureBlocks(raw),matched={};blocks.forEach(function(b){matched[sha256Utf8(b)]=true;});var okCount=0,failCount=0;document.querySelectorAll('.capture-row').forEach(function(row){var bf=row.getAttribute('data-block-full'),bp=row.getAttribute('data-block-public'),out=row.querySelector('.cmp'),ok=!!(matched[bf]||matched[bp]);if(ok)okCount++;else failCount++;showCmp(out,ok?'OK':'FALHA',ok);});show(rr,failCount===0?'Histórico confere: '+okCount+'/'+(okCount+failCount)+' capturas OK.':'Divergência ou captura ausente: '+okCount+' OK, '+failCount+' FALHA.',failCount===0);}");
+        reportScript.append("function extractCaptureBlocks(text){var norm=text.replace(/^\\uFEFF/,'').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'),lines=norm.split('\\n'),blocks=[],cur=null,i,line;for(i=0;i<lines.length;i++){line=lines[i];if(line.indexOf('CAPTURA|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=[line];}else if(line.indexOf('Nota|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=null;break;}else if(cur){cur.push(line);}}if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}return blocks;}");
+        reportScript.append("function blockContentDigest(block){var lines=block.split('\\n'),name='',entries=[],broken=false,i,l,cols,m;for(i=0;i<lines.length;i++){l=lines[i];if(l.indexOf('CAPTURA|')===0){name=l.slice(8);m=/^(?:.*)-(\\d{8}-\\d{6})$/.exec(name);name=m?'*-'+m[1]:'*';}else if(l.indexOf('ARQUIVO|')===0){cols=l.split('|');if(cols.length>=7){var p=cols[1],act=cols[5],st=cols[6],bytes=cols[4];if(!(st==='íntegro'||st==='integro'||st==='anexo íntegro'||st==='mensagem estruturada'||st==='anotações íntegras'||st==='reconciliação por mensagem íntegra'||st==='inalterada desde a captura anterior'||st==='alterada desde a captura anterior'||st==='adicionada desde a captura anterior'||st==='não encontrada na fonte atual'||st==='registro de migração íntegro'||st==='anotações legadas preservadas'||st==='vínculo de origem íntegro')){broken=true;}else if(/^[0-9a-f]{64}$/i.test(act)){if(p.indexOf('mensagem:')===0)entries.push('M|'+p+'|'+act.toLowerCase());else if(p.indexOf('attachments/')===0)entries.push('A|'+p+'|'+bytes+'|'+act.toLowerCase());}}}}if(broken||!entries.length)return '';entries.sort();return sha256Utf8('CAPTURE_CONTENT_V1\\n'+name+'\\n'+entries.join('\\n')+'\\n');}");
+        reportScript.append("function compareHistory(){var raw=document.getElementById('historyInput').value,rr=document.getElementById('historyResult');if(!raw||!raw.trim()){rr.className='';rr.textContent='Cole o conteúdo de historico-capturas.txt (completo ou público).';document.querySelectorAll('.capture-row .cmp').forEach(function(el){el.className='cmp';el.textContent='Não comparado';});return;}var blocks=extractCaptureBlocks(raw),matched={},matchedContent={};blocks.forEach(function(b){matched[sha256Utf8(b)]=true;var cd=blockContentDigest(b);if(cd)matchedContent[cd]=true;});var okCount=0,contentOnlyCount=0,failCount=0;document.querySelectorAll('.capture-row').forEach(function(row){var bf=row.getAttribute('data-block-full'),bp=row.getAttribute('data-block-public'),bc=row.getAttribute('data-block-content'),out=row.querySelector('.cmp'),exact=!!(matched[bf]||matched[bp]),byContent=!exact&&!!(bc&&matchedContent[bc]),ok=exact||byContent;if(ok){okCount++;if(byContent)contentOnlyCount++;}else failCount++;showCmp(out,ok?'OK':'FALHA',ok);});show(rr,failCount===0?(contentOnlyCount>0?'Histórico confere por conteúdo criptográfico: '+okCount+'/'+(okCount+failCount)+' capturas OK ('+contentOnlyCount+' com metadados/origem atualizados).':'Histórico confere: '+okCount+'/'+(okCount+failCount)+' capturas OK.'):'Divergência ou captura ausente: '+okCount+' OK, '+failCount+' FALHA.',failCount===0);}");
         reportScript.append("function copyValue(b){var t=document.createElement('textarea');t.value=b.getAttribute('data-value');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();}");
         reportScript.append("var btnCmp=document.getElementById('btnCompareHash');if(btnCmp&&btnCmp.addEventListener)btnCmp.addEventListener('click',compareHash);");
         reportScript.append("var btnHist=document.getElementById('btnCompareHistory');if(btnHist&&btnHist.addEventListener)btnHist.addEventListener('click',compareHistory);");
@@ -2018,10 +2381,10 @@ public final class IntegrityVerifier {
             html.write("<label for=\"historyInput\">Cole o histórico de capturas completo ou público (historico-capturas.txt):</label><br><textarea id=\"historyInput\" rows=\"7\" style=\"width:min(70em,95%)\" placeholder=\"HISTORICO_PUBLICO_V1&#10;SHA256|...&#10;&#10;CAPTURA|... (ou CAPTURA|*-YYYYMMDD-HHMMSS)\"></textarea><br><button id=\"btnCompareHistory\">Comparar histórico em todas as capturas</button> <span id=\"historyResult\"></span><table><tr><th>Captura</th><th>Hash calculado</th><th>Arquivos</th><th>Comparação com histórico</th></tr>");
             for(Capture c:cs){
                 long good=c.items.stream().filter(i->isHealthyVerifierItemState(i.state)).count();
-                String blockFullSha,blockPublicSha;
-                try{blockFullSha=hashText(captureHistoryBlock(c,false));blockPublicSha=hashText(captureHistoryBlock(c,true));}
+                String blockFullSha,blockPublicSha,blockContentSha;
+                try{blockFullSha=hashText(captureHistoryBlock(c,false));blockPublicSha=hashText(captureHistoryBlock(c,true));blockContentSha=captureContentDigest(c);}
                 catch(Exception e){throw new IOException("Falha ao calcular hash de bloco do histórico.",e);}
-                html.write("<tr class=\"capture-row\" data-capture=\"");html.write(esc(c.name));html.write("\" data-block-full=\"");html.write(blockFullSha);html.write("\" data-block-public=\"");html.write(blockPublicSha);html.write("\"><td>");html.write(esc(c.name));html.write("</td><td><code>");html.write(c.hash);html.write("</code> <button class=\"copy-btn\" data-value=\"");html.write(c.hash);html.write("\">Copiar hash</button></td><td>");html.write(Long.toString(good));html.write(" íntegros / ");html.write(Integer.toString(c.items.size()));html.write(" verificados<br>Histórico: ");html.write(esc(c.historyStatus));
+                html.write("<tr class=\"capture-row\" data-capture=\"");html.write(esc(c.name));html.write("\" data-block-full=\"");html.write(blockFullSha);html.write("\" data-block-public=\"");html.write(blockPublicSha);html.write("\" data-block-content=\"");html.write(blockContentSha);html.write("\"><td>");html.write(esc(c.name));html.write("</td><td><code>");html.write(c.hash);html.write("</code> <button class=\"copy-btn\" data-value=\"");html.write(c.hash);html.write("\">Copiar hash</button></td><td>");html.write(Long.toString(good));html.write(" íntegros / ");html.write(Integer.toString(c.items.size()));html.write(" verificados<br>Histórico: ");html.write(esc(c.historyStatus));
                 if(!c.historyHash.isEmpty()){html.write("<br>Hash do registro: <code>");html.write(esc(c.historyHash));html.write("</code> <button class=\"copy-btn\" data-value=\"");html.write(esc(c.historyHash));html.write("\">Copiar</button>");}
                 html.write("</td><td><span class=\"cmp\">Não comparado</span></td></tr>");
             }

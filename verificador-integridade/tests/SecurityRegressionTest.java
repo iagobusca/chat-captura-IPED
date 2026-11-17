@@ -48,6 +48,7 @@ public final class SecurityRegressionTest {
             comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(root);
             rejectLinksRejectsRootJunctionAndAtomicBatchStreamingMatchesBytes(root);
             atomicBatchNeverCreatesBakFiles(root);
+            publicHistoryContentComparisonAcrossVersionsAndOriginBinding(root);
             alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs();
             unquotedQuoteHtmlBypassPayloadsAreRejected();
             openFileGuardRejectsJunctionAndMissingFiles(root);
@@ -1600,6 +1601,117 @@ public final class SecurityRegressionTest {
             }
         } finally {
             deleteTree(dir);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void publicHistoryContentComparisonAcrossVersionsAndOriginBinding(Path root) throws Exception {
+        Path caseDir = Files.createDirectories(root.resolve("pub-history-compat"));
+        try {
+            Path capA = Files.createDirectories(caseDir.resolve("Chat_Alfa-20261114-100000"));
+            Path capB = Files.createDirectories(caseDir.resolve("Chat_Beta-20261114-100001"));
+            createValidHtmlMessageCapture(capA, "Mensagem Alfa 1");
+            Files.write(capA.resolve("integridade.json"),
+                    buildLocalIntegrityRecordForFiles(capA, new String[]{"whatsapp.html", "messages.json"}).toString(2).getBytes(StandardCharsets.UTF_8));
+            createValidHtmlMessageCapture(capB, "Mensagem Beta 1");
+            Files.write(capB.resolve("integridade.json"),
+                    buildLocalIntegrityRecordForFiles(capB, new String[]{"whatsapp.html", "messages.json"}).toString(2).getBytes(StandardCharsets.UTF_8));
+
+            Method verify = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+            verify.setAccessible(true);
+            Method setHashMethod = IntegrityVerifier.class.getDeclaredMethod("setHash", java.util.List.class);
+            setHashMethod.setAccessible(true);
+            Method histFull = IntegrityVerifier.class.getDeclaredMethod("historyReport", java.util.List.class, String.class);
+            histFull.setAccessible(true);
+            Method canonicalJsonMethod = IntegrityVerifier.class.getDeclaredMethod("canonicalJson", Object.class);
+            canonicalJsonMethod.setAccessible(true);
+            Method cmpDetailed = IntegrityVerifier.class.getDeclaredMethod("comparePublicHistoryDetailed",
+                    java.util.List.class, String.class, String.class, String.class, String.class);
+            cmpDetailed.setAccessible(true);
+
+            java.util.List<IntegrityVerifier.Capture> capsOld = IntegrityVerifier.discover(caseDir);
+            for (IntegrityVerifier.Capture c : capsOld) verify.invoke(null, c);
+            String oldSet = (String) setHashMethod.invoke(null, capsOld);
+            String oldPub = IntegrityVerifier.publicHistoryReport(capsOld, oldSet);
+            String oldPubBom = "\uFEFF\n" + oldPub;
+
+            // Re-stamp capA integridade.json timestamp (same HASH_CONTEUDO, different EVENTO timestamp)
+            JSONObject intA = new JSONObject(new String(Files.readAllBytes(capA.resolve("integridade.json")), StandardCharsets.UTF_8));
+            JSONArray evA = intA.getJSONArray("events");
+            JSONObject e1 = evA.getJSONObject(0);
+            e1.put("timestampUtc", "2026-11-17T12:00:00Z");
+            e1.remove("recordHash");
+            e1.put("recordHash", sha256Utf8((String) canonicalJsonMethod.invoke(null, e1)));
+            Files.write(capA.resolve("integridade.json"), intA.toString(2).getBytes(StandardCharsets.UTF_8));
+
+            // Add origin-binding.json to capB while keeping identical message & attachment hashes
+            JSONObject originJson = new JSONObject().put("originBindingVersion", 1).put("status", "VINCULADO_ORIGEM_AVILLA");
+            byte[] originBytes = originJson.toString(2).getBytes(StandardCharsets.UTF_8);
+            Files.write(capB.resolve("origin-binding.json"), originBytes);
+            String originSha = sha256Utf8(new String(originBytes, StandardCharsets.UTF_8));
+            JSONObject manB = new JSONObject(new String(Files.readAllBytes(capB.resolve("manifest.json")), StandardCharsets.UTF_8));
+            manB.put("originBindingFile", "origin-binding.json")
+                .put("originBindingSha256", originSha)
+                .put("originBinding", new JSONObject().put("originBindingVersion", 1).put("status", "VINCULADO_ORIGEM_AVILLA"));
+            Files.write(capB.resolve("manifest.json"), manB.toString(2).getBytes(StandardCharsets.UTF_8));
+            JSONObject intB = new JSONObject(new String(Files.readAllBytes(capB.resolve("integridade.json")), StandardCharsets.UTF_8));
+            JSONArray artsB = intB.getJSONArray("artifacts");
+            artsB.put(new JSONObject().put("path", "origin-binding.json").put("size", originBytes.length).put("sha256", originSha));
+            StringBuilder invB = new StringBuilder();
+            java.util.List<JSONObject> sortedB = new ArrayList<>();
+            for (int i = 0; i < artsB.length(); i++) sortedB.add(artsB.getJSONObject(i));
+            sortedB.sort(java.util.Comparator.comparing(x -> x.getString("path")));
+            for (JSONObject x : sortedB) invB.append(x.getString("path")).append('|').append(x.getLong("size")).append('|').append(x.getString("sha256")).append('\n');
+            String newRootB = sha256Utf8(invB.toString());
+            intB.put("contentRootHash", newRootB);
+            JSONObject evB = intB.getJSONArray("events").getJSONObject(0);
+            evB.put("timestampUtc", "2026-11-17T12:01:00Z");
+            evB.put("contentRootHash", newRootB);
+            evB.remove("recordHash");
+            evB.put("recordHash", sha256Utf8((String) canonicalJsonMethod.invoke(null, evB)));
+            Files.write(capB.resolve("integridade.json"), intB.toString(2).getBytes(StandardCharsets.UTF_8));
+
+            java.util.List<IntegrityVerifier.Capture> capsNew = IntegrityVerifier.discover(caseDir);
+            for (IntegrityVerifier.Capture c : capsNew) verify.invoke(null, c);
+            String newSet = (String) setHashMethod.invoke(null, capsNew);
+            String newFull = (String) histFull.invoke(null, capsNew, newSet);
+            String newPub = IntegrityVerifier.publicHistoryReport(capsNew, newSet);
+
+            // Legacy exact match still rejects (by design), whereas detailed cryptographic match validates!
+            String legacyClassify = IntegrityVerifier.classifyPublicHistoryMatch(oldPub, newFull, newPub);
+            if (!"DIVERGE".equals(legacyClassify)) {
+                throw new AssertionError("Exact classifier must keep reporting DIVERGE when metadata changed: " + legacyClassify);
+            }
+            if (!"MATCH_PUBLIC".equals(IntegrityVerifier.classifyPublicHistoryMatch("\uFEFF\n" + newPub, newFull, newPub))) {
+                throw new AssertionError("normalizePublicRecord must strip BOM and leading newlines cleanly");
+            }
+            Object res = cmpDetailed.invoke(null, capsNew, newSet, newFull, newPub, oldPubBom);
+            Class<?> resCls = res.getClass();
+            if (!((Boolean) resCls.getDeclaredMethod("isVerified").invoke(res))) {
+                throw new AssertionError("Detailed comparison must validate equivalent message content across versions: "
+                        + resCls.getDeclaredField("summaryLine").get(res));
+            }
+            if ((Integer) resCls.getDeclaredField("sameRootCount").get(res) != 1
+                    || (Integer) resCls.getDeclaredField("contentMatchCount").get(res) != 1) {
+                throw new AssertionError("Expected 1 SAME_CONTENT_ROOT + 1 CONTENT_MATCH");
+            }
+
+            // Tampering a message hash in the reference must still DIVERGE
+            String tamperedPub = oldPub.replaceFirst("(?m)^(ARQUIVO\\|mensagem:[^|]+\\|[^|]+\\|)[0-9a-f]{64}\\|([^|]+\\|)[0-9a-f]{64}(\\|)", "$1" + repeat('f', 64) + "|$2" + repeat('f', 64) + "$3");
+            Object badRes = cmpDetailed.invoke(null, capsNew, newSet, newFull, newPub, tamperedPub);
+            if ((Boolean) resCls.getDeclaredMethod("isVerified").invoke(badRes)) {
+                throw new AssertionError("Tampered message hash in reference must NOT validate");
+            }
+
+            // Missing local capture must DIVERGE
+            Object partialRes = cmpDetailed.invoke(null, java.util.Collections.singletonList(capsNew.get(0)),
+                    newSet, newFull, newPub, oldPub);
+            if ((Boolean) resCls.getDeclaredMethod("isVerified").invoke(partialRes)
+                    || (Integer) resCls.getDeclaredField("missingLocalCount").get(partialRes) != 1) {
+                throw new AssertionError("Missing local capture must report DIVERGE with missingLocalCount=1");
+            }
+        } finally {
+            deleteTree(caseDir);
         }
     }
 
