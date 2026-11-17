@@ -49,9 +49,6 @@ $ptBr = [Globalization.CultureInfo]::GetCultureInfo('pt-BR')
 if ([string]::IsNullOrWhiteSpace($Java8Home)) {
     $Java8Home = Resolve-JdkHome -EnvNames @('JAVA8_HOME', 'JAVA_HOME') -MajorVersions @(8) -RequiredTool 'bin\javac.exe'
 }
-if ([string]::IsNullOrWhiteSpace($Java11Home)) {
-    $Java11Home = Resolve-JdkHome -EnvNames @('JAVA11_HOME', 'JAVA_HOME') -MajorVersions @(11, 21) -RequiredTool 'bin\jar.exe'
-}
 if ([string]::IsNullOrWhiteSpace($IpedHome) -or !(Test-Path -LiteralPath (Join-Path $IpedHome 'lib'))) {
     $IpedHome = if (Test-Path -LiteralPath 'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1\lib') {
         'C:\Avilla-Forensics-Free\IPED-4.3.1_and_java_plugins\iped-4.3.1'
@@ -185,6 +182,14 @@ if ($VerifierVersion -ne $prevVerifierVer) {
 Invoke-ReproBuildStep -TargetMode 'full'
 
 $activeJava21 = Resolve-ActiveJava21
+if ([string]::IsNullOrWhiteSpace($Java11Home)) {
+    $env11 = [Environment]::GetEnvironmentVariable('JAVA11_HOME')
+    if ($env11 -and (Test-Path -LiteralPath (Join-Path $env11 'bin\jar.exe'))) {
+        $Java11Home = $env11
+    } else {
+        $Java11Home = $activeJava21
+    }
+}
 $activeJfxLib = Resolve-ActiveJavaFxLib
 
 $vJarBuilt = Join-Path $reproOut 'integridade-verifier.jar'
@@ -426,9 +431,7 @@ $vDoc = Get-RepoText 'verificador-integridade\doc.md'
 $vDoc = $vDoc.Replace($prevVerifierVer, $VerifierVersion)
 Set-RepoText 'verificador-integridade\doc.md' $vDoc
 
-$ghWf = Get-RepoText '.github\workflows\release.yml'
-$ghWf = $ghWf.Replace("default: 'v$prevPluginVer'", "default: '$tagName'").Replace("(ex.: v$prevPluginVer)", "(ex.: $tagName)")
-Set-RepoText '.github\workflows\release.yml' $ghWf
+# Nao altera .github/workflows/*.yml no corte automatizado para manter compatibilidade com GITHUB_TOKEN (contents:write sem scope workflow)
 
 if ($TestMode -ne 'skip') {
     Write-Host "=== Etapa 5: Executar Suites de Validacao ($TestMode) ==="
