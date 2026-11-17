@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.1] - 2026-11-17
+
+### Corte Automatizado (v2.8.1)
+- Verificador 1.5.1: botao Auditoria de origem... adicionado na tela inicial ao lado de Integridade Local/Publico com carregamento identico ao modo Publico, painel interativo (Pasta de origem, Pasta do caso opcional, Validar Auditoria com banner verde/vermelho, caixa de leitura/copia integral) e botao Exportar Auditoria para gerar Auditoria_relatorio.htm offline. (`build-reproducible.ps1`; JAR `9809DEC2...` / EXE `E03DEA3B...`).
 ## [1.5.0] - 2026-11-17
 
 ### Corte Automatizado (v2.8.0)

@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.1] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Verificador 1.5.1: botao Auditoria de origem... adicionado na tela inicial ao lado de Integridade Local/Publico com carregamento identico ao modo Publico, painel interativo (Pasta de origem, Pasta do caso opcional, Validar Auditoria com banner verde/vermelho, caixa de leitura/copia integral) e botao Exportar Auditoria para gerar Auditoria_relatorio.htm offline.
+- Verificador **1.5.1** (`182.286` bytes JAR `9809DEC2...` | `77.638.746` bytes EXE `E03DEA3B...`) e Plugin **2.8.1** (`1.543.080` bytes `240B2837...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.1-verificador-1.5.1.zip` (`94.484.019` bytes `0B7D4F1D...`).
 ## [2.8.0] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

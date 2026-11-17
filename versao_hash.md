@@ -1,6 +1,6 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.0 acompanha a release `v2.8.0` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.1 acompanha a release `v2.8.1` (estável em `main`, com compilação determinística auditável via `build-reproducible.ps1` + `GiteaRunner`) e passa a ser a única aceita pelo plugin (versões `<= 1.4.4` foram substituídas). Compare o hash do arquivo antes de executá-lo.
 
 > **Nota de publicação:** As releases públicas no GitHub iniciam na série estável `v2.6.8` / Verificador `1.4.3` (`1.4.3`, `1.4.4`, `1.4.5`). As linhas `<= 1.4.2` documentam o histórico anterior mantido para auditoria e verificação de rejeição em `VerifierIntegrityHashTest`.
 
@@ -8,7 +8,8 @@ Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.0 acompan
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
-| 1.5.0 (release v2.8.0) | `integridade-verifier.jar` | `194C1D9B6FE4AE615F882E74BE2B0ED662466F9E7AF2F887E5A8878A3242BA11` | Build determinístico (`build-reproducible.ps1` `--release 8`); `175.612` bytes; `SELF_TEST_OK 1.5.0` |
+| 1.5.1 (release v2.8.1) | `integridade-verifier.jar` | `9809DEC2088F50F88ED1691544CEF45B029783B04498F65F43ECC5634C06C7A3` | Build determinístico (`build-reproducible.ps1` `--release 8`); `182.286` bytes; `SELF_TEST_OK 1.5.1` |
+| 1.5.1 (release v2.8.1) | `integridade-verifier.exe` | `E03DEA3BFA298E125804AB22A51C113665FEAE58529248E0C3947C34EACB7C6F` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.638.746` bytes; `SELF_TEST_OK 1.5.1` || 1.5.0 (release v2.8.0) | `integridade-verifier.jar` | `194C1D9B6FE4AE615F882E74BE2B0ED662466F9E7AF2F887E5A8878A3242BA11` | Build determinístico (`build-reproducible.ps1` `--release 8`); `175.612` bytes; `SELF_TEST_OK 1.5.0` |
 | 1.5.0 (release v2.8.0) | `integridade-verifier.exe` | `20F823BF5B22E92672DEB0D6DB6150733D1F1B9CD4313E6519ABDB5E4EB51524` | Build Windows x64 determinístico (`.NET 10.0.15`); `77.632.090` bytes; `SELF_TEST_OK 1.5.0` || 1.4.5 (release v2.7.0) | `integridade-verifier.jar` | `E013F31E2EECB8517062854CED2DBCAACD5CFFED8CECB5E9DBE2B2F223E2588D` | Build determinístico (`build-reproducible.ps1` com Temurin 21.0.13+9 `--release 8`, bytecode 52, timestamps UTC fixos `1980-02-01T00:00:00Z`); `159.164` bytes; `--self-test` código 0 (`SELF_TEST_OK 1.4.5`); mantém todas as proteções de `1.4.4` |
 | 1.4.5 (release v2.7.0) | `integridade-verifier.exe` | `AF1C41C080A67B206870D17FF89362F959404C13A3F4D43E426BE840C1F240A3` | Build Windows x64 autocontido determinístico (`jlink`/`jpackage` Temurin 21.0.13+9 + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true`); `--self-test` código 0 (`SELF_TEST_OK 1.4.5`); `77.616.218` bytes |
 | 1.4.4 (release v2.6.9) | `integridade-verifier.jar` | `C37D52F2D12A9AB0E954744F84B3E47805D9F3BF8B460A864C70AC06AE4BF7FF` | Build com JDK 8; bytecode 52; 159.189 bytes; scanner HTML léxico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`), guarda `openFile` (`NOFOLLOW_LINKS` + `maxBytes`), allowlists HTML/MIME simétricas, `safeRegularFileSize`, `html.disable` e `MAX_SCAN_ENTRIES` |

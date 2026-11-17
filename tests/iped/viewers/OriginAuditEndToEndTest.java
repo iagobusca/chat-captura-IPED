@@ -137,6 +137,19 @@ public final class OriginAuditEndToEndTest {
             }
             check(orphanRejected, "orphan origin-binding.json in legacy capture must fail --verify-only");
 
+            // 6. Verify HTML export generator (Auditoria_relatorio.htm) escaping & status banner
+            Class<?> oaResCls = Class.forName("IntegrityVerifier$OriginAuditResult");
+            var ctor = oaResCls.getDeclaredConstructor(Path.class, String.class, String.class, String.class, boolean.class);
+            ctor.setAccessible(true);
+            Object okRes = ctor.newInstance(auditRpt, "AUDITORIA_ORIGEM_V1\nRESUMO_AUDITORIA_ORIGEM|CONFERE\n<script>alert(1)</script>",
+                    "abcd".repeat(16), "CONFERE (1 Avilla + 1 base64 HTML)", true);
+            Method htmlMethod = verifier.getDeclaredMethod("buildOriginAuditHtml", oaResCls, Path.class, Path.class, Path.class, int.class);
+            htmlMethod.setAccessible(true);
+            String htmlOk = (String) htmlMethod.invoke(null, okRes, origin, parentIped, capturesRoot, 2);
+            check(htmlOk.contains("banner-ok") && htmlOk.contains("VÁLIDO — AUDITORIA DE ORIGEM ÍNTEGRA"), "HTML export must contain valid banner");
+            check(htmlOk.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !htmlOk.contains("<script>alert(1)</script>"),
+                    "HTML export must escape untrusted angle brackets");
+
             System.out.println("OriginAuditEndToEndTest: PASS");
         } finally {
             deleteTree(tmp);

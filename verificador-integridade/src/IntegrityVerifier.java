@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.0";
+    private static final String VERIFIER_VERSION = "1.5.1";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -491,6 +491,19 @@ public final class IntegrityVerifier {
             System.exit(0);
             return;
         }
+        if (mode == 2) {
+            VerificationBundle auditBundle = runVerificationWithProgress(root, null,
+                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true);
+            if (auditBundle == null) {
+                showTopMessage(null, "Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,
+                        "Integridade", JOptionPane.INFORMATION_MESSAGE);
+                System.exit(0);
+                return;
+            }
+            showOriginAuditWorkspace(null, root, auditBundle.selected);
+            System.exit(0);
+            return;
+        }
         VerificationBundle bundle;
         if (mode == 0) {
             List<Capture> captures = discoverInteractive(root);
@@ -704,7 +717,7 @@ public final class IntegrityVerifier {
             JButton copyPublicHistory=new JButton("Copiar histórico completo público");copyPublicHistory.addActionListener(e->copyToClipboard(frame,publicHistory,"Histórico completo público copiado."));
             JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(frame,historyFile));
             JButton openHtml=new JButton("Abrir relatório HTML");openHtml.addActionListener(e->openInBrowser(frame,root.resolve("integridade.html")));
-            JButton auditOriginBtn=new JButton("Auditoria de origem...");auditOriginBtn.addActionListener(e->runGuiOriginAudit(frame,root,selected));
+            JButton auditOriginBtn=new JButton("Auditoria de origem...");auditOriginBtn.addActionListener(e->openOriginAuditWorkspaceWindow(frame,root,selected,null));
             JButton close=new JButton("Fechar");close.addActionListener(e->latch.countDown());
             gridActions.add(copyHistory);gridActions.add(copyPublicHistory);gridActions.add(openHistory);gridActions.add(openHtml);
             JPanel bottomRow=new JPanel(new java.awt.GridLayout(1,2,6,6));
@@ -731,12 +744,13 @@ public final class IntegrityVerifier {
         final CountDownLatch latch=new CountDownLatch(1);
         final JFrame[] frameRef=new JFrame[1];
         runOnEdt(()->{
-            JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");
-            JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(plainLabel("Escolha a referência para verificar:"));panel.add(Box.createVerticalStrut(10));panel.add(plainLabel("Local: compara os arquivos com o integridade.json da captura."));panel.add(plainLabel("Público: verifica todas as capturas e compara com hash público ou histórico."));panel.add(Box.createVerticalStrut(12));JPanel buttons=new JPanel();buttons.add(local);buttons.add(external);panel.add(buttons);
+            JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");JButton originAudit=new JButton("Auditoria de origem...");
+            JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(plainLabel("Escolha a referência para verificar:"));panel.add(Box.createVerticalStrut(10));panel.add(plainLabel("Local: compara os arquivos com o integridade.json da captura."));panel.add(plainLabel("Público: verifica todas as capturas e compara com hash público ou histórico."));panel.add(plainLabel("Auditoria de origem: valida capturas contra a extração Avilla e caso IPED pai (opcional)."));panel.add(Box.createVerticalStrut(12));JPanel buttons=new JPanel();buttons.add(local);buttons.add(external);buttons.add(originAudit);panel.add(buttons);
             JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" ("+System.getProperty("os.name")+")",false);
             frameRef[0]=frame;
             local.addActionListener(e->{selected[0]=0;frame.dispose();latch.countDown();});
             external.addActionListener(e->{selected[0]=1;frame.dispose();latch.countDown();});
+            originAudit.addActionListener(e->{selected[0]=2;frame.dispose();latch.countDown();});
             frame.setContentPane(panel);
             frame.addWindowListener(new WindowAdapter(){public void windowClosing(WindowEvent e){System.exit(0);}});
             frame.pack();
@@ -2399,7 +2413,8 @@ public final class IntegrityVerifier {
     private static Set<String> collectExportedInlineBlobs(Path searchRoot, Set<String> targetItemHashes) throws Exception {
         Set<String> blobs = new HashSet<>();
         if (searchRoot == null || targetItemHashes.isEmpty()) return blobs;
-        Path exp = searchRoot.resolve("Exportados");
+        String rootName = searchRoot.getFileName() == null ? "" : searchRoot.getFileName().toString();
+        Path exp = "Exportados".equalsIgnoreCase(rootName) ? searchRoot : searchRoot.resolve("Exportados");
         if (!Files.exists(exp, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(exp) || !Files.isDirectory(exp, LinkOption.NOFOLLOW_LINKS)) return blobs;
         Pattern dataUri = Pattern.compile("data:(?:image|audio|video)/[^;\"'\\s]+;base64,([A-Za-z0-9+/=]+)", Pattern.CASE_INSENSITIVE);
         final Path realExp = exp.toRealPath();
@@ -2679,57 +2694,286 @@ public final class IntegrityVerifier {
         return -1;
     }
 
-    private static void runGuiOriginAudit(Component parent, Path capturesRoot, List<Capture> selected) {
-        JFileChooser originChooser = new JFileChooser();
-        originChooser.setDialogTitle("Selecione a pasta de origem custodiada (Avilla - com Hashs.txt / report.pdf)");
-        originChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        if (originChooser.showOpenDialog(parent) != JFileChooser.APPROVE_OPTION) return;
-        final Path originDir = originChooser.getSelectedFile().toPath().toAbsolutePath().normalize();
-
-        JFileChooser parentChooser = new JFileChooser();
-        parentChooser.setDialogTitle("OPCIONAL: Caso IPED Pai (ex.: caso principal com Lista de Arquivos.csv) — Cancele se capturou direto");
-        parentChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        final Path parentIpedDir = parentChooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION
-                ? parentChooser.getSelectedFile().toPath().toAbsolutePath().normalize() : null;
-
-        new Thread(() -> {
-            try {
-                OriginAuditResult res = runOriginAudit(capturesRoot, selected, originDir, parentIpedDir);
-                SwingUtilities.invokeLater(() -> showOriginAuditResultWindow(parent, res));
-            } catch (Exception ex) {
-                showTopMessage(parent, "Falha na auditoria de origem:\n" + ex.getMessage(),
-                        "Auditoria de origem", JOptionPane.ERROR_MESSAGE);
-            }
-        }, "origin-audit-worker").start();
+    private static void showOriginAuditWorkspace(Component parent, Path capturesRoot, List<Capture> selected) throws Exception {
+        final CountDownLatch latch = new CountDownLatch(1);
+        runOnEdt(() -> openOriginAuditWorkspaceWindow(parent, capturesRoot, selected, latch::countDown));
+        latch.await();
     }
 
-    private static void showOriginAuditResultWindow(Component parent, OriginAuditResult res) {
-        JFrame win = newWindow("Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true);
-        JPanel panel = new JPanel();
-        panel.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.add(plainLabel("Status: " + res.overallStatus));
-        panel.add(Box.createVerticalStrut(6));
-        panel.add(hashValueRow("SHA-256 do auditoria-origem.txt", res.reportSha256, "SHA-256 do relatório de auditoria copiado."));
-        panel.add(Box.createVerticalStrut(6));
-        JTextArea area = new JTextArea(res.reportText, 16, 62);
-        area.setEditable(false);
-        area.putClientProperty("html.disable", Boolean.TRUE);
-        panel.add(new JScrollPane(area));
-        panel.add(Box.createVerticalStrut(8));
-        JPanel btns = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
-        JButton copyBtn = new JButton("Copiar relatório");
-        copyBtn.addActionListener(e -> copyToClipboard(win, res.reportText, "Relatório de auditoria copiado."));
-        JButton openBtn = new JButton("Abrir auditoria-origem.txt");
-        openBtn.addActionListener(e -> openFile(win, res.reportFile));
-        JButton closeBtn = new JButton("Fechar");
-        closeBtn.addActionListener(e -> win.dispose());
-        btns.add(copyBtn); btns.add(openBtn); btns.add(closeBtn);
-        panel.add(btns);
-        win.setContentPane(panel);
+    private static void openOriginAuditWorkspaceWindow(Component parent, Path capturesRoot, List<Capture> selected, Runnable onClosed) {
+        final JFrame win = newWindow("Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true);
+        final boolean[] closedFlag = { false };
+        final Runnable finish = () -> {
+            if (!closedFlag[0]) {
+                closedFlag[0] = true;
+                win.dispose();
+                if (onClosed != null) onClosed.run();
+            }
+        };
+        win.addWindowListener(new WindowAdapter() {
+            @Override public void windowClosing(WindowEvent e) { finish.run(); }
+            @Override public void windowClosed(WindowEvent e) { finish.run(); }
+        });
+
+        final JTextField originField = new JTextField(42);
+        originField.setToolTipText("Obrigatório: pasta custodiada Avilla (com Hashs.txt / report.pdf / msgstore.db)");
+        final JButton browseOriginBtn = new JButton("Selecionar...");
+        browseOriginBtn.addActionListener(e -> {
+            JFileChooser ch = new JFileChooser();
+            ch.setDialogTitle("Selecione a pasta de origem (Avilla - com Hashs.txt / report.pdf)");
+            ch.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            String cur = originField.getText().trim();
+            if (!cur.isEmpty()) {
+                File f = new File(cur);
+                if (f.isDirectory()) ch.setCurrentDirectory(f);
+            }
+            if (ch.showOpenDialog(win) == JFileChooser.APPROVE_OPTION) {
+                originField.setText(ch.getSelectedFile().toPath().toAbsolutePath().normalize().toString());
+            }
+        });
+
+        final JTextField caseField = new JTextField(42);
+        caseField.setToolTipText("Opcional: pasta do caso IPED pai ou subcaso (com Lista de Arquivos.csv e/ou Exportados)");
+        final JButton browseCaseBtn = new JButton("Selecionar...");
+        browseCaseBtn.addActionListener(e -> {
+            JFileChooser ch = new JFileChooser();
+            ch.setDialogTitle("OPCIONAL: Pasta do caso IPED (com Lista de Arquivos.csv / Exportados)");
+            ch.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            String cur = caseField.getText().trim();
+            if (!cur.isEmpty()) {
+                File f = new File(cur);
+                if (f.isDirectory()) ch.setCurrentDirectory(f);
+            }
+            if (ch.showOpenDialog(win) == JFileChooser.APPROVE_OPTION) {
+                caseField.setText(ch.getSelectedFile().toPath().toAbsolutePath().normalize().toString());
+            }
+        });
+
+        final JButton validateBtn = new JButton("Validar Auditoria");
+        validateBtn.setFont(validateBtn.getFont().deriveFont(java.awt.Font.BOLD));
+
+        final JLabel statusLabel = plainLabel("Informe a Pasta de origem e clique em \"Validar Auditoria\" (" + selected.size() + " captura(s) carregadas).");
+        statusLabel.setForeground(java.awt.Color.DARK_GRAY);
+        statusLabel.setFont(statusLabel.getFont().deriveFont(java.awt.Font.BOLD));
+
+        final JTextArea reportArea = new JTextArea(18, 76);
+        reportArea.setEditable(false);
+        reportArea.setLineWrap(false);
+        reportArea.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+        reportArea.putClientProperty("html.disable", Boolean.TRUE);
+        reportArea.setText("Execute \"Validar Auditoria\" para exibir todo o conteúdo da auditoria aqui (leitura e cópia sem precisar exportar).");
+
+        final JButton copyBtn = new JButton("Copiar conteúdo");
+        copyBtn.setEnabled(false);
+        final JButton exportBtn = new JButton("Exportar Auditoria");
+        exportBtn.setEnabled(false);
+        final JButton closeBtn = new JButton("Fechar");
+        closeBtn.addActionListener(e -> finish.run());
+
+        final OriginAuditResult[] lastRes = new OriginAuditResult[1];
+        final Path[] lastOrigin = new Path[1];
+        final Path[] lastCase = new Path[1];
+
+        copyBtn.addActionListener(e -> copyToClipboard(win, reportArea.getText(), "Conteúdo da auditoria copiado."));
+        exportBtn.addActionListener(e -> {
+            OriginAuditResult res = lastRes[0];
+            if (res == null) return;
+            JFileChooser ch = new JFileChooser(capturesRoot.toFile());
+            ch.setDialogTitle("Exportar Auditoria (Auditoria_relatorio.htm)");
+            ch.setSelectedFile(capturesRoot.resolve("Auditoria_relatorio.htm").toFile());
+            if (ch.showSaveDialog(win) != JFileChooser.APPROVE_OPTION) return;
+            try {
+                Path target = ch.getSelectedFile().toPath().toAbsolutePath().normalize();
+                if (target.getFileName() == null || !target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".htm")
+                        && !target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".html")) {
+                    target = target.resolveSibling(target.getFileName() + ".htm");
+                }
+                Path parentDir = target.getParent();
+                if (parentDir == null) throw new IOException("Pasta de destino inválida para Auditoria_relatorio.htm.");
+                validateSafeOriginTree(parentDir);
+                if (isLinkOrReparse(target)) throw new IOException("Link simbólico ou junção não permitido: " + target);
+                String html = buildOriginAuditHtml(res, lastOrigin[0], lastCase[0], capturesRoot, selected.size());
+                atomic(parentDir, target, html);
+                String htmlSha = hashText(html);
+                statusLabel.setForeground(res.passed ? new java.awt.Color(0, 110, 0) : new java.awt.Color(139, 0, 0));
+                statusLabel.setText((res.passed ? "VÁLIDO" : "ATENÇÃO") + " — Exportado: " + target.getFileName());
+                if (!reportArea.getText().contains(htmlSha)) {
+                    reportArea.setText("HTML exportado: " + target + "\nSHA-256 HTML: " + htmlSha + "\n\n" + reportArea.getText());
+                    reportArea.setCaretPosition(0);
+                }
+                openInBrowser(win, target);
+            } catch (Exception ex) {
+                statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                statusLabel.setText("ERRO ao exportar Auditoria_relatorio.htm: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+            }
+        });
+
+        validateBtn.addActionListener(e -> {
+            final String originTxt = originField.getText().trim();
+            final String caseTxt = caseField.getText().trim();
+            if (originTxt.isEmpty()) {
+                statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                statusLabel.setText("ERRO: Informe a Pasta de origem (Avilla) antes de validar.");
+                originField.requestFocusInWindow();
+                return;
+            }
+            final Path originDir = Paths.get(originTxt).toAbsolutePath().normalize();
+            if (!Files.isDirectory(originDir, LinkOption.NOFOLLOW_LINKS)) {
+                statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                statusLabel.setText("ERRO: Pasta de origem não encontrada ou inválida.");
+                return;
+            }
+            final Path caseDir = caseTxt.isEmpty() ? null : Paths.get(caseTxt).toAbsolutePath().normalize();
+            if (caseDir != null && !Files.isDirectory(caseDir, LinkOption.NOFOLLOW_LINKS)) {
+                statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                statusLabel.setText("ERRO: Pasta do caso (opcional) não encontrada ou inválida.");
+                return;
+            }
+
+            validateBtn.setEnabled(false);
+            exportBtn.setEnabled(false);
+            copyBtn.setEnabled(false);
+            statusLabel.setForeground(java.awt.Color.DARK_GRAY);
+            statusLabel.setText("Validando auditoria de origem... aguarde.");
+            win.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+
+            new SwingWorker<OriginAuditResult, Void>() {
+                @Override protected OriginAuditResult doInBackground() throws Exception {
+                    return runOriginAudit(capturesRoot, selected, originDir, caseDir);
+                }
+                @Override protected void done() {
+                    win.setCursor(java.awt.Cursor.getDefaultCursor());
+                    validateBtn.setEnabled(true);
+                    try {
+                        OriginAuditResult res = get();
+                        lastRes[0] = res;
+                        lastOrigin[0] = originDir;
+                        lastCase[0] = caseDir;
+                        if (res.passed) {
+                            statusLabel.setForeground(new java.awt.Color(0, 110, 0));
+                            statusLabel.setText("VÁLIDO — Tudo íntegro e válido: " + res.overallStatus);
+                        } else {
+                            statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                            statusLabel.setText("DIVERGÊNCIA / ATENÇÃO — " + res.overallStatus);
+                        }
+                        reportArea.setText("SHA-256 (auditoria-origem.txt): " + res.reportSha256 + "\nArquivo salvo em: " + res.reportFile + "\n\n" + res.reportText);
+                        reportArea.setCaretPosition(0);
+                        copyBtn.setEnabled(true);
+                        exportBtn.setEnabled(true);
+                    } catch (ExecutionException ex) {
+                        Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                        lastRes[0] = null;
+                        statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                        statusLabel.setText("ERRO na auditoria: " + (cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage()));
+                    } catch (Exception ex) {
+                        lastRes[0] = null;
+                        statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                        statusLabel.setText("ERRO na auditoria: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+                    }
+                }
+            }.execute();
+        });
+
+        JPanel originRow = new JPanel(new java.awt.BorderLayout(6, 0));
+        originRow.add(originField, java.awt.BorderLayout.CENTER);
+        originRow.add(browseOriginBtn, java.awt.BorderLayout.EAST);
+
+        JPanel caseRow = new JPanel(new java.awt.BorderLayout(6, 0));
+        caseRow.add(caseField, java.awt.BorderLayout.CENTER);
+        caseRow.add(browseCaseBtn, java.awt.BorderLayout.EAST);
+
+        JPanel formGrid = new JPanel();
+        formGrid.setLayout(new BoxLayout(formGrid, BoxLayout.Y_AXIS));
+        JPanel r1 = new JPanel(new java.awt.BorderLayout(6, 4));
+        r1.add(plainLabel("Pasta de origem:"), java.awt.BorderLayout.NORTH);
+        r1.add(originRow, java.awt.BorderLayout.CENTER);
+        JPanel r2 = new JPanel(new java.awt.BorderLayout(6, 4));
+        r2.add(plainLabel("Pasta do caso (opcional):"), java.awt.BorderLayout.NORTH);
+        r2.add(caseRow, java.awt.BorderLayout.CENTER);
+        JPanel validateRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 4));
+        validateRow.add(validateBtn);
+
+        JPanel statusWrap = new JPanel(new java.awt.BorderLayout());
+        statusWrap.setBorder(BorderFactory.createEmptyBorder(4, 2, 4, 2));
+        statusWrap.add(statusLabel, java.awt.BorderLayout.CENTER);
+
+        formGrid.add(r1);
+        formGrid.add(Box.createVerticalStrut(6));
+        formGrid.add(r2);
+        formGrid.add(Box.createVerticalStrut(6));
+        formGrid.add(validateRow);
+        formGrid.add(statusWrap);
+
+        JPanel bottomBtns = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 8, 0));
+        bottomBtns.add(copyBtn);
+        bottomBtns.add(exportBtn);
+        bottomBtns.add(closeBtn);
+
+        JPanel rootPanel = new JPanel(new java.awt.BorderLayout(8, 8));
+        rootPanel.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        rootPanel.add(formGrid, java.awt.BorderLayout.NORTH);
+        rootPanel.add(new JScrollPane(reportArea), java.awt.BorderLayout.CENTER);
+        rootPanel.add(bottomBtns, java.awt.BorderLayout.SOUTH);
+
+        win.setContentPane(rootPanel);
         win.pack();
         win.setLocationRelativeTo(parent);
         win.setVisible(true);
+    }
+
+    static String buildOriginAuditHtml(OriginAuditResult res, Path originDir, Path caseDir, Path capturesRoot, int capturesCount) {
+        StringBuilder h = new StringBuilder(8192);
+        h.append("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\">");
+        h.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        h.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline';\">");
+        h.append("<title>Auditoria de Origem - Chat Captura IPED</title>");
+        h.append("<style>body{font:15px/1.45 Arial,sans-serif;margin:24px;color:#20313a;background:#f8fafb}");
+        h.append(".banner{padding:14px 18px;border-radius:6px;margin-bottom:16px;font-weight:700;font-size:16px}");
+        h.append(".banner-ok{background:#edf7ed;border:2px solid #2e7d32;color:#1b5e20}");
+        h.append(".banner-bad{background:#fdecea;border:2px solid #8b0000;color:#8b0000}");
+        h.append("table{border-collapse:collapse;width:100%;margin:10px 0 18px;background:#fff}");
+        h.append("th,td{border:1px solid #cbd5e1;padding:7px 10px;text-align:left;overflow-wrap:anywhere;vertical-align:top}");
+        h.append("th{background:#eef3f6}code,pre{font-family:Consolas,monospace;font-size:12.5px}");
+        h.append("pre{background:#fff;border:1px solid #cbd5e1;padding:12px;overflow:auto;white-space:pre-wrap}");
+        h.append(".st-ok{color:#1b5e20;font-weight:700}.st-warn{color:#9a6700;font-weight:700}.st-bad{color:#8b0000;font-weight:700}");
+        h.append("</style></head><body>");
+        h.append("<h1>Relatório de Auditoria de Origem — Chat Captura IPED</h1>");
+        h.append("<div class=\"banner ").append(res.passed ? "banner-ok" : "banner-bad").append("\">");
+        h.append(res.passed ? "VÁLIDO — AUDITORIA DE ORIGEM ÍNTEGRA: " : "ATENÇÃO / DIVERGÊNCIA NA AUDITORIA DE ORIGEM: ");
+        h.append(esc(res.overallStatus)).append("</div>");
+
+        h.append("<table><tr><th>Campo</th><th>Valor</th></tr>");
+        h.append("<tr><td>Verificador</td><td>").append(esc(VERIFIER_VERSION)).append("</td></tr>");
+        h.append("<tr><td>Pasta das capturas auditadas</td><td><code>").append(esc(capturesRoot == null ? "" : capturesRoot.toString())).append("</code> (").append(capturesCount).append(" captura(s))</td></tr>");
+        h.append("<tr><td>Pasta de origem (Avilla)</td><td><code>").append(esc(originDir == null ? "" : originDir.toString())).append("</code></td></tr>");
+        h.append("<tr><td>Pasta do caso (opcional)</td><td><code>").append(esc(caseDir == null ? "(não informada)" : caseDir.toString())).append("</code></td></tr>");
+        h.append("<tr><td>Relatório técnico TXT</td><td><code>").append(esc(res.reportFile == null ? "" : res.reportFile.toString())).append("</code></td></tr>");
+        h.append("<tr><td>SHA-256 do relatório TXT</td><td><code>").append(esc(res.reportSha256)).append("</code></td></tr>");
+        h.append("</table>");
+
+        h.append("<h2>Detalhamento por Linha de Custódia</h2>");
+        h.append("<table><tr><th>Registro</th><th>Conteúdo</th></tr>");
+        String[] lines = res.reportText.split("\\r?\\n");
+        for (String line : lines) {
+            if (line == null || line.trim().isEmpty()) continue;
+            String trimmed = line.trim();
+            int bar = trimmed.indexOf('|');
+            String tag = bar > 0 ? trimmed.substring(0, bar) : trimmed;
+            String rest = bar > 0 ? trimmed.substring(bar + 1) : "";
+            String cls = "";
+            if (trimmed.contains("NAO_LOCALIZADO") && !trimmed.contains("NAO_LOCALIZADO=0")) cls = "st-bad";
+            else if (trimmed.contains("DIVERGE_ORIGEM_ERRADA") || trimmed.contains("INTACTA_POS_AUDITORIA|false")) cls = "st-bad";
+            else if (trimmed.contains("EM_ORIGEM_SEM_HASH_TXT") && !trimmed.contains("EM_ORIGEM_SEM_HASH_TXT=0")) cls = "st-warn";
+            else if (trimmed.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE") || trimmed.contains("CUSTODIADO_AVILLA") || trimmed.contains("EMBUTIDO_NO_HTML_IPED") || trimmed.contains("|CONFERE")) cls = "st-ok";
+            h.append("<tr><td><strong>").append(esc(tag)).append("</strong></td><td class=\"").append(cls).append("\"><code>").append(esc(rest)).append("</code></td></tr>");
+        }
+        h.append("</table>");
+
+        h.append("<h2>Conteúdo Integral (auditoria-origem.txt)</h2>");
+        h.append("<pre>").append(esc(res.reportText)).append("</pre>");
+        h.append("<p>Gerado localmente pelo Verificador de Integridade v").append(esc(VERIFIER_VERSION)).append(".</p>");
+        h.append("</body></html>");
+        return h.toString();
     }
 
     private static String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;");}

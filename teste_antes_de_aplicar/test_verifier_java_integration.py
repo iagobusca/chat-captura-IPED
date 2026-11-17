@@ -738,7 +738,7 @@ public final class PublicAnonHarness {
         for prefix in targets:
             ver = subprocess.run(prefix + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
-            self.assertIn("Verificador de Integridade 1.5.0", ver.stdout)
+            self.assertIn("Verificador de Integridade 1.5.1", ver.stdout)
 
             hlp = subprocess.run(prefix + ["--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(hlp.returncode, 0, hlp.stdout + hlp.stderr)
@@ -746,7 +746,7 @@ public final class PublicAnonHarness {
 
             st = subprocess.run(prefix + ["--self-test"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(st.returncode, 0, st.stdout + st.stderr)
-            self.assertIn("SELF_TEST_OK 1.5.0", st.stdout)
+            self.assertIn("SELF_TEST_OK 1.5.1", st.stdout)
 
             bad = subprocess.run(prefix + ["--nao-existe"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertNotEqual(bad.returncode, 0)
@@ -873,6 +873,36 @@ public final class PublicAnonHarness {
             out = r_jar.stdout.strip()
             self.assertTrue(out.startswith("LOADED:") and not out.endswith(":-1x-1"),
                             f"verifierIcon() must load embedded PNG from classpath resource: {out}")
+
+    def test_origin_audit_first_screen_and_html_export_contract(self):
+        source = (ROOT / "verificador-integridade" / "src" / "IntegrityVerifier.java").read_text(encoding="utf-8")
+        cm_start = source.index("private static int chooseMode(")
+        cm_end = source.index("private static Path applicationFolder(", cm_start)
+        cm_body = source[cm_start:cm_end]
+        self.assertIn("Integridade Local", cm_body)
+        self.assertIn("Integridade Público", cm_body)
+        self.assertIn("Auditoria de origem...", cm_body)
+
+        rg_start = source.index("private static void runGuiFlow(")
+        rg_end = source.index("if (mode == 0) {", rg_start)
+        rg_body = source[rg_start:rg_end]
+        self.assertIn("if (mode == 2) {", rg_body)
+        self.assertIn("runVerificationWithProgress(root, null", rg_body)
+        self.assertIn("showOriginAuditWorkspace(", rg_body)
+
+        ws_start = source.index("private static void openOriginAuditWorkspaceWindow(")
+        ws_end = source.index("static String buildOriginAuditHtml(", ws_start)
+        ws_body = source[ws_start:ws_end]
+        for expected in (
+            "Pasta de origem:",
+            "Pasta do caso (opcional):",
+            "Validar Auditoria",
+            "Exportar Auditoria",
+            "Auditoria_relatorio.htm",
+            "Copiar conteúdo",
+            'reportArea.putClientProperty("html.disable", Boolean.TRUE)',
+        ):
+            self.assertIn(expected, ws_body)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

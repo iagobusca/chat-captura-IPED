@@ -147,7 +147,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.0"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.1"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;

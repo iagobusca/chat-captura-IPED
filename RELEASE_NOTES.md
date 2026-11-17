@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.1 (Estável / `main`) / Verificador 1.5.1
+
+- **Tag**: [v2.8.1](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.1) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.1-verificador-1.5.1.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.1/instalador-chat-captura-IPED-2.8.1-verificador-1.5.1.zip) (`94.484.019` bytes | SHA-256: `0B7D4F1D4939847FE5909E40C63C37EEE131CD343C4CA7F2400F956F5264EB01`)
+- [integridade-verifier-1.5.1.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.1/integridade-verifier-1.5.1.exe) (`77.638.746` bytes | SHA-256: `E03DEA3BFA298E125804AB22A51C113665FEAE58529248E0C3947C34EACB7C6F`)
+- [integridade-verifier-1.5.1.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.1/integridade-verifier-1.5.1.jar) (`182.286` bytes | SHA-256: `9809DEC2088F50F88ED1691544CEF45B029783B04498F65F43ECC5634C06C7A3`)
+- [iped-viewers-impl-4.3.1-2.8.1.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.1/iped-viewers-impl-4.3.1-2.8.1.jar) (`1.543.080` bytes | SHA-256: `240B2837DF894809668B7225E5B6D21BB774CB61AA2FA17FFD3FC869E8D3764F`)
+
+### Resumo
+- Verificador 1.5.1: botao Auditoria de origem... adicionado na tela inicial ao lado de Integridade Local/Publico com carregamento identico ao modo Publico, painel interativo (Pasta de origem, Pasta do caso opcional, Validar Auditoria com banner verde/vermelho, caixa de leitura/copia integral) e botao Exportar Auditoria para gerar Auditoria_relatorio.htm offline.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.1**.
+
+---
 ## v2.8.0 (Estável / `main`) / Verificador 1.5.0
 
 - **Tag**: [v2.8.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.0) (Corte automatizado via `build-reproducible.ps1`)
