@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.4 (Estável / `main`) / Verificador 1.5.3
+
+- **Tag**: [v2.8.4](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.4) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.4-verificador-1.5.3.zip](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.4/instalador-chat-captura-IPED-2.8.4-verificador-1.5.3.zip) (`94.518.007` bytes | SHA-256: `9431BB088D216024C767967F894BC477A9FEA327CF01C18FCBE4E41DC6D0A099`)
+- [integridade-verifier-1.5.3.exe](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.4/integridade-verifier-1.5.3.exe) (`77.649.498` bytes | SHA-256: `B2A3D1CDBE36673215EFF438C24CBC636D38A578AF5C74444726041BE42E0D0F`)
+- [integridade-verifier-1.5.3.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.4/integridade-verifier-1.5.3.jar) (`193.914` bytes | SHA-256: `39BE8D3C8E9F5389D21659D6A1E62435C246241578E3CAB9EEA2C22D03992456`)
+- [iped-viewers-impl-4.3.1-2.8.4.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.4/iped-viewers-impl-4.3.1-2.8.4.jar) (`1.554.607` bytes | SHA-256: `180617AFEEBC3FBC7FBA139100ECFD3C9944A91165DD2461122C45FDBAC1780A`)
+
+### Resumo
+- Removida a geração desnecessária de backups .bak temporários em atomicBatchStreaming do Verificador de Integridade (que causavam falha de acesso/bloqueio em Windows nos modos local, público e auditoria) e evitada a gravação antecipada de relatórios ao abrir Auditoria de Origem; adicionadas tentativas breves em bloqueios transitórios de arquivo.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.3**.
+
+---
 ## v2.8.3 (Estável / `main`) / Verificador 1.5.2
 
 - **Tag**: [v2.8.3](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.3) (Corte automatizado via `build-reproducible.ps1`)

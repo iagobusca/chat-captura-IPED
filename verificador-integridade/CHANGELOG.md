@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.3] - 2026-11-17
+
+### Corte Automatizado (v2.8.4)
+- Removida a geração desnecessária de backups .bak temporários em atomicBatchStreaming do Verificador de Integridade (que causavam falha de acesso/bloqueio em Windows nos modos local, público e auditoria) e evitada a gravação antecipada de relatórios ao abrir Auditoria de Origem; adicionadas tentativas breves em bloqueios transitórios de arquivo. (`build-reproducible.ps1`; JAR `39BE8D3C...` / EXE `B2A3D1CD...`).
 ## [1.5.2] - 2026-11-17
 
 ### Corte Automatizado (v2.8.2)

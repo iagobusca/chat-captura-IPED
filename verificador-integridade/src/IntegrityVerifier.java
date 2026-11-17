@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.2";
+    private static final String VERIFIER_VERSION = "1.5.3";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -493,7 +493,7 @@ public final class IntegrityVerifier {
         }
         if (mode == 2) {
             VerificationBundle auditBundle = runVerificationWithProgress(root, null,
-                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true);
+                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true, false);
             if (auditBundle == null) {
                 showTopMessage(null, "Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,
                         "Integridade", JOptionPane.INFORMATION_MESSAGE);
@@ -523,10 +523,10 @@ public final class IntegrityVerifier {
                 return;
             }
             bundle = runVerificationWithProgress(root, selected,
-                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Verificando capturas", false);
+                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Verificando capturas", false, true);
         } else {
             bundle = runVerificationWithProgress(root, null,
-                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Integridade Público", true);
+                    "Verificador de Integridade - v" + VERIFIER_VERSION + " - Integridade Público", true, true);
             if (bundle == null) {
                 showTopMessage(null, "Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta:\n" + root,
                         "Integridade", JOptionPane.INFORMATION_MESSAGE);
@@ -546,9 +546,9 @@ public final class IntegrityVerifier {
     }
 
     private static VerificationBundle buildVerificationBundle(Path root, List<Capture> selected,
-            Consumer<String> statusUpdate, IntConsumer stepUpdate) throws Exception {
+            Consumer<String> statusUpdate, IntConsumer stepUpdate, boolean writeReportsToDisk) throws Exception {
         verifyAllBounded(selected, statusUpdate, stepUpdate);
-        if (statusUpdate != null) statusUpdate.accept("Gerando relatórios e hashes...");
+        if (statusUpdate != null) statusUpdate.accept(writeReportsToDisk ? "Gerando relatórios e hashes..." : "Consolidando hashes e metadados...");
         enforceReportBudget(selected);
         String setHash = setHash(selected);
         String generated = OffsetDateTime.now().toString();
@@ -556,7 +556,9 @@ public final class IntegrityVerifier {
         String publicHistory = publicHistoryReport(selected, setHash);
         String historyFullHash = hashText(normalizePublicRecord(history));
         String historyPublicHash = hashText(normalizePublicRecord(publicHistory));
-        writeReports(root, selected, setHash, generated, history, publicHistory, historyFullHash, historyPublicHash);
+        if (writeReportsToDisk) {
+            writeReports(root, selected, setHash, generated, history, publicHistory, historyFullHash, historyPublicHash);
+        }
         if (stepUpdate != null) stepUpdate.accept(selected.size() + 1);
         Path historyFile = root.resolve("integridade").resolve("historico-capturas.txt");
         return new VerificationBundle(selected, setHash, history, publicHistory, historyFullHash, historyPublicHash, historyFile);
@@ -568,7 +570,7 @@ public final class IntegrityVerifier {
     }
 
     private static VerificationBundle runVerificationWithProgress(Path root, List<Capture> preselected,
-            String title, boolean autoDiscoverAll) throws Exception {
+            String title, boolean autoDiscoverAll, boolean writeReportsToDisk) throws Exception {
         final SwingWorker<VerificationBundle, String>[] workerRef = new SwingWorker[1];
         final int initialMax = preselected == null ? 1 : Math.max(1, preselected.size() + 1);
         runOnEdt(() -> {
@@ -609,7 +611,8 @@ public final class IntegrityVerifier {
                             root,
                             target,
                             msg -> publish("TXT|" + msg),
-                            step -> publish("VAL|" + step));
+                            step -> publish("VAL|" + step),
+                            writeReportsToDisk);
                 }
                 @Override
                 protected void process(List<String> chunks) {
@@ -2051,7 +2054,7 @@ public final class IntegrityVerifier {
         outputs.put(reportDir.resolve("historico-capturas.txt"),w->w.write(history));
         atomicBatchStreaming(root,outputs);
     }
-    private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{Files.deleteIfExists(t);}}
+    private static void atomic(Path root,Path p,String s)throws IOException{byte[]data=s.getBytes(StandardCharsets.UTF_8);Path target=p.toAbsolutePath().normalize();Path parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+p);createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path t=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");try{try(OutputStream out=Files.newOutputStream(t,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)){out.write(data);}if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);moveReplace(t,target);}finally{try{Files.deleteIfExists(t);}catch(IOException ignored){}}}
     private static void atomicBatch(Map<Path,String> outputs)throws IOException{
         if(outputs==null||outputs.isEmpty())return;
         Path common=null;
@@ -2072,30 +2075,53 @@ public final class IntegrityVerifier {
     }
     private static void atomicBatchStreaming(Path root,Map<Path,ReportWriter> outputs)throws IOException{
         if(outputs==null||outputs.isEmpty())return;
-        Map<Path,Path> staged=new LinkedHashMap<>(),backups=new LinkedHashMap<>();List<Path> promoted=new ArrayList<>();
+        Map<Path,Path> staged=new LinkedHashMap<>();
         try{
             for(Map.Entry<Path,ReportWriter> entry:outputs.entrySet()){
                 Path target=entry.getKey().toAbsolutePath().normalize(),parent=target.getParent();if(parent==null)throw new IOException("Caminho de relatório sem diretório pai: "+target);
                 createDirectoriesSafe(root,parent);if(isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
+                if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);
                 Path temp=Files.createTempFile(parent,"."+target.getFileName()+".",".tmp");staged.put(target,temp);
                 try(OutputStream raw=Files.newOutputStream(temp,StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS);
                         java.io.BufferedWriter writer=new java.io.BufferedWriter(new java.io.OutputStreamWriter(raw,StandardCharsets.UTF_8),32768)){entry.getValue().writeTo(writer);}
                 if(isLinkOrReparse(target))throw new IOException("O destino do relatório mudou para link ou junção: "+target);
-                if(Files.exists(target,LinkOption.NOFOLLOW_LINKS)){if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("O destino do relatório não é arquivo regular: "+target);Path backup=Files.createTempFile(parent,"."+target.getFileName()+".",".bak");Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING,LinkOption.NOFOLLOW_LINKS);backups.put(target,backup);}
             }
             for(Map.Entry<Path,Path> entry:staged.entrySet()){
                 if(isLinkOrReparse(entry.getKey())||isLinkOrReparse(entry.getValue())||(Files.exists(entry.getKey(),LinkOption.NOFOLLOW_LINKS)&&!Files.isRegularFile(entry.getKey(),LinkOption.NOFOLLOW_LINKS)))throw new IOException("O destino do relatório mudou para link, junção ou diretório inválido: "+entry.getKey());
-                moveReplace(entry.getValue(),entry.getKey());promoted.add(entry.getKey());
             }
-        }catch(IOException failure){
-            for(int i=promoted.size()-1;i>=0;i--){Path target=promoted.get(i),backup=backups.get(target);try{if(backup!=null){moveReplace(backup,target);backups.remove(target);}else Files.deleteIfExists(target);}catch(IOException rollback){failure.addSuppressed(rollback);}}
-            throw failure;
+            for(Map.Entry<Path,Path> entry:staged.entrySet()){
+                moveReplace(entry.getValue(),entry.getKey());
+            }
         }finally{
-            for(Path temp:staged.values())Files.deleteIfExists(temp);
-            for(Path backup:backups.values())Files.deleteIfExists(backup);
+            for(Path temp:staged.values()){
+                try{Files.deleteIfExists(temp);}catch(IOException ignored){}
+            }
         }
     }
-    private static void moveReplace(Path source,Path target)throws IOException{try{Files.move(source,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(source,target,StandardCopyOption.REPLACE_EXISTING);}}
+    private static void moveReplace(Path source,Path target)throws IOException{
+        FileSystemException lastError=null;
+        for(int attempt=0;attempt<4;attempt++){
+            if(isLinkOrReparse(source)||isLinkOrReparse(target))throw new IOException("O destino do relatório é link ou junção: "+target);
+            try{
+                Files.move(source,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+                return;
+            }catch(AtomicMoveNotSupportedException e){
+                try{
+                    Files.move(source,target,StandardCopyOption.REPLACE_EXISTING);
+                    return;
+                }catch(FileSystemException lockEx){
+                    lastError=lockEx;
+                }
+            }catch(FileSystemException lockEx){
+                lastError=lockEx;
+            }
+            if(attempt<3){
+                try{Thread.sleep(60L);}catch(InterruptedException ie){Thread.currentThread().interrupt();throw new IOException("Gravação de relatório interrompida: "+target,ie);}
+            }
+        }
+        String detail=lastError==null?"":lastError.getReason();
+        throw new IOException("Não foi possível gravar o relatório (verifique se o arquivo não está em uso por outro programa): "+target+(detail==null||detail.isEmpty()?"":" ("+detail+")"),lastError);
+    }
     private static void createDirectoriesSafe(Path root,Path directory)throws IOException{
         Path normalizedRoot=root.toAbsolutePath().normalize(),normalizedDir=directory.toAbsolutePath().normalize();
         rejectLinks(normalizedRoot,normalizedDir);

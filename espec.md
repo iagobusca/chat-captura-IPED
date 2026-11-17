@@ -1,6 +1,6 @@
-# Especificação Única Consolidada (`espec.md`) — Chat Captura IPED (`v2.8.3`) & Verificador de Integridade (`1.5.2`)
+# Especificação Única Consolidada (`espec.md`) — Chat Captura IPED (`v2.8.4`) & Verificador de Integridade (`1.5.3`)
 
-> **Versão de referência:** Plugin `2.8.3` | Verificador de Integridade `1.5.2` | Alvo: IPED `4.3.1` (Java 11) + Verificador JAR (Java 8+) / EXE Windows x64 (`.NET 10.0.15`) | Build determinístico multiplataforma via [`build-reproducible.ps1`](build-reproducible.ps1) e publicação automatizada no Gitea (`GiteaRunner`)  
+> **Versão de referência:** Plugin `2.8.4` | Verificador de Integridade `1.5.3` | Alvo: IPED `4.3.1` (Java 11) + Verificador JAR (Java 8+) / EXE Windows x64 (`.NET 10.0.15`) | Build determinístico multiplataforma via [`build-reproducible.ps1`](build-reproducible.ps1) e publicação automatizada no Gitea (`GiteaRunner`)  
 > **Documento único de especificação:** Este arquivo consolida e substitui todos os documentos anteriores dispersos (`ESPEC_UNICA_CHAT_CAPTURE_IPED.md`, `SPEC_CORRECAO_VULNERABILIDADES_FASE3.md`, `ESPEC_TECNICA_CORRECAO_PLUGIN_VERIFICADOR_INSTALADOR.md`, `ESPEC_TECNICA_CORRECAO_VULNERABILIDADES.md` e `ESPEC_TECNICA_CORRECAO_FASE4.md`).
 
 ---
@@ -30,7 +30,7 @@
 | Constantes de limite artificial no Verificador (`MAX_SELECTED_METADATA_BYTES`, `MAX_REPORT_ESTIMATED_CHARS`) e teto de `16 MiB` na gravação de relatórios (`atomic` / `atomicBatch`) e tetos cumulativos entre capturas em `verifyAllBounded` | **Removido** | Impediam verificar e gerar relatórios para pastas com grande volume de capturas ou chats extensos. A gravação passou a usar *streaming* transacional (`atomicBatchStreaming`), removendo o gargalo de memória sem teto artificial (preservando a assinatura `enforceReportBudget(List<Capture>)` onde referenciada por testes reflexivos). |
 | Regexes de varredura HTML no Verificador (`HTML_TAG_PATTERN`, `HTML_META_TAG_PATTERN`, `HTML_SCRIPT_ELEMENT_PATTERN`, `HTML_STYLE_ELEMENT_PATTERN`) e métodos mortos `field(String, String)`, `number(String, String)`, `isAllowedPath` em `IntegrityVerifier.java` | **Removido** | A expressão regular `((?:"[^"]*"|'[^']*'|[^'">])*)` permitia bypass por apóstrofo/aspa isolada em atributo sem aspas (`CWE-184` / `CWE-79`), e os métodos privados sem chamadores configuravam código morto (`CWE-1333`/`CWE-561`). Substituídos por scanner HTML léxico determinístico por máquina de estados (`scanHtmlElements` / `parseHtmlTagStrict`). |
 | Instalação redundante de `lib\json-20260719.jar` e `lib\opencv-4120.jar` em `IPED\lib\` pelo instalador e arquivo obsoleto `iped-viewers-impl-4.3.1-2.6.8.jar` | **Removido** | Causava duplicação de classes `org.json.*` e `org.opencv.*` no classpath do IPED base (`org/opencv/**` já vai embutido no fat-JAR do plugin, e `lib\json-20250517.jar` recebe a versão `20260719` com backup `.bak` para honrar o `Class-Path` dos manifests do IPED `4.3.1` e mitigar `CVE-2026-59171`). |
-| Hash SHA-256 aceito para versões `<= 1.4.4` do Verificador em `VerifierIntegrity` | **Removido da allowlist** | Política de allowlist exclusiva estrita: o plugin `2.8.3` aceita apenas os binários determinísticos oficiais do Verificador `1.4.5`. |
+| Hash SHA-256 aceito para versões `<= 1.4.4` do Verificador em `VerifierIntegrity` | **Removido da allowlist** | Política de allowlist exclusiva estrita: o plugin `2.8.4` aceita apenas os binários determinísticos oficiais do Verificador `1.4.5`. |
 
 ---
 
@@ -165,16 +165,16 @@ Garantir capturas offline auditáveis de trechos de conversas do WhatsApp no IPE
 
 # Parte III — Como Compilar, Empacotar, Verificar e Critérios de Aceite
 
-## 3.1 Ordem Obrigatória de Build Determinístico e Sincronização de Hashes (`v2.8.3` / `1.5.2`)
+## 3.1 Ordem Obrigatória de Build Determinístico e Sincronização de Hashes (`v2.8.4` / `1.5.3`)
 
-1. **Verificador de Integridade (`1.5.2`):**
+1. **Verificador de Integridade (`1.5.3`):**
    - Atualizar versão em `verificador-integridade/VERSION`, `IntegrityVerifier.VERIFIER_VERSION`, `Launcher.csproj`, `build-single-exe.ps1` e `build.bat`.
    - Executar o compilador determinístico multiplataforma ([`build-reproducible.ps1`](build-reproducible.ps1), usando `Temurin JDK 21.0.13+9` `--release 8` para JAR e `jlink`/`jpackage` + `payload.zip` determinístico + `.NET 10.0.15` com `-p:Deterministic=true -p:ContinuousIntegrationBuild=true` no Windows):
      ```powershell
      powershell -NoProfile -ExecutionPolicy Bypass -File "build-reproducible.ps1" -Target full -PinTemurin -Offline
      ```
    - Copiar `out\reproducible\integridade-verifier.exe` e `out\reproducible\integridade-verifier.jar` para `verificador-integridade\` e `instalar_captura_chat_zap\`.
-   - Validar `--version` (`Verificador de Integridade 1.5.2`) e `--self-test` (`SELF_TEST_OK 1.5.2`, saída `0`) em ambos os binários e registrar os SHA-256 determinísticos reais (`E013F31E...` JAR / `AF1C41C0...` EXE).
+   - Validar `--version` (`Verificador de Integridade 1.5.3`) e `--self-test` (`SELF_TEST_OK 1.5.3`, saída `0`) em ambos os binários e registrar os SHA-256 determinísticos reais (`E013F31E...` JAR / `AF1C41C0...` EXE).
 2. **Allowlist do Plugin e Compilação do Fat-JAR (`2.7.0`):**
    - Atualizar `VerifierIntegrity.VALID_JAR_HASHES` e `VALID_EXE_HASHES` ([VerifierIntegrity.java](src/iped/viewers/VerifierIntegrity.java#L21-L22)) exclusivamente com os hashes da `1.4.5` e incrementar `CHAT_CAPTURE_PLUGIN_VERSION = "2.7.0"` ([HtmlLinkViewer.java](src/iped/viewers/HtmlLinkViewer.java#L150)).
    - Reexecutar `build-reproducible.ps1` (`--release 11`, Temurin `21.0.13+9` + OpenJFX `21.0.5` + IPED `4.3.1`) substituindo as classes recompiladas, bundles `.properties` e `Implementation-Version: 2.7.0` sobre a base OpenCV/MultiViewer via `ReproducibleZipPacker` (timestamp UTC fixo `1980-02-01T00:00:00Z`), copiar o fat-JAR (`BAFEB635...`) para `instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar` e `iped-viewers-impl-4.3.1-2.7.0.jar` e validar com [validate-plugin-jar.ps1](instalar_captura_chat_zap/validate-plugin-jar.ps1).
@@ -186,7 +186,7 @@ Garantir capturas offline auditáveis de trechos de conversas do WhatsApp no IPE
 ## 3.2 Suíte Obrigatória de Verificação Pós-Aplicação
 
 1. **Integridade do JAR do plugin:** `instalar_captura_chat_zap\validate-plugin-jar.ps1 -ExpectedSha256 <SHA256_PLUGIN>` -> `exit 0`.
-2. **Autoteste e CLI do Verificador:** `integridade-verifier.jar` e `integridade-verifier.exe` com `--version` e `--self-test` -> `Verificador de Integridade 1.5.2` e `SELF_TEST_OK 1.5.2`.
+2. **Autoteste e CLI do Verificador:** `integridade-verifier.jar` e `integridade-verifier.exe` com `--version` e `--self-test` -> `Verificador de Integridade 1.5.3` e `SELF_TEST_OK 1.5.3`.
 3. **Protótipo e especificação de segurança:** `verificador-integridade\prototype\test-security-spec.ps1` -> `8 PASS; 0 FAIL`.
 4. **Suíte principal (`teste_antes_de_aplicar\run_all_tests.ps1`, com `TEST_VERIFIER_EXE` apontando para o `.exe`):**
    - Contrato `html-message-v1`, aceitação de pipeline, ponta a ponta, fronteiras de marcador, migração legada (`spec` + contrato de produção), censura HTML, validação Fase 4 (`test_fase4_spec_validation.py`), `PublicManifestComparisonHarness`, `CaptureCensorshipTest`, `CaptureBoundaryResolverTest`, `VerifierIntegrityHashTest`, integração Java+EXE (`test_verifier_java_integration.py` — 28 testes), testes JDK 11 completos (`SwingHtmlDisableTest`, `CaptureIntegrityTest`, `ChatAnnotationStoreRoundTripTest`, `OpenCvLoaderTest`, etc.) e suíte JDK 8 do Verificador (`SecurityRegressionTest`, `IndexHashParityTest`) -> `ALL_RUN_ALL_TESTS_PASSED`.

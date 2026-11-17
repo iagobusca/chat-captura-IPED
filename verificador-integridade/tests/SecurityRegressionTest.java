@@ -47,6 +47,7 @@ public final class SecurityRegressionTest {
             validateRenderedCaptureHtmlRejectsCommentsCdataAndProcessingInstructions();
             comparePublicMessageManifestRejectsCaseDuplicateKeysAndKeyDomIdMismatch(root);
             rejectLinksRejectsRootJunctionAndAtomicBatchStreamingMatchesBytes(root);
+            atomicBatchNeverCreatesBakFiles(root);
             alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs();
             unquotedQuoteHtmlBypassPayloadsAreRejected();
             openFileGuardRejectsJunctionAndMissingFiles(root);
@@ -1560,6 +1561,45 @@ public final class SecurityRegressionTest {
             } finally {
                 Files.deleteIfExists(junctionDir);
             }
+        }
+    }
+
+    private static void atomicBatchNeverCreatesBakFiles(Path root) throws Exception {
+        Path dir = Files.createDirectories(root.resolve("no-bak-batch"));
+        try {
+            Path html = dir.resolve("integridade.html");
+            Path sub = dir.resolve("integridade");
+            Path txt = sub.resolve("verificacao-integridade.txt");
+            Path json = sub.resolve("verificacao-integridade.json");
+            Method batch = IntegrityVerifier.class.getDeclaredMethod("atomicBatch", Path.class, Map.class);
+            batch.setAccessible(true);
+
+            Map<Path, String> first = new LinkedHashMap<>();
+            first.put(html, "<html>v1</html>");
+            first.put(txt, "v1");
+            first.put(json, "{\"v\":1}");
+            batch.invoke(null, dir, first);
+
+            Map<Path, String> second = new LinkedHashMap<>();
+            second.put(html, "<html>v2</html>");
+            second.put(txt, "v2");
+            second.put(json, "{\"v\":2}");
+            batch.invoke(null, dir, second);
+
+            if (!"<html>v2</html>".equals(new String(Files.readAllBytes(html), StandardCharsets.UTF_8))) {
+                throw new AssertionError("atomicBatch did not overwrite report cleanly");
+            }
+            try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+                java.util.List<Path> leftovers = walk
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".bak") || p.getFileName().toString().endsWith(".tmp"))
+                        .collect(java.util.stream.Collectors.toList());
+                if (!leftovers.isEmpty()) {
+                    throw new AssertionError("atomicBatch must never create or leave .bak/.tmp files: " + leftovers);
+                }
+            }
+        } finally {
+            deleteTree(dir);
         }
     }
 

@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.4] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Removida a geração desnecessária de backups .bak temporários em atomicBatchStreaming do Verificador de Integridade (que causavam falha de acesso/bloqueio em Windows nos modos local, público e auditoria) e evitada a gravação antecipada de relatórios ao abrir Auditoria de Origem; adicionadas tentativas breves em bloqueios transitórios de arquivo.
+- Verificador **1.5.3** (`193.914` bytes JAR `39BE8D3C...` | `77.649.498` bytes EXE `B2A3D1CD...`) e Plugin **2.8.4** (`1.554.607` bytes `180617AF...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.4-verificador-1.5.3.zip` (`94.518.007` bytes `9431BB08...`).
 ## [2.8.3] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)
