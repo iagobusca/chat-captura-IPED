@@ -738,7 +738,7 @@ public final class PublicAnonHarness {
         for prefix in targets:
             ver = subprocess.run(prefix + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
-            self.assertIn("Verificador de Integridade 1.5.1", ver.stdout)
+            self.assertIn("Verificador de Integridade 1.5.2", ver.stdout)
 
             hlp = subprocess.run(prefix + ["--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(hlp.returncode, 0, hlp.stdout + hlp.stderr)
@@ -746,7 +746,7 @@ public final class PublicAnonHarness {
 
             st = subprocess.run(prefix + ["--self-test"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertEqual(st.returncode, 0, st.stdout + st.stderr)
-            self.assertIn("SELF_TEST_OK 1.5.1", st.stdout)
+            self.assertIn("SELF_TEST_OK 1.5.2", st.stdout)
 
             bad = subprocess.run(prefix + ["--nao-existe"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
             self.assertNotEqual(bad.returncode, 0)
@@ -901,8 +901,22 @@ public final class PublicAnonHarness {
             "Auditoria_relatorio.htm",
             "Copiar conteúdo",
             'reportArea.putClientProperty("html.disable", Boolean.TRUE)',
+            "precheckOriginAuditFolders(",
+            "showOriginPrecheckDialog(",
+            "runOriginAuditWithProgressDialog(",
         ):
             self.assertIn(expected, ws_body)
+
+        # Botao de auditoria existe apenas na tela inicial (nao na janela Resultado)
+        summary_start = source.index("private static void showSummaryDialog(")
+        summary_end = source.index("private static JPanel hashValueRow(", summary_start)
+        self.assertNotIn("Auditoria de origem", source[summary_start:summary_end])
+
+        # Janela de conferencia das pastas e janela de carregamento
+        self.assertIn("Começar Auditoria", source)
+        self.assertIn("Conferência das pastas", source)
+        self.assertIn("Executando Auditoria de origem", source)
+        self.assertIn("Tempo decorrido", source)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.2] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Verificador 1.5.2: botao Auditoria de origem... exclusivo na tela inicial (removido da janela Resultado); Validar Auditoria passa a exibir pre-conferencia das pastas (Pasta de origem obrigatoria Hashs.txt/Hashs.avilla/report.pdf/msgstore.db + Pasta do caso opcional com dica de subpasta) habilitando Comecar Auditoria ou Fechar; janela de carregamento com progresso por etapa (1/9..9/9), tempo decorrido e Cancelar.
+- Verificador **1.5.2** (`193.537` bytes JAR `22C207E8...` | `77.648.986` bytes EXE `F3582CEF...`) e Plugin **2.8.2** (`1.543.080` bytes `357AD1A0...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.2-verificador-1.5.2.zip` (`94.506.571` bytes `B7E2001C...`).
 ## [2.8.1] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

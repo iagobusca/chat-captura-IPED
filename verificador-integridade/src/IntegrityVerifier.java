@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.1";
+    private static final String VERIFIER_VERSION = "1.5.2";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -717,11 +717,10 @@ public final class IntegrityVerifier {
             JButton copyPublicHistory=new JButton("Copiar histórico completo público");copyPublicHistory.addActionListener(e->copyToClipboard(frame,publicHistory,"Histórico completo público copiado."));
             JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(frame,historyFile));
             JButton openHtml=new JButton("Abrir relatório HTML");openHtml.addActionListener(e->openInBrowser(frame,root.resolve("integridade.html")));
-            JButton auditOriginBtn=new JButton("Auditoria de origem...");auditOriginBtn.addActionListener(e->openOriginAuditWorkspaceWindow(frame,root,selected,null));
             JButton close=new JButton("Fechar");close.addActionListener(e->latch.countDown());
             gridActions.add(copyHistory);gridActions.add(copyPublicHistory);gridActions.add(openHistory);gridActions.add(openHtml);
-            JPanel bottomRow=new JPanel(new java.awt.GridLayout(1,2,6,6));
-            bottomRow.add(auditOriginBtn);bottomRow.add(close);
+            JPanel bottomRow=new JPanel(new java.awt.GridLayout(1,1,6,6));
+            bottomRow.add(close);
             JPanel actions=new JPanel(new java.awt.BorderLayout(0,6));
             actions.add(gridActions,java.awt.BorderLayout.CENTER);
             actions.add(bottomRow,java.awt.BorderLayout.SOUTH);
@@ -2451,17 +2450,30 @@ public final class IntegrityVerifier {
     }
 
     private static OriginAuditResult runOriginAudit(Path capturesRoot, List<Capture> captures, Path originDir, Path parentIpedDir, Path subcaseDir) throws Exception {
+        return runOriginAudit(capturesRoot, captures, originDir, parentIpedDir, subcaseDir, null);
+    }
+
+    private static void auditStep(Consumer<String> progress, String msg) {
+        if (Thread.currentThread().isInterrupted()) throw new CancellationException("Auditoria de origem cancelada.");
+        if (progress != null) progress.accept(msg);
+    }
+
+    private static OriginAuditResult runOriginAudit(Path capturesRoot, List<Capture> captures, Path originDir, Path parentIpedDir, Path subcaseDir, Consumer<String> progress) throws Exception {
+        auditStep(progress, "Etapa 1/9: validando segurança das pastas (links/junções)...");
         validateSafeOriginTree(originDir);
         if (parentIpedDir != null) validateSafeOriginTree(parentIpedDir);
         if (subcaseDir != null) validateSafeOriginTree(subcaseDir);
 
+        auditStep(progress, "Etapa 2/9: lendo Hashs.txt da origem (pode conter dezenas de milhares de entradas)...");
         Path hashsTxtPath = findChildIgnoreCase(originDir, "Hashs.txt");
         Path hashsAvillaPath = findChildIgnoreCase(originDir, "Hashs.avilla");
         Path reportPdfPath = findChildIgnoreCase(originDir, "report.pdf");
         ParsedHashsTxt hashsIdx = parseOriginHashsTxt(hashsTxtPath);
+        auditStep(progress, "Etapa 3/9: calculando SHA-256 de Hashs.avilla e report.pdf...");
         String avillaSha = hashsAvillaPath == null ? "" : hash(hashsAvillaPath);
         String pdfSha = reportPdfPath == null ? "" : hash(reportPdfPath);
 
+        auditStep(progress, "Etapa 4/9: localizando e calculando hash do msgstore.db (arquivo grande, aguarde)...");
         Path dbPath = findOriginDatabaseSafe(originDir);
         DualDigest dbPre = dbPath == null ? null : dualHash(dbPath);
         boolean dbInHashs = dbPre != null && hashsIdx.shaToRelPath.containsKey(dbPre.sha256);
@@ -2487,6 +2499,7 @@ public final class IntegrityVerifier {
         }
 
         // Busca parent IPED CSV e HTMLs exportados
+        auditStep(progress, "Etapa 5/9: correlacionando com Lista de Arquivos.csv do caso (se informado)...");
         Set<String> matchedParentHtmls = new HashSet<>();
         boolean matchedParentDb = false;
         if (parentIpedDir != null) {
@@ -2518,6 +2531,7 @@ public final class IntegrityVerifier {
         }
 
         // Blobs inline base64 de HTMLs exportados encontrados no caso pai, subcaso ou pasta raiz
+        auditStep(progress, "Etapa 6/9: lendo HTMLs exportados e mídias embutidas (base64)...");
         Set<String> exportedInlineBlobs = new HashSet<>();
         if (parentIpedDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(parentIpedDir, captureHtmlHashes));
         if (subcaseDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(subcaseDir, captureHtmlHashes));
@@ -2534,6 +2548,7 @@ public final class IntegrityVerifier {
         }
         Map<String, String> diskOnlyShaToRel = new HashMap<>();
         if (!missingSizes.isEmpty()) {
+            auditStep(progress, "Etapa 7/9: procurando na origem " + missingSizes.size() + " anexo(s) fora do Hashs.txt (pré-filtro por tamanho)...");
             Path realOrig = originDir.toRealPath();
             Files.walkFileTree(originDir, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
@@ -2575,6 +2590,7 @@ public final class IntegrityVerifier {
         sortedCaps.sort(Comparator.comparing(c -> c.name.toLowerCase(Locale.ROOT)));
         for (Capture c : sortedCaps) {
             capIdx++;
+            auditStep(progress, "Etapa 8/9: auditando captura " + capIdx + "/" + sortedCaps.size() + "...");
             String anon = anonymizeCaptureName(c.name);
             Path mp = resolve(c.dir, "manifest.json");
             JSONObject manifest = (mp != null && Files.isRegularFile(mp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(mp), mp) : new JSONObject();
@@ -2649,6 +2665,7 @@ public final class IntegrityVerifier {
         }
 
         if (dbPre != null) {
+            auditStep(progress, "Etapa 9/9: reconferindo msgstore.db (prova de que a origem não foi alterada) e gravando relatório...");
             DualDigest dbPost = dualHash(dbPath);
             boolean originUntouched = dbPre.sha256.equalsIgnoreCase(dbPost.sha256);
             rpt.append("\nORIGEM_MSGSTORE_INTACTA_POS_AUDITORIA|").append(originUntouched).append('\n');
@@ -2809,43 +2826,54 @@ public final class IntegrityVerifier {
         });
 
         validateBtn.addActionListener(e -> {
-            final String originTxt = originField.getText().trim();
-            final String caseTxt = caseField.getText().trim();
+            final String originTxt = stripSurroundingQuotes(originField.getText());
+            final String caseTxt = stripSurroundingQuotes(caseField.getText());
             if (originTxt.isEmpty()) {
                 statusLabel.setForeground(new java.awt.Color(139, 0, 0));
                 statusLabel.setText("ERRO: Informe a Pasta de origem (Avilla) antes de validar.");
                 originField.requestFocusInWindow();
                 return;
             }
-            final Path originDir = Paths.get(originTxt).toAbsolutePath().normalize();
-            if (!Files.isDirectory(originDir, LinkOption.NOFOLLOW_LINKS)) {
+            final Path originDir;
+            final Path caseDir;
+            try {
+                originDir = Paths.get(originTxt).toAbsolutePath().normalize();
+                caseDir = caseTxt.isEmpty() ? null : Paths.get(caseTxt).toAbsolutePath().normalize();
+            } catch (InvalidPathException ex) {
                 statusLabel.setForeground(new java.awt.Color(139, 0, 0));
-                statusLabel.setText("ERRO: Pasta de origem não encontrada ou inválida.");
-                return;
-            }
-            final Path caseDir = caseTxt.isEmpty() ? null : Paths.get(caseTxt).toAbsolutePath().normalize();
-            if (caseDir != null && !Files.isDirectory(caseDir, LinkOption.NOFOLLOW_LINKS)) {
-                statusLabel.setForeground(new java.awt.Color(139, 0, 0));
-                statusLabel.setText("ERRO: Pasta do caso (opcional) não encontrada ou inválida.");
+                statusLabel.setText("ERRO: Caminho inválido informado: " + ex.getInput());
                 return;
             }
 
             validateBtn.setEnabled(false);
-            exportBtn.setEnabled(false);
-            copyBtn.setEnabled(false);
             statusLabel.setForeground(java.awt.Color.DARK_GRAY);
-            statusLabel.setText("Validando auditoria de origem... aguarde.");
+            statusLabel.setText("Conferindo pastas e arquivos obrigatórios para a auditoria... aguarde.");
             win.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
 
-            new SwingWorker<OriginAuditResult, Void>() {
-                @Override protected OriginAuditResult doInBackground() throws Exception {
-                    return runOriginAudit(capturesRoot, selected, originDir, caseDir);
+            new SwingWorker<OriginPrecheck, Void>() {
+                @Override protected OriginPrecheck doInBackground() {
+                    return precheckOriginAuditFolders(originDir, caseDir);
                 }
                 @Override protected void done() {
                     win.setCursor(java.awt.Cursor.getDefaultCursor());
                     validateBtn.setEnabled(true);
+                    OriginPrecheck pc;
                     try {
-                        OriginAuditResult res = get();
+                        pc = get();
+                    } catch (Exception ex) {
+                        statusLabel.setForeground(new java.awt.Color(139, 0, 0));
+                        statusLabel.setText("ERRO ao conferir as pastas: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+                        return;
+                    }
+                    boolean start = showOriginPrecheckDialog(win, pc);
+                    if (!start) {
+                        statusLabel.setForeground(pc.canStart() ? java.awt.Color.DARK_GRAY : new java.awt.Color(139, 0, 0));
+                        statusLabel.setText(pc.canStart()
+                                ? "Pastas válidas. Clique em \"Validar Auditoria\" novamente para começar."
+                                : "Pasta(s) inválida(s): corrija o caminho indicado e clique em \"Validar Auditoria\" novamente.");
+                        return;
+                    }
+                    runOriginAuditWithProgressDialog(win, capturesRoot, selected, originDir, caseDir, res -> {
                         lastRes[0] = res;
                         lastOrigin[0] = originDir;
                         lastCase[0] = caseDir;
@@ -2860,16 +2888,13 @@ public final class IntegrityVerifier {
                         reportArea.setCaretPosition(0);
                         copyBtn.setEnabled(true);
                         exportBtn.setEnabled(true);
-                    } catch (ExecutionException ex) {
-                        Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    }, err -> {
                         lastRes[0] = null;
+                        copyBtn.setEnabled(false);
+                        exportBtn.setEnabled(false);
                         statusLabel.setForeground(new java.awt.Color(139, 0, 0));
-                        statusLabel.setText("ERRO na auditoria: " + (cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage()));
-                    } catch (Exception ex) {
-                        lastRes[0] = null;
-                        statusLabel.setForeground(new java.awt.Color(139, 0, 0));
-                        statusLabel.setText("ERRO na auditoria: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
-                    }
+                        statusLabel.setText(err);
+                    });
                 }
             }.execute();
         });
@@ -2974,6 +2999,343 @@ public final class IntegrityVerifier {
         h.append("<p>Gerado localmente pelo Verificador de Integridade v").append(esc(VERIFIER_VERSION)).append(".</p>");
         h.append("</body></html>");
         return h.toString();
+    }
+
+    static final class OriginPrecheckRow {
+        final String level; // OK | AVISO | ERRO | INFO
+        final String text;
+        OriginPrecheckRow(String level, String text) { this.level = level; this.text = text; }
+    }
+
+    static final class OriginPrecheck {
+        final List<OriginPrecheckRow> originRows = new ArrayList<>();
+        final List<OriginPrecheckRow> caseRows = new ArrayList<>();
+        Path originDir;
+        Path caseDir;
+        boolean originValid;
+        boolean caseProvided;
+        boolean caseValid;
+        boolean canStart() { return originValid && (!caseProvided || caseValid); }
+    }
+
+    private static String stripSurroundingQuotes(String value) {
+        if (value == null) return "";
+        String t = value.trim();
+        while (t.length() >= 2 && ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'")))) {
+            t = t.substring(1, t.length() - 1).trim();
+        }
+        return t;
+    }
+
+    private static Path findFileNearby(Path base, String fileName, int maxDepth) {
+        if (base == null || !Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) return null;
+        final Path[] found = new Path[1];
+        try {
+            Files.walkFileTree(base, Collections.<FileVisitOption>emptySet(), maxDepth, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
+                    if (!d.equals(base) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d))) return FileVisitResult.SKIP_SUBTREE;
+                    String n = d.getFileName() == null ? "" : d.getFileName().toString().toLowerCase(Locale.ROOT);
+                    if ("media".equals(n) || "sdcard".equals(n) || "exportados".equals(n) || "indexador".equals(n)) return FileVisitResult.SKIP_SUBTREE;
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
+                    if (a.isRegularFile() && f.getFileName() != null && f.getFileName().toString().equalsIgnoreCase(fileName)) {
+                        found[0] = f;
+                        return FileVisitResult.TERMINATE;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path f, IOException e) { return FileVisitResult.CONTINUE; }
+            });
+        } catch (IOException ignored) {}
+        return found[0];
+    }
+
+    private static String humanBytes(long b) {
+        if (b < 1024) return b + " B";
+        if (b < 1024L * 1024) return String.format(Locale.ROOT, "%.1f KB", b / 1024.0);
+        if (b < 1024L * 1024 * 1024) return String.format(Locale.ROOT, "%.1f MB", b / (1024.0 * 1024));
+        return String.format(Locale.ROOT, "%.2f GB", b / (1024.0 * 1024 * 1024));
+    }
+
+    /** Read-only pre-check of the folders chosen for the origin audit (no hashing, no writes). */
+    static OriginPrecheck precheckOriginAuditFolders(Path originDir, Path caseDir) {
+        OriginPrecheck pc = new OriginPrecheck();
+        pc.originDir = originDir;
+        pc.caseDir = caseDir;
+
+        // ---------- Pasta de origem (obrigatória) ----------
+        boolean originOk = true;
+        if (originDir == null || !Files.isDirectory(originDir, LinkOption.NOFOLLOW_LINKS)) {
+            pc.originRows.add(new OriginPrecheckRow("ERRO", "Pasta não encontrada ou não é uma pasta: " + originDir));
+            originOk = false;
+        } else {
+            try {
+                validateSafeOriginTree(originDir);
+            } catch (Exception ex) {
+                pc.originRows.add(new OriginPrecheckRow("ERRO", "Caminho não permitido (link simbólico/junção): " + ex.getMessage()));
+                originOk = false;
+            }
+        }
+        if (originOk) {
+            String[] required = { "Hashs.txt", "Hashs.avilla" };
+            for (String name : required) {
+                try {
+                    Path p = findChildIgnoreCase(originDir, name);
+                    if (p == null) {
+                        pc.originRows.add(new OriginPrecheckRow("ERRO", name + " não encontrado (obrigatório)."));
+                        originOk = false;
+                    } else {
+                        long sz = safeRegularFileSize(p);
+                        if (sz <= 0) {
+                            pc.originRows.add(new OriginPrecheckRow("ERRO", name + " está vazio (0 bytes)."));
+                            originOk = false;
+                        } else {
+                            pc.originRows.add(new OriginPrecheckRow("OK", name + " encontrado (" + humanBytes(sz) + ")."));
+                        }
+                    }
+                } catch (Exception ex) {
+                    pc.originRows.add(new OriginPrecheckRow("ERRO", name + " inválido (link ou arquivo não regular)."));
+                    originOk = false;
+                }
+            }
+            try {
+                Path pdf = findChildIgnoreCase(originDir, "report.pdf");
+                if (pdf == null) pc.originRows.add(new OriginPrecheckRow("AVISO", "report.pdf não encontrado (recomendado): o SHA-256 do relatório de coleta não será registrado."));
+                else pc.originRows.add(new OriginPrecheckRow("OK", "report.pdf encontrado (" + humanBytes(safeRegularFileSize(pdf)) + ")."));
+            } catch (Exception ex) {
+                pc.originRows.add(new OriginPrecheckRow("AVISO", "report.pdf inválido (link ou arquivo não regular)."));
+            }
+            try {
+                Path db = findOriginDatabaseSafe(originDir);
+                if (db == null) pc.originRows.add(new OriginPrecheckRow("AVISO", "msgstore.db não encontrado (recomendado): a conferência N1 do banco WhatsApp será omitida."));
+                else pc.originRows.add(new OriginPrecheckRow("OK", "msgstore.db encontrado: " + originDir.relativize(db).toString().replace('\\', '/') + " (" + humanBytes(safeRegularFileSize(db)) + ")."));
+            } catch (Exception ex) {
+                pc.originRows.add(new OriginPrecheckRow("AVISO", "Não foi possível procurar o msgstore.db: " + ex.getMessage()));
+            }
+            if (!originOk) {
+                Path hint = findFileNearby(originDir, "Hashs.txt", 4);
+                if (hint != null && hint.getParent() != null && !hint.getParent().equals(originDir)) {
+                    pc.originRows.add(new OriginPrecheckRow("INFO", "Hashs.txt foi encontrado em subpasta. Selecione esta pasta como origem: " + hint.getParent()));
+                } else {
+                    try {
+                        if (findChildIgnoreCase(originDir, "Lista de Arquivos.csv") != null) {
+                            pc.originRows.add(new OriginPrecheckRow("INFO", "Esta pasta parece ser um CASO IPED (tem Lista de Arquivos.csv). Use-a em \"Pasta do caso\" e escolha a extração Avilla em \"Pasta de origem\"."));
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+        pc.originValid = originOk;
+
+        // ---------- Pasta do caso (opcional) ----------
+        if (caseDir == null) {
+            pc.caseProvided = false;
+            pc.caseValid = true;
+            pc.caseRows.add(new OriginPrecheckRow("INFO", "Não informada (opcional): a correlação com Lista de Arquivos.csv e Exportados do caso será omitida."));
+            return pc;
+        }
+        pc.caseProvided = true;
+        boolean caseOk = true;
+        if (!Files.isDirectory(caseDir, LinkOption.NOFOLLOW_LINKS)) {
+            pc.caseRows.add(new OriginPrecheckRow("ERRO", "Pasta não encontrada ou não é uma pasta: " + caseDir));
+            caseOk = false;
+        } else {
+            try {
+                validateSafeOriginTree(caseDir);
+            } catch (Exception ex) {
+                pc.caseRows.add(new OriginPrecheckRow("ERRO", "Caminho não permitido (link simbólico/junção): " + ex.getMessage()));
+                caseOk = false;
+            }
+        }
+        if (caseOk && originDir != null && caseDir.equals(originDir)) {
+            pc.caseRows.add(new OriginPrecheckRow("ERRO", "A Pasta do caso não pode ser a mesma Pasta de origem."));
+            caseOk = false;
+        }
+        if (caseOk) {
+            boolean hasCsv = false;
+            boolean hasExp = false;
+            try {
+                Path csv = findChildIgnoreCase(caseDir, "Lista de Arquivos.csv");
+                if (csv != null) {
+                    hasCsv = true;
+                    pc.caseRows.add(new OriginPrecheckRow("OK", "Lista de Arquivos.csv encontrada (" + humanBytes(safeRegularFileSize(csv)) + ")."));
+                } else {
+                    pc.caseRows.add(new OriginPrecheckRow("AVISO", "Lista de Arquivos.csv não encontrada."));
+                }
+            } catch (Exception ex) {
+                pc.caseRows.add(new OriginPrecheckRow("AVISO", "Lista de Arquivos.csv inválida (link ou arquivo não regular)."));
+            }
+            String caseName = caseDir.getFileName() == null ? "" : caseDir.getFileName().toString();
+            Path exp = "Exportados".equalsIgnoreCase(caseName) ? caseDir : caseDir.resolve("Exportados");
+            boolean expIsDir;
+            try { expIsDir = Files.isDirectory(exp, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(exp); }
+            catch (IOException ex) { expIsDir = false; }
+            if (expIsDir) {
+                hasExp = true;
+                pc.caseRows.add(new OriginPrecheckRow("OK", "Pasta Exportados encontrada."));
+            } else {
+                pc.caseRows.add(new OriginPrecheckRow("AVISO", "Pasta Exportados não encontrada."));
+            }
+            if (!hasCsv && !hasExp) {
+                pc.caseRows.add(new OriginPrecheckRow("ERRO", "Nenhum arquivo obrigatório do caso foi encontrado (é necessário Lista de Arquivos.csv e/ou Exportados)."));
+                caseOk = false;
+                Path hint = findFileNearby(caseDir, "Lista de Arquivos.csv", 3);
+                if (hint != null && hint.getParent() != null) {
+                    pc.caseRows.add(new OriginPrecheckRow("INFO", "Lista de Arquivos.csv foi encontrada em subpasta. Selecione esta pasta como caso: " + hint.getParent()));
+                }
+            }
+        }
+        pc.caseValid = caseOk;
+        return pc;
+    }
+
+    private static JPanel precheckSection(String title, boolean valid, boolean optionalNotProvided, List<OriginPrecheckRow> rows, Path path) {
+        JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        String state = optionalNotProvided ? "NÃO INFORMADA (opcional)" : (valid ? "VÁLIDA" : "INVÁLIDA");
+        javax.swing.border.TitledBorder tb = BorderFactory.createTitledBorder(title + " — " + state);
+        tb.setTitleColor(optionalNotProvided ? java.awt.Color.DARK_GRAY : (valid ? new java.awt.Color(0, 110, 0) : new java.awt.Color(139, 0, 0)));
+        tb.setTitleFont(tb.getTitleFont() == null ? new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 13) : tb.getTitleFont().deriveFont(java.awt.Font.BOLD, 13f));
+        box.setBorder(BorderFactory.createCompoundBorder(tb, BorderFactory.createEmptyBorder(4, 8, 6, 8)));
+        if (path != null) {
+            JLabel p = plainLabel(path.toString());
+            p.setForeground(java.awt.Color.DARK_GRAY);
+            box.add(p);
+            box.add(Box.createVerticalStrut(4));
+        }
+        for (OriginPrecheckRow r : rows) {
+            JLabel l = plainLabel("[" + r.level + "] " + r.text);
+            switch (r.level) {
+                case "OK": l.setForeground(new java.awt.Color(0, 110, 0)); break;
+                case "AVISO": l.setForeground(new java.awt.Color(154, 103, 0)); break;
+                case "ERRO": l.setForeground(new java.awt.Color(139, 0, 0)); l.setFont(l.getFont().deriveFont(java.awt.Font.BOLD)); break;
+                default: l.setForeground(new java.awt.Color(30, 70, 130)); break;
+            }
+            box.add(l);
+        }
+        box.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return box;
+    }
+
+    /** Shows the folder pre-check window. Returns true only if the user clicked "Começar Auditoria". */
+    private static boolean showOriginPrecheckDialog(java.awt.Window owner, OriginPrecheck pc) {
+        final boolean[] start = { false };
+        final JDialog dialog = new JDialog(owner, "Verificador de Integridade - v" + VERIFIER_VERSION + " - Conferência das pastas", java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+        applyWindowDefaults(dialog);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 14, 8, 14));
+        JLabel head = plainLabel("Conferência das pastas antes de começar a Auditoria de origem:");
+        head.setFont(head.getFont().deriveFont(java.awt.Font.BOLD));
+        head.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(head);
+        content.add(Box.createVerticalStrut(8));
+        content.add(precheckSection("Pasta de origem", pc.originValid, false, pc.originRows, pc.originDir));
+        content.add(Box.createVerticalStrut(8));
+        content.add(precheckSection("Pasta do caso", pc.caseValid, !pc.caseProvided, pc.caseRows, pc.caseDir));
+        content.add(Box.createVerticalStrut(10));
+
+        boolean ok = pc.canStart();
+        JLabel summary = plainLabel(ok
+                ? "Tudo certo: as pastas contêm os arquivos necessários. Clique em \"Começar Auditoria\"."
+                : "Pasta(s) incorreta(s): feche esta janela, selecione a pasta correta e clique em \"Validar Auditoria\" novamente.");
+        summary.setForeground(ok ? new java.awt.Color(0, 110, 0) : new java.awt.Color(139, 0, 0));
+        summary.setFont(summary.getFont().deriveFont(java.awt.Font.BOLD));
+        summary.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(summary);
+
+        JButton action = new JButton(ok ? "Começar Auditoria" : "Fechar");
+        action.setFont(action.getFont().deriveFont(java.awt.Font.BOLD));
+        action.addActionListener(e -> { start[0] = ok; dialog.dispose(); });
+        JPanel south = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+        south.setBorder(BorderFactory.createEmptyBorder(0, 14, 12, 14));
+        south.add(action);
+
+        JPanel rootPanel = new JPanel(new java.awt.BorderLayout());
+        rootPanel.add(content, java.awt.BorderLayout.CENTER);
+        rootPanel.add(south, java.awt.BorderLayout.SOUTH);
+        dialog.setContentPane(rootPanel);
+        dialog.getRootPane().setDefaultButton(action);
+        dialog.pack();
+        if (dialog.getWidth() > 980) dialog.setSize(980, dialog.getHeight());
+        dialog.setLocationRelativeTo(owner);
+        dialog.setVisible(true);
+        return start[0];
+    }
+
+    /** Runs the origin audit in background showing a modal loading window with the current step and elapsed time. */
+    private static void runOriginAuditWithProgressDialog(java.awt.Window owner, Path capturesRoot, List<Capture> selected,
+            Path originDir, Path caseDir, Consumer<OriginAuditResult> onSuccess, Consumer<String> onError) {
+        final JDialog dialog = new JDialog(owner, "Verificador de Integridade - v" + VERIFIER_VERSION + " - Executando Auditoria de origem", java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+        applyWindowDefaults(dialog);
+        dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+        final JLabel stage = plainLabel("Iniciando auditoria de origem (" + selected.size() + " captura(s))...");
+        final JLabel elapsed = plainLabel("Tempo decorrido: 00:00");
+        elapsed.setForeground(java.awt.Color.DARK_GRAY);
+        final JLabel hint = plainLabel("Arquivos grandes (ex.: msgstore.db) podem levar alguns minutos. A janela continua respondendo.");
+        hint.setForeground(java.awt.Color.DARK_GRAY);
+        final JProgressBar bar = new JProgressBar();
+        bar.setIndeterminate(true);
+        final JButton cancel = new JButton("Cancelar");
+
+        JPanel north = new JPanel();
+        north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+        north.add(stage);
+        north.add(Box.createVerticalStrut(4));
+        north.add(elapsed);
+        JPanel south = new JPanel(new java.awt.BorderLayout(8, 0));
+        south.add(hint, java.awt.BorderLayout.CENTER);
+        south.add(cancel, java.awt.BorderLayout.EAST);
+        JPanel panel = new JPanel(new java.awt.BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+        panel.setPreferredSize(new Dimension(640, 150));
+        panel.add(north, java.awt.BorderLayout.NORTH);
+        panel.add(bar, java.awt.BorderLayout.CENTER);
+        panel.add(south, java.awt.BorderLayout.SOUTH);
+        dialog.setContentPane(panel);
+        dialog.pack();
+        dialog.setLocationRelativeTo(owner);
+
+        final long t0 = System.currentTimeMillis();
+        final javax.swing.Timer clock = new javax.swing.Timer(1000, ev -> {
+            long s = (System.currentTimeMillis() - t0) / 1000L;
+            elapsed.setText(String.format(Locale.ROOT, "Tempo decorrido: %02d:%02d", s / 60, s % 60));
+        });
+
+        final SwingWorker<OriginAuditResult, String> worker = new SwingWorker<OriginAuditResult, String>() {
+            @Override protected OriginAuditResult doInBackground() throws Exception {
+                return runOriginAudit(capturesRoot, selected, originDir, caseDir, null, msg -> publish(msg));
+            }
+            @Override protected void process(List<String> chunks) {
+                if (!chunks.isEmpty()) stage.setText(chunks.get(chunks.size() - 1));
+            }
+            @Override protected void done() {
+                clock.stop();
+                dialog.dispose();
+                if (isCancelled()) {
+                    onError.accept("Auditoria de origem cancelada pelo usuário.");
+                    return;
+                }
+                try {
+                    onSuccess.accept(get());
+                } catch (ExecutionException ex) {
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    onError.accept("ERRO na auditoria: " + (cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage()));
+                } catch (Exception ex) {
+                    onError.accept("ERRO na auditoria: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+                }
+            }
+        };
+        cancel.addActionListener(e -> { cancel.setEnabled(false); stage.setText("Cancelando..."); worker.cancel(true); });
+        dialog.addWindowListener(new WindowAdapter() {
+            @Override public void windowClosing(WindowEvent e) { cancel.setEnabled(false); stage.setText("Cancelando..."); worker.cancel(true); }
+        });
+        clock.start();
+        worker.execute();
+        dialog.setVisible(true);
     }
 
     private static String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;");}

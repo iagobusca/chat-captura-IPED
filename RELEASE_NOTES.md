@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.2 (Estável / `main`) / Verificador 1.5.2
+
+- **Tag**: [v2.8.2](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.2) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.2-verificador-1.5.2.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.2/instalador-chat-captura-IPED-2.8.2-verificador-1.5.2.zip) (`94.506.571` bytes | SHA-256: `B7E2001C1841BFF37A740B6D9178618090C95BA5C6729E1B9EA5252E4BEE0D2F`)
+- [integridade-verifier-1.5.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.2/integridade-verifier-1.5.2.exe) (`77.648.986` bytes | SHA-256: `F3582CEFE0440B6DAA7DEA8E7F425A55C33DBC29EE2BE92DF875A2D18382B238`)
+- [integridade-verifier-1.5.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.2/integridade-verifier-1.5.2.jar) (`193.537` bytes | SHA-256: `22C207E89F56C8A35CAA327E7A491246739A81596172521E7B807EA167DDEB7F`)
+- [iped-viewers-impl-4.3.1-2.8.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.2/iped-viewers-impl-4.3.1-2.8.2.jar) (`1.543.080` bytes | SHA-256: `357AD1A0E7A5DEE6E3A87234B7AA1796DB80F59DBD304BA8D2562E9A0FE28306`)
+
+### Resumo
+- Verificador 1.5.2: botao Auditoria de origem... exclusivo na tela inicial (removido da janela Resultado); Validar Auditoria passa a exibir pre-conferencia das pastas (Pasta de origem obrigatoria Hashs.txt/Hashs.avilla/report.pdf/msgstore.db + Pasta do caso opcional com dica de subpasta) habilitando Comecar Auditoria ou Fechar; janela de carregamento com progresso por etapa (1/9..9/9), tempo decorrido e Cancelar.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.2**.
+
+---
 ## v2.8.1 (Estável / `main`) / Verificador 1.5.1
 
 - **Tag**: [v2.8.1](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.1) (Corte automatizado via `build-reproducible.ps1`)

@@ -150,6 +150,42 @@ public final class OriginAuditEndToEndTest {
             check(htmlOk.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !htmlOk.contains("<script>alert(1)</script>"),
                     "HTML export must escape untrusted angle brackets");
 
+            // 7. Folder pre-check (Validar Auditoria -> janela de conferência)
+            Method precheck = verifier.getDeclaredMethod("precheckOriginAuditFolders", Path.class, Path.class);
+            precheck.setAccessible(true);
+            Class<?> pcCls = Class.forName("IntegrityVerifier$OriginPrecheck");
+            Method canStart = pcCls.getDeclaredMethod("canStart");
+            canStart.setAccessible(true);
+            java.lang.reflect.Field originValidF = pcCls.getDeclaredField("originValid");
+            originValidF.setAccessible(true);
+            java.lang.reflect.Field caseValidF = pcCls.getDeclaredField("caseValid");
+            caseValidF.setAccessible(true);
+            java.lang.reflect.Field originRowsF = pcCls.getDeclaredField("originRows");
+            originRowsF.setAccessible(true);
+
+            Object pcOk = precheck.invoke(null, origin, parentIped);
+            check((Boolean) canStart.invoke(pcOk), "valid origin + valid case must allow Começar Auditoria");
+            Object pcNoCase = precheck.invoke(null, origin, null);
+            check((Boolean) canStart.invoke(pcNoCase), "valid origin without optional case must allow start");
+
+            Object pcWrong = precheck.invoke(null, wrongOrigin, null);
+            check(!(Boolean) originValidF.get(pcWrong) && !(Boolean) canStart.invoke(pcWrong),
+                    "origin without Hashs.avilla must be invalid");
+
+            Path emptyCase = tmp.resolve("EmptyCase");
+            Files.createDirectories(emptyCase);
+            Object pcBadCase = precheck.invoke(null, origin, emptyCase);
+            check(!(Boolean) caseValidF.get(pcBadCase) && !(Boolean) canStart.invoke(pcBadCase),
+                    "case folder without Lista de Arquivos.csv / Exportados must be invalid");
+
+            Object pcParentOfOrigin = precheck.invoke(null, tmp.resolve("Case001"), null);
+            check(!(Boolean) originValidF.get(pcParentOfOrigin), "parent folder of origin must be invalid");
+            String rowsText = String.valueOf(originRowsF.get(pcParentOfOrigin) == null ? "" : rowsToText(originRowsF.get(pcParentOfOrigin)));
+            check(rowsText.contains("subpasta"), "pre-check must hint the subfolder that contains Hashs.txt:\n" + rowsText);
+
+            Object pcMissing = precheck.invoke(null, tmp.resolve("does-not-exist"), null);
+            check(!(Boolean) canStart.invoke(pcMissing), "non-existent origin must be invalid");
+
             System.out.println("OriginAuditEndToEndTest: PASS");
         } finally {
             deleteTree(tmp);
@@ -280,6 +316,18 @@ public final class OriginAuditEndToEndTest {
             if (cause instanceof Exception) throw (Exception) cause;
             throw ite;
         }
+    }
+
+    private static String rowsToText(Object rows) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (Object r : (java.util.List<?>) rows) {
+            java.lang.reflect.Field lf = r.getClass().getDeclaredField("level");
+            java.lang.reflect.Field tf = r.getClass().getDeclaredField("text");
+            lf.setAccessible(true);
+            tf.setAccessible(true);
+            sb.append('[').append(lf.get(r)).append("] ").append(tf.get(r)).append('\n');
+        }
+        return sb.toString();
     }
 
     private static void check(boolean cond, String msg) {

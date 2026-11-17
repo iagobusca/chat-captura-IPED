@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.2] - 2026-11-17
+
+### Corte Automatizado (v2.8.2)
+- Verificador 1.5.2: botao Auditoria de origem... exclusivo na tela inicial (removido da janela Resultado); Validar Auditoria passa a exibir pre-conferencia das pastas (Pasta de origem obrigatoria Hashs.txt/Hashs.avilla/report.pdf/msgstore.db + Pasta do caso opcional com dica de subpasta) habilitando Comecar Auditoria ou Fechar; janela de carregamento com progresso por etapa (1/9..9/9), tempo decorrido e Cancelar. (`build-reproducible.ps1`; JAR `22C207E8...` / EXE `F3582CEF...`).
 ## [1.5.1] - 2026-11-17
 
 ### Corte Automatizado (v2.8.1)

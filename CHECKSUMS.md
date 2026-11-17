@@ -2,6 +2,14 @@
 
 > **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na versão estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). Os builds `<= 2.6.8-beta` abaixo permanecem documentados como histórico de auditoria do repositório local.
 
+## Build 2.8.2 (Estável / `main`) / Verificador 1.5.2
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
+| --- | ---: | --- | --- |
+| `instalador-chat-captura-IPED-2.8.2-verificador-1.5.2.zip` | 94506571 | `B7E2001C1841BFF37A740B6D9178618090C95BA5C6729E1B9EA5252E4BEE0D2F` | Pacote completo compilado via `build-reproducible.ps1` (plugin `2.8.2`, Verificador `1.5.2` JAR+EXE com `.NET 10.0.15`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.8.2.jar` | 1543080 | `357AD1A0E7A5DEE6E3A87234B7AA1796DB80F59DBD304BA8D2562E9A0FE28306` | Fat-JAR determinístico do plugin (`Implementation-Version: 2.8.2`, `--release 11`, OpenCV embutido); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 193537 | `22C207E89F56C8A35CAA327E7A491246739A81596172521E7B807EA167DDEB7F` | Verificador `1.5.2` JAR determinístico (`--release 8`, bytecode 52) |
+| `verificador-integridade/integridade-verifier.exe` | 77648986 | `F3582CEFE0440B6DAA7DEA8E7F425A55C33DBC29EE2BE92DF875A2D18382B238` | Executável Windows x64 determinístico do Verificador `1.5.2` (`jlink`/`jpackage` + `.NET 10.0.15`, `--self-test` OK) |
 ## Build 2.8.1 (Estável / `main`) / Verificador 1.5.1
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
