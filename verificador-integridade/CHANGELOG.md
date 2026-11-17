@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.0] - 2026-11-17
+
+### Corte Automatizado (v2.8.0)
+- Auditoria de Origem forense: vinculacao opcional no Plugin (origin-binding.json, PDFBox report.pdf + Hashs.txt UTF-16LE, correlacao MD5/SHA256 com Lista de Arquivos.csv do caso IPED pai, verificacao N3 em copia temporaria do msgstore.db e registro honesto de lacunas pos-tar) e auditoria offline no Verificador 1.5.0 (--audit-origin / Auditoria de origem... com integridade retroativa preservada para capturas legadas). (`build-reproducible.ps1`; JAR `194C1D9B...` / EXE `20F823BF...`).
 ## [1.4.5] - 2026-11-16
 
 ### Build Reprodutível Auditável (`v2.7.0`)

@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.0] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Auditoria de Origem forense: vinculacao opcional no Plugin (origin-binding.json, PDFBox report.pdf + Hashs.txt UTF-16LE, correlacao MD5/SHA256 com Lista de Arquivos.csv do caso IPED pai, verificacao N3 em copia temporaria do msgstore.db e registro honesto de lacunas pos-tar) e auditoria offline no Verificador 1.5.0 (--audit-origin / Auditoria de origem... com integridade retroativa preservada para capturas legadas).
+- Verificador **1.5.0** (`175.612` bytes JAR `194C1D9B...` | `77.632.090` bytes EXE `20F823BF...`) e Plugin **2.8.0** (`1.543.075` bytes `9BF31AC8...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.0-verificador-1.5.0.zip` (`94.472.170` bytes `52ED8BD5...`).
 ## [2.7.0] - 2026-11-16
 
 ### Build Reprodutível Auditável & Integração GiteaRunner

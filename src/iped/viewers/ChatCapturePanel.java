@@ -82,10 +82,14 @@ public class ChatCapturePanel extends JPanel {
     private final JCheckBox customNameToggle = plainCheckBox("Nome custom", false); //$NON-NLS-1$
     private final JTextField customFolderName = new JTextField();
     private final JTextField sensitiveImagesFolder = new JTextField();
+    private final JTextField originFolderField = new JTextField();
+    private final JTextField parentIpedFolderField = new JTextField();
     private final JComboBox<String> sensitiveSimilarity = new JComboBox<>(new String[] { "90%", "75%", "50%" }); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     private final JComboBox<String> sensitiveBlurLevel = new JComboBox<>(new String[] { "90%", "60%", "30%", "20%" }); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
     private final JButton chooseFolder = new JButton(Messages.getString("ChatCapturePanel.SelectFolder")); //$NON-NLS-1$
     private final JButton chooseSensitiveFolder = new JButton("..."); //$NON-NLS-1$
+    private final JButton chooseOriginFolder = new JButton("..."); //$NON-NLS-1$
+    private final JButton chooseParentIpedFolder = new JButton("..."); //$NON-NLS-1$
     private final JButton startStop = new JButton(Messages.getString("ChatCapturePanel.Start")); //$NON-NLS-1$
     private final JButton recapture = new JButton("Re-Extrair"); //$NON-NLS-1$
     private final JButton annotateSaved = new JButton("Anotar chat salvo..."); //$NON-NLS-1$
@@ -152,6 +156,20 @@ public class ChatCapturePanel extends JPanel {
         sensitiveRow.add(sensitiveImagesFolder, BorderLayout.CENTER);
         sensitiveRow.add(chooseSensitiveFolder, BorderLayout.EAST);
 
+        JPanel originRow = new JPanel(new BorderLayout(4, 4));
+        originRow.add(plainLabel(Messages.getString("ChatCapturePanel.OriginFolder")), BorderLayout.NORTH); //$NON-NLS-1$
+        originFolderField.setToolTipText(Messages.getString("ChatCapturePanel.OriginFolderHint")); //$NON-NLS-1$
+        originRow.add(originFolderField, BorderLayout.CENTER);
+        originRow.add(chooseOriginFolder, BorderLayout.EAST);
+
+        JPanel parentIpedRow = new JPanel(new BorderLayout(4, 4));
+        parentIpedRow.add(plainLabel(Messages.getString("ChatCapturePanel.ParentIpedFolder")), BorderLayout.NORTH); //$NON-NLS-1$
+        parentIpedFolderField.setToolTipText(Messages.getString("ChatCapturePanel.ParentIpedFolderHint")); //$NON-NLS-1$
+        parentIpedRow.add(parentIpedFolderField, BorderLayout.CENTER);
+        parentIpedRow.add(chooseParentIpedFolder, BorderLayout.EAST);
+
+        loadSavedOriginPreferences();
+
         JPanel outputArea = new JPanel(new BorderLayout(4, 4));
         outputArea.add(outputRow, BorderLayout.NORTH);
         outputArea.add(linkedDestinationRow, BorderLayout.SOUTH);
@@ -166,11 +184,13 @@ public class ChatCapturePanel extends JPanel {
         blurLevelRow.add(plainLabel("Blur censura"), BorderLayout.NORTH); //$NON-NLS-1$
         blurLevelRow.add(sensitiveBlurLevel, BorderLayout.CENTER);
 
-        JPanel options = new JPanel(new GridLayout(5, 1, 4, 4));
+        JPanel options = new JPanel(new GridLayout(7, 1, 4, 4));
         options.add(customNameRow);
         options.add(sensitiveRow);
         options.add(similarityRow);
         options.add(blurLevelRow);
+        options.add(originRow);
+        options.add(parentIpedRow);
         annotationsToggle.setToolTipText(Messages.getString("ChatCapturePanel.IncludeAnnotations")); //$NON-NLS-1$
         options.add(annotationsToggle);
         form.add(options, BorderLayout.SOUTH);
@@ -218,6 +238,8 @@ public class ChatCapturePanel extends JPanel {
 
         chooseFolder.addActionListener(e -> selectFolder());
         chooseSensitiveFolder.addActionListener(e -> selectSensitiveFolder());
+        chooseOriginFolder.addActionListener(e -> selectDirectoryInto(originFolderField));
+        chooseParentIpedFolder.addActionListener(e -> selectDirectoryInto(parentIpedFolderField));
         customNameToggle.addActionListener(e -> customFolderName.setEnabled(customNameToggle.isSelected()));
         startStop.addActionListener(e -> {
             if (viewer != null && viewer.isChatCaptureRunning()) {
@@ -231,8 +253,10 @@ public class ChatCapturePanel extends JPanel {
                     return;
                 }
                 if (viewer != null) {
+                    saveOriginPreferences();
                     viewer.startChatCaptureFromUi(this, destination, getEffectiveCustomName(),
-                            getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+                            getSensitiveImagesFolder(), getSensitiveSimilarityPercent(), getSensitiveBlurPercent(),
+                            getOriginFolder(), getParentIpedFolder());
                 }
             }
         });
@@ -469,14 +493,48 @@ public class ChatCapturePanel extends JPanel {
     }
 
     private void selectSensitiveFolder() {
+        selectDirectoryInto(sensitiveImagesFolder);
+    }
+
+    private void selectDirectoryInto(JTextField field) {
         JFileChooser chooser = new JFileChooser();
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        if (!sensitiveImagesFolder.getText().trim().isEmpty()) {
-            chooser.setCurrentDirectory(new File(sensitiveImagesFolder.getText()));
+        if (!field.getText().trim().isEmpty()) {
+            chooser.setCurrentDirectory(new File(field.getText()));
         }
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            sensitiveImagesFolder.setText(chooser.getSelectedFile().getAbsolutePath());
+            field.setText(chooser.getSelectedFile().getAbsolutePath());
         }
+    }
+
+    private void loadSavedOriginPreferences() {
+        try {
+            java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userNodeForPackage(ChatCapturePanel.class);
+            String lastOrigin = prefs.get("originFolder", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            String lastParent = prefs.get("parentIpedFolder", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            if (!lastOrigin.isBlank()) originFolderField.setText(lastOrigin);
+            if (!lastParent.isBlank()) parentIpedFolderField.setText(lastParent);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void saveOriginPreferences() {
+        try {
+            java.util.prefs.Preferences prefs = java.util.prefs.Preferences.userNodeForPackage(ChatCapturePanel.class);
+            prefs.put("originFolder", originFolderField.getText() == null ? "" : originFolderField.getText().trim()); //$NON-NLS-1$ //$NON-NLS-2$
+            prefs.put("parentIpedFolder", parentIpedFolderField.getText() == null ? "" : parentIpedFolderField.getText().trim()); //$NON-NLS-1$ //$NON-NLS-2$
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    public File getOriginFolder() {
+        String path = originFolderField.getText() == null ? "" : originFolderField.getText().trim(); //$NON-NLS-1$
+        return path.isEmpty() ? null : new File(path);
+    }
+
+    public File getParentIpedFolder() {
+        String path = parentIpedFolderField.getText() == null ? "" : parentIpedFolderField.getText().trim(); //$NON-NLS-1$
+        return path.isEmpty() ? null : new File(path);
     }
 
     private File getSensitiveImagesFolder() {
@@ -509,6 +567,8 @@ public class ChatCapturePanel extends JPanel {
             startStop.setText(Messages.getString(running ? "ChatCapturePanel.Stop" : "ChatCapturePanel.Start")); //$NON-NLS-1$ //$NON-NLS-2$
             recapture.setEnabled(!running);
             annotationsToggle.setEnabled(!running);
+            chooseOriginFolder.setEnabled(!running);
+            chooseParentIpedFolder.setEnabled(!running);
         });
     }
 

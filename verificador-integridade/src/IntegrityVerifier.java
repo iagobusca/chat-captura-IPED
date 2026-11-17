@@ -35,7 +35,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.4.5";
+    private static final String VERIFIER_VERSION = "1.5.0";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
@@ -241,6 +241,7 @@ public final class IntegrityVerifier {
             case "anotações íntegras":
             case "reconciliação por mensagem íntegra":
             case "registro de migração íntegro":
+            case "vínculo de origem íntegro":
             case "anotações legadas preservadas":
             case "inalterada desde a captura anterior":
             case "alterada desde a captura anterior":
@@ -254,11 +255,15 @@ public final class IntegrityVerifier {
     private static final class CliOptions {
         boolean verifyOnly;
         boolean exportHistory;
+        boolean auditOrigin;
         boolean showVersion;
         boolean showHelp;
         boolean selfTest;
         boolean tooManyArgs;
         String unknownFlag;
+        String originFolder;
+        String parentIpedFolder;
+        String subcaseFolder;
         String positionalFolder;
     }
 
@@ -267,7 +272,8 @@ public final class IntegrityVerifier {
         if (args == null) {
             return options;
         }
-        for (String rawArg : args) {
+        for (int i = 0; i < args.length; i++) {
+            String rawArg = args[i];
             if (rawArg == null) {
                 continue;
             }
@@ -276,6 +282,26 @@ public final class IntegrityVerifier {
                 options.verifyOnly = true;
             } else if ("--export-history".equalsIgnoreCase(arg)) {
                 options.exportHistory = true;
+            } else if ("--audit-origin".equalsIgnoreCase(arg)) {
+                options.auditOrigin = true;
+            } else if ("--origin".equalsIgnoreCase(arg)) {
+                if (i + 1 >= args.length) {
+                    options.unknownFlag = "--origin (caminho ausente)";
+                    break;
+                }
+                options.originFolder = args[++i];
+            } else if ("--parent-iped".equalsIgnoreCase(arg)) {
+                if (i + 1 >= args.length) {
+                    options.unknownFlag = "--parent-iped (caminho ausente)";
+                    break;
+                }
+                options.parentIpedFolder = args[++i];
+            } else if ("--subcase".equalsIgnoreCase(arg)) {
+                if (i + 1 >= args.length) {
+                    options.unknownFlag = "--subcase (caminho ausente)";
+                    break;
+                }
+                options.subcaseFolder = args[++i];
             } else if ("--version".equalsIgnoreCase(arg) || "-v".equalsIgnoreCase(arg)) {
                 options.showVersion = true;
             } else if ("--help".equalsIgnoreCase(arg) || "-h".equalsIgnoreCase(arg)
@@ -297,9 +323,10 @@ public final class IntegrityVerifier {
     }
 
     private static String cliUsage() {
-        return "Uso: integridade-verifier [--verify-only [pasta] | --export-history [pasta] | --version | --self-test | --help]\n"
+        return "Uso: integridade-verifier [--verify-only [pasta] | --export-history [pasta] | --audit-origin [pasta] --origin <pasta-avila> [--parent-iped <caso-pai>] | --version | --self-test | --help]\n"
                 + "  --verify-only [pasta]     Verifica capturas em modo CLI (sem interface grafica)\n"
                 + "  --export-history [pasta]  Gera integridade/historico-capturas.txt em modo CLI\n"
+                + "  --audit-origin [pasta]    Audita origem Avilla (--origin obrigatorio, --parent-iped opcional)\n"
                 + "  --version, -v             Exibe a versao do verificador\n"
                 + "  --self-test               Executa autodiagnostico rapido de runtime e limites\n"
                 + "  --help, -h                Exibe esta ajuda";
@@ -346,8 +373,8 @@ public final class IntegrityVerifier {
             System.err.println(cliUsage());
             throw new IOException("Argumentos de linha de comando inválidos.");
         }
-        if (cli.verifyOnly && cli.exportHistory) {
-            System.err.println("As opções --verify-only e --export-history são mutuamente exclusivas.");
+        if ((cli.verifyOnly ? 1 : 0) + (cli.exportHistory ? 1 : 0) + (cli.auditOrigin ? 1 : 0) > 1) {
+            System.err.println("As opções --verify-only, --export-history e --audit-origin são mutuamente exclusivas.");
             System.err.println(cliUsage());
             throw new IOException("Opções de linha de comando incompatíveis.");
         }
@@ -365,7 +392,8 @@ public final class IntegrityVerifier {
         }
         boolean verifyOnly = cli.verifyOnly;
         boolean exportHistory = cli.exportHistory;
-        boolean cliMode = verifyOnly || exportHistory;
+        boolean auditOrigin = cli.auditOrigin;
+        boolean cliMode = verifyOnly || exportHistory || auditOrigin;
         Path root = cli.positionalFolder != null ? Paths.get(cli.positionalFolder) : applicationFolder();
         root = root.toAbsolutePath().normalize();
         if (cliMode) {
@@ -379,6 +407,26 @@ public final class IntegrityVerifier {
             if (captures.isEmpty()) {
                 System.err.println("Nenhuma captura com integridade.json ou manifest.json foi encontrada na pasta: " + root);
                 throw new IOException("Nenhuma captura encontrada na pasta: " + root);
+            }
+            if (auditOrigin) {
+                if (cli.originFolder == null || cli.originFolder.trim().isEmpty()) {
+                    throw new IOException("Informe --origin <pasta-avila> ao usar --audit-origin.");
+                }
+                verifyAllBounded(captures);
+                enforceReportBudget(captures);
+                Path originDir = Paths.get(cli.originFolder).toAbsolutePath().normalize();
+                Path parentIpedDir = (cli.parentIpedFolder == null || cli.parentIpedFolder.trim().isEmpty())
+                        ? null : Paths.get(cli.parentIpedFolder).toAbsolutePath().normalize();
+                Path subcaseDir = (cli.subcaseFolder == null || cli.subcaseFolder.trim().isEmpty())
+                        ? null : Paths.get(cli.subcaseFolder).toAbsolutePath().normalize();
+                OriginAuditResult res = runOriginAudit(root, captures, originDir, parentIpedDir, subcaseDir);
+                System.out.println(res.reportFile);
+                System.out.println("SHA-256_AUDITORIA_ORIGEM=" + res.reportSha256);
+                System.out.println("ORIGEM_AUDITORIA_STATUS=" + res.overallStatus);
+                if (!res.passed) {
+                    throw new IOException("Auditoria de origem apontou divergência ou arquivo não localizado: " + res.overallStatus);
+                }
+                return;
             }
             if (verifyOnly) {
                 boolean ok=true;
@@ -656,11 +704,14 @@ public final class IntegrityVerifier {
             JButton copyPublicHistory=new JButton("Copiar histórico completo público");copyPublicHistory.addActionListener(e->copyToClipboard(frame,publicHistory,"Histórico completo público copiado."));
             JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(frame,historyFile));
             JButton openHtml=new JButton("Abrir relatório HTML");openHtml.addActionListener(e->openInBrowser(frame,root.resolve("integridade.html")));
+            JButton auditOriginBtn=new JButton("Auditoria de origem...");auditOriginBtn.addActionListener(e->runGuiOriginAudit(frame,root,selected));
             JButton close=new JButton("Fechar");close.addActionListener(e->latch.countDown());
             gridActions.add(copyHistory);gridActions.add(copyPublicHistory);gridActions.add(openHistory);gridActions.add(openHtml);
+            JPanel bottomRow=new JPanel(new java.awt.GridLayout(1,2,6,6));
+            bottomRow.add(auditOriginBtn);bottomRow.add(close);
             JPanel actions=new JPanel(new java.awt.BorderLayout(0,6));
             actions.add(gridActions,java.awt.BorderLayout.CENTER);
-            actions.add(close,java.awt.BorderLayout.SOUTH);
+            actions.add(bottomRow,java.awt.BorderLayout.SOUTH);
             panel.add(actions);
             frame.setContentPane(panel);
             frame.addWindowListener(new WindowAdapter(){public void windowClosing(WindowEvent e){latch.countDown();}});
@@ -1053,6 +1104,7 @@ public final class IntegrityVerifier {
                 c.allowedFiles.add("integridade.json");
                 verifyHistory(c,integrity);
                 validateMigrationIntegrity(c,format,integrity);
+                validateOriginBindingIntegrity(c,format,integrity);
                 JSONObject migration=format.optJSONObject("migration");
                 if(migration!=null){
                     c.allowedFiles.add("migration.json");
@@ -1088,6 +1140,7 @@ public final class IntegrityVerifier {
                 if(Files.exists(c.dir.resolve("migration.json"),LinkOption.NOFOLLOW_LINKS)
                         ||Files.exists(c.dir.resolve("legacy-annotations.json"),LinkOption.NOFOLLOW_LINKS))
                     throw new IOException("Artefato legado de migração sem metadados no manifesto.");
+                validateOriginBindingIntegrity(c,format,null);
             }
             checkUnexpectedHtmlCaptureFiles(c,maxItemsAllowed);
             return;
@@ -2071,6 +2124,614 @@ public final class IntegrityVerifier {
             if(!normalizedDir.toRealPath().startsWith(realRoot))throw new IOException("Diretório de saída escapa da raiz permitida: "+normalizedDir);
         }
     }
+    private static void validateOriginBindingIntegrity(Capture c, JSONObject manifest, JSONObject integrity) throws Exception {
+        Path rawBinding = c.dir.resolve("origin-binding.json");
+        boolean hasDeclared = manifest.has("originBinding") || manifest.has("originBindingFile") || manifest.has("originBindingSha256");
+        if (!hasDeclared) {
+            if (Files.exists(rawBinding, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Artefato origin-binding.json sem metadados no manifesto.");
+            }
+            return;
+        }
+        String bindingFile = manifest.optString("originBindingFile", "");
+        String bindingSha = manifest.optString("originBindingSha256", "");
+        JSONObject bindingSummary = manifest.optJSONObject("originBinding");
+        Path bindingPath = resolve(c.dir, "origin-binding.json");
+        if (!"origin-binding.json".equals(bindingFile) || !bindingSha.matches("(?i)[0-9a-f]{64}")
+                || bindingPath == null || isLinkOrReparse(bindingPath) || !Files.isRegularFile(bindingPath, LinkOption.NOFOLLOW_LINKS)
+                || safeRegularFileSize(bindingPath) > MAX_METADATA_BYTES || !hash(bindingPath).equalsIgnoreCase(bindingSha)) {
+            throw new IOException("Arquivo origin-binding.json ausente, inválido ou divergente do manifesto.");
+        }
+        JSONObject fullJson = parseBoundedJson(readUtf8Limited(bindingPath), bindingPath);
+        if (fullJson.optInt("originBindingVersion", 0) < 1) {
+            throw new IOException("Versão inválida em origin-binding.json.");
+        }
+        if (bindingSummary != null) {
+            String[] checkKeys = {"status", "collectionCode", "custodyHashsTxtSha256", "reportPdfSha256"};
+            for (String key : checkKeys) {
+                if (bindingSummary.has(key)) {
+                    String expectedVal = bindingSummary.optString(key, "");
+                    if ("custodyHashsTxtSha256".equals(key)) {
+                        String actualTxt = findCustodyEntrySha(fullJson.optJSONArray("custodyFiles"), "Hashs.txt");
+                        if (!expectedVal.equalsIgnoreCase(actualTxt)) throw new IOException("Resumo de vínculo de origem diverge em Hashs.txt.");
+                    } else if ("reportPdfSha256".equals(key)) {
+                        String actualPdf = findCustodyEntrySha(fullJson.optJSONArray("custodyFiles"), "report.pdf");
+                        if (!expectedVal.equalsIgnoreCase(actualPdf)) throw new IOException("Resumo de vínculo de origem diverge em report.pdf.");
+                    } else if (!expectedVal.equals(fullJson.optString(key, ""))) {
+                        throw new IOException("Resumo de origin-binding.json diverge do manifesto no campo " + key + ".");
+                    }
+                }
+            }
+        }
+        if (integrity != null) {
+            JSONArray artifacts = integrity.optJSONArray("artifacts");
+            JSONObject entry = findIntegrityArtifact(artifacts, "origin-binding.json");
+            if (entry == null || entry.optLong("size", -1) != safeRegularFileSize(bindingPath)
+                    || !entry.optString("sha256", "").equalsIgnoreCase(bindingSha)) {
+                throw new IOException("origin-binding.json não está vinculado ao inventário de integridade.json.");
+            }
+            addIntegrityArtifactItem(c, "origin-binding.json", entry, "vínculo de origem íntegro");
+        } else {
+            Item item = new Item();
+            item.path = "origin-binding.json";
+            item.expected = bindingSha;
+            item.actual = bindingSha;
+            item.bytes = safeRegularFileSize(bindingPath);
+            item.size = item.bytes;
+            item.state = "vínculo de origem íntegro";
+            c.items.add(item);
+        }
+        c.allowedFiles.add("origin-binding.json");
+        c.fileCount += 1;
+        c.bytes += safeRegularFileSize(bindingPath);
+        if (c.fileCount > MAX_CAPTURE_FILES || c.bytes > MAX_HTML_CAPTURE_BYTES) {
+            throw new IOException("Artefato origin-binding.json excede os limites da captura.");
+        }
+    }
+
+    private static String findCustodyEntrySha(JSONArray custodyFiles, String name) {
+        if (custodyFiles == null) return "";
+        for (int i = 0; i < custodyFiles.length(); i++) {
+            JSONObject row = custodyFiles.optJSONObject(i);
+            if (row != null && name.equalsIgnoreCase(row.optString("name", ""))) {
+                return row.optString("sha256", "");
+            }
+        }
+        return "";
+    }
+
+    private static final class OriginAuditResult {
+        final Path reportFile;
+        final String reportText;
+        final String reportSha256;
+        final String overallStatus;
+        final boolean passed;
+        OriginAuditResult(Path reportFile, String reportText, String reportSha256, String overallStatus, boolean passed) {
+            this.reportFile = reportFile;
+            this.reportText = reportText;
+            this.reportSha256 = reportSha256;
+            this.overallStatus = overallStatus;
+            this.passed = passed;
+        }
+    }
+
+    private static final class DualDigest {
+        final String sha256;
+        final String md5;
+        DualDigest(String sha256, String md5) {
+            this.sha256 = sha256;
+            this.md5 = md5;
+        }
+    }
+
+    private static DualDigest dualHash(Path p) throws Exception {
+        if (p == null || isLinkOrReparse(p) || !Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Arquivo inválido para auditoria de origem: " + p);
+        }
+        MessageDigest sha = MessageDigest.getInstance("SHA-256");
+        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        try (InputStream in = new BufferedInputStream(Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS), 32768)) {
+            byte[] buf = new byte[32768];
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                if (n > 0) {
+                    sha.update(buf, 0, n);
+                    md5.update(buf, 0, n);
+                }
+            }
+        }
+        return new DualDigest(hex(sha.digest()), hex(md5.digest()));
+    }
+
+    private static java.nio.charset.Charset detectTextBomCharset(Path p) throws IOException {
+        byte[] bom = new byte[4];
+        int r = 0;
+        try (InputStream in = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
+            while (r < 4) {
+                int k = in.read(bom, r, 4 - r);
+                if (k < 0) break;
+                r += k;
+            }
+        }
+        if (r >= 2) {
+            int b0 = bom[0] & 0xFF, b1 = bom[1] & 0xFF;
+            if (b0 == 0xFF && b1 == 0xFE) return StandardCharsets.UTF_16LE;
+            if (b0 == 0xFE && b1 == 0xFF) return StandardCharsets.UTF_16BE;
+        }
+        return StandardCharsets.UTF_8;
+    }
+
+    private static final class ParsedHashsTxt {
+        String encoding = "";
+        String fileSha256 = "";
+        String fileMd5 = "";
+        int count;
+        final Map<String, String> shaToRelPath = new HashMap<>();
+        final Set<String> cryptBackups = new LinkedHashSet<>();
+    }
+
+    private static ParsedHashsTxt parseOriginHashsTxt(Path hashsTxt) throws Exception {
+        ParsedHashsTxt res = new ParsedHashsTxt();
+        if (hashsTxt == null) return res;
+        DualDigest dh = dualHash(hashsTxt);
+        res.fileSha256 = dh.sha256;
+        res.fileMd5 = dh.md5;
+        java.nio.charset.Charset cs = detectTextBomCharset(hashsTxt);
+        res.encoding = cs.name();
+        String curAlg = "", curHash = "";
+        StringBuilder curPath = new StringBuilder();
+        boolean inPath = false;
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new BufferedInputStream(Files.newInputStream(hashsTxt, LinkOption.NOFOLLOW_LINKS)), cs), 32768)) {
+            String raw;
+            while ((raw = br.readLine()) != null) {
+                String line = (!raw.isEmpty() && raw.charAt(0) == '\uFEFF') ? raw.substring(1) : raw;
+                if (line.trim().isEmpty()) {
+                    flushOriginHashEntry(res, curAlg, curHash, curPath.toString());
+                    curAlg = ""; curHash = ""; curPath.setLength(0); inPath = false;
+                    continue;
+                }
+                if (inPath && (line.startsWith("            ") || line.startsWith("\t"))) {
+                    curPath.append(line.trim());
+                    continue;
+                }
+                String t = line.trim();
+                int colon = t.indexOf(':');
+                if (colon > 0) {
+                    String k = t.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+                    String v = t.substring(colon + 1).trim();
+                    if ("algorithm".equals(k)) {
+                        flushOriginHashEntry(res, curAlg, curHash, curPath.toString());
+                        curAlg = v.toUpperCase(Locale.ROOT); curHash = ""; curPath.setLength(0); inPath = false;
+                    } else if ("hash".equals(k)) {
+                        curHash = v.toLowerCase(Locale.ROOT); inPath = false;
+                    } else if ("path".equals(k)) {
+                        curPath.setLength(0); curPath.append(v); inPath = true;
+                    }
+                }
+            }
+            flushOriginHashEntry(res, curAlg, curHash, curPath.toString());
+        }
+        return res;
+    }
+
+    private static void flushOriginHashEntry(ParsedHashsTxt res, String alg, String h, String rawPath) {
+        if (h == null || !h.matches("[0-9a-f]{64}")) return;
+        if (!alg.isEmpty() && !alg.contains("SHA256") && !alg.contains("SHA-256")) return;
+        String rel = normalizeOriginRelPath(rawPath);
+        if (res.shaToRelPath.putIfAbsent(h, rel) == null) res.count++;
+        if (rel.toLowerCase(Locale.ROOT).matches(".*(?:msgstore|wa)(?:-[^/]+)?\\.db\\.crypt\\d+$")) {
+            res.cryptBackups.add(h);
+        }
+    }
+
+    private static String normalizeOriginRelPath(String rawPath) {
+        if (rawPath == null) return "";
+        String norm = rawPath.trim().replace('\\', '/');
+        int idx = norm.toLowerCase(Locale.ROOT).indexOf("/sdcard/");
+        if (idx >= 0) return norm.substring(idx + 1);
+        Matcher m = Pattern.compile("(?i)(?:^|/)CopyAll/[^/]+/(.+)$").matcher(norm);
+        if (m.find()) return m.group(1);
+        int last = norm.lastIndexOf('/');
+        return last >= 0 ? norm.substring(last + 1) : norm;
+    }
+
+    private static Path findChildIgnoreCase(Path dir, String name) throws IOException {
+        Path direct = dir.resolve(name);
+        if (Files.exists(direct, LinkOption.NOFOLLOW_LINKS)) {
+            if (isLinkOrReparse(direct) || !Files.isRegularFile(direct, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Arquivo inválido: " + direct);
+            return direct;
+        }
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+            for (Path p : ds) {
+                if (p.getFileName() != null && p.getFileName().toString().equalsIgnoreCase(name)
+                        && !isLinkOrReparse(p) && Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) {
+                    return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Path findOriginDatabaseSafe(Path originDir) throws IOException {
+        String[] cands = {
+            "sdcard/Android/com.whatsapp.tar/data/user/0/com.whatsapp/databases/msgstore.db",
+            "sdcard/com.whatsapp/databases/msgstore.db",
+            "databases/msgstore.db",
+            "msgstore.db"
+        };
+        for (String rel : cands) {
+            Path p = resolve(originDir, rel);
+            if (p != null && Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) return p;
+        }
+        final Path[] found = new Path[1];
+        Files.walkFileTree(originDir, Collections.<FileVisitOption>emptySet(), 10, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
+                if (!d.equals(originDir) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d))) return FileVisitResult.SKIP_SUBTREE;
+                String n = d.getFileName() == null ? "" : d.getFileName().toString().toLowerCase(Locale.ROOT);
+                if ("media".equals(n) || "thumbs".equals(n) || "cache".equals(n)) return FileVisitResult.SKIP_SUBTREE;
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
+                if (!a.isSymbolicLink() && !a.isOther() && a.isRegularFile() && f.getFileName() != null
+                        && "msgstore.db".equalsIgnoreCase(f.getFileName().toString())) {
+                    found[0] = f;
+                    return FileVisitResult.TERMINATE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return found[0];
+    }
+
+    private static void validateSafeOriginTree(Path rootDir) throws IOException {
+        validateRootDirectory(rootDir);
+        Path norm = rootDir.toAbsolutePath().normalize();
+        Path fsRoot = norm.getRoot();
+        if (fsRoot != null && !norm.equals(fsRoot)) {
+            Path cur = fsRoot;
+            for (Path part : fsRoot.relativize(norm)) {
+                cur = cur.resolve(part);
+                if (isLinkOrReparse(cur)) throw new IOException("Link simbólico ou junção não permitido no caminho: " + cur);
+            }
+        }
+    }
+
+    private static Set<String> collectExportedInlineBlobs(Path searchRoot, Set<String> targetItemHashes) throws Exception {
+        Set<String> blobs = new HashSet<>();
+        if (searchRoot == null || targetItemHashes.isEmpty()) return blobs;
+        Path exp = searchRoot.resolve("Exportados");
+        if (!Files.exists(exp, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(exp) || !Files.isDirectory(exp, LinkOption.NOFOLLOW_LINKS)) return blobs;
+        Pattern dataUri = Pattern.compile("data:(?:image|audio|video)/[^;\"'\\s]+;base64,([A-Za-z0-9+/=]+)", Pattern.CASE_INSENSITIVE);
+        final Path realExp = exp.toRealPath();
+        Files.walkFileTree(exp, Collections.<FileVisitOption>emptySet(), 6, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
+                if (!d.equals(exp) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d) || !d.toRealPath().startsWith(realExp))) return FileVisitResult.SKIP_SUBTREE;
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) throws IOException {
+                if (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(f) || !a.isRegularFile()) return FileVisitResult.CONTINUE;
+                String name = f.getFileName() == null ? "" : f.getFileName().toString().toLowerCase(Locale.ROOT);
+                if ((!name.endsWith(".html") && !name.endsWith(".htm")) || a.size() > MAX_HTML_CAPTURE_BYTES) return FileVisitResult.CONTINUE;
+                try {
+                    DualDigest dh = dualHash(f);
+                    if (targetItemHashes.contains(dh.md5) || targetItemHashes.contains(dh.sha256)) {
+                        String html = readUtf8Limited(f, MAX_HTML_CAPTURE_BYTES);
+                        Matcher m = dataUri.matcher(html);
+                        while (m.find()) {
+                            try {
+                                byte[] decoded = Base64.getDecoder().decode(m.group(1));
+                                blobs.add(hex(MessageDigest.getInstance(ALG).digest(decoded)));
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                    }
+                } catch (Exception ignored) {}
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return blobs;
+    }
+
+    private static OriginAuditResult runOriginAudit(Path capturesRoot, List<Capture> captures, Path originDir, Path parentIpedDir) throws Exception {
+        return runOriginAudit(capturesRoot, captures, originDir, parentIpedDir, null);
+    }
+
+    private static OriginAuditResult runOriginAudit(Path capturesRoot, List<Capture> captures, Path originDir, Path parentIpedDir, Path subcaseDir) throws Exception {
+        validateSafeOriginTree(originDir);
+        if (parentIpedDir != null) validateSafeOriginTree(parentIpedDir);
+        if (subcaseDir != null) validateSafeOriginTree(subcaseDir);
+
+        Path hashsTxtPath = findChildIgnoreCase(originDir, "Hashs.txt");
+        Path hashsAvillaPath = findChildIgnoreCase(originDir, "Hashs.avilla");
+        Path reportPdfPath = findChildIgnoreCase(originDir, "report.pdf");
+        ParsedHashsTxt hashsIdx = parseOriginHashsTxt(hashsTxtPath);
+        String avillaSha = hashsAvillaPath == null ? "" : hash(hashsAvillaPath);
+        String pdfSha = reportPdfPath == null ? "" : hash(reportPdfPath);
+
+        Path dbPath = findOriginDatabaseSafe(originDir);
+        DualDigest dbPre = dbPath == null ? null : dualHash(dbPath);
+        boolean dbInHashs = dbPre != null && hashsIdx.shaToRelPath.containsKey(dbPre.sha256);
+
+        // Coleta itemHashes das capturas + anexos unicos
+        Set<String> captureHtmlHashes = new HashSet<>();
+        Map<String, Long> neededAttachmentSizes = new HashMap<>();
+        for (Capture c : captures) {
+            Path mp = resolve(c.dir, "manifest.json");
+            if (mp != null && Files.isRegularFile(mp, LinkOption.NOFOLLOW_LINKS)) {
+                JSONObject m = parseBoundedJson(readUtf8Limited(mp), mp);
+                JSONObject sm = m.optJSONObject("sourceMetadata");
+                if (sm != null) {
+                    String ih = sm.optString("itemHash", "").trim().toLowerCase(Locale.ROOT);
+                    if (!ih.isEmpty()) captureHtmlHashes.add(ih);
+                }
+            }
+            for (Item it : c.items) {
+                if (it.path != null && it.path.startsWith("attachments/") && it.actual != null && it.actual.matches("(?i)[0-9a-f]{64}")) {
+                    neededAttachmentSizes.putIfAbsent(it.actual.toLowerCase(Locale.ROOT), it.bytes);
+                }
+            }
+        }
+
+        // Busca parent IPED CSV e HTMLs exportados
+        Set<String> matchedParentHtmls = new HashSet<>();
+        boolean matchedParentDb = false;
+        if (parentIpedDir != null) {
+            Path csv = resolve(parentIpedDir, "Lista de Arquivos.csv");
+            if (csv != null && Files.isRegularFile(csv, LinkOption.NOFOLLOW_LINKS)) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(new BufferedInputStream(Files.newInputStream(csv, LinkOption.NOFOLLOW_LINKS)), StandardCharsets.UTF_8), 65536)) {
+                    String hdr = br.readLine();
+                    if (hdr != null) {
+                        char d = hdr.indexOf(';') >= 0 ? ';' : ',';
+                        String cleanHdr = (!hdr.isEmpty() && hdr.charAt(0) == '\uFEFF') ? hdr.substring(1) : hdr;
+                        List<String> cols = parseCsvLineSimple(cleanHdr, d);
+                        int md5Col = csvCol(cols, "md5"), shaCol = csvCol(cols, "sha256", "sha-256"), nameCol = csvCol(cols, "nome", "name");
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            if (line.isEmpty()) continue;
+                            List<String> row = parseCsvLineSimple(line, d);
+                            String md5v = md5Col >= 0 && md5Col < row.size() ? row.get(md5Col).trim().toLowerCase(Locale.ROOT) : "";
+                            String shav = shaCol >= 0 && shaCol < row.size() ? row.get(shaCol).trim().toLowerCase(Locale.ROOT) : "";
+                            String nmv = nameCol >= 0 && nameCol < row.size() ? row.get(nameCol).trim().toLowerCase(Locale.ROOT) : "";
+                            if (captureHtmlHashes.contains(md5v)) matchedParentHtmls.add(md5v);
+                            if (captureHtmlHashes.contains(shav)) matchedParentHtmls.add(shav);
+                            if (dbPre != null && nmv.contains("msgstore") && (dbPre.md5.equals(md5v) || dbPre.sha256.equals(shav))) {
+                                matchedParentDb = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Blobs inline base64 de HTMLs exportados encontrados no caso pai, subcaso ou pasta raiz
+        Set<String> exportedInlineBlobs = new HashSet<>();
+        if (parentIpedDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(parentIpedDir, captureHtmlHashes));
+        if (subcaseDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(subcaseDir, captureHtmlHashes));
+        exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot, captureHtmlHashes));
+        if (capturesRoot.getParent() != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot.getParent(), captureHtmlHashes));
+
+        // Pre-filtro por tamanho na origem somente para anexos nao resolvidos em Hashs.txt / blobs inline
+        Set<Long> missingSizes = new HashSet<>();
+        for (Map.Entry<String, Long> e : neededAttachmentSizes.entrySet()) {
+            String s = e.getKey();
+            if (!hashsIdx.shaToRelPath.containsKey(s) && !exportedInlineBlobs.contains(s) && e.getValue() > 0) {
+                missingSizes.add(e.getValue());
+            }
+        }
+        Map<String, String> diskOnlyShaToRel = new HashMap<>();
+        if (!missingSizes.isEmpty()) {
+            Path realOrig = originDir.toRealPath();
+            Files.walkFileTree(originDir, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
+                    if (!d.equals(originDir) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d) || !d.toRealPath().startsWith(realOrig))) return FileVisitResult.SKIP_SUBTREE;
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) throws IOException {
+                    if (!a.isSymbolicLink() && !a.isOther() && a.isRegularFile() && missingSizes.contains(a.size())) {
+                        try {
+                            String fh = hash(f).toLowerCase(Locale.ROOT);
+                            if (neededAttachmentSizes.containsKey(fh)) {
+                                diskOnlyShaToRel.putIfAbsent(fh, originDir.relativize(f).toString().replace('\\', '/'));
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+
+        StringBuilder rpt = new StringBuilder();
+        rpt.append("AUDITORIA_ORIGEM_V1\n");
+        rpt.append("VERIFICADOR|").append(VERIFIER_VERSION).append("\n");
+        rpt.append("DATA_UTC|").append(OffsetDateTime.now().toString()).append("\n");
+        rpt.append("N0_HASHS_TXT_SHA256|").append(hashsIdx.fileSha256.isEmpty() ? "ausente" : hashsIdx.fileSha256).append("\n");
+        rpt.append("N0_HASHS_TXT_ENCODING|").append(hashsIdx.encoding).append("|ENTRADAS_SHA256|").append(hashsIdx.count).append("\n");
+        rpt.append("N0_HASHS_AVILLA_SHA256|").append(avillaSha.isEmpty() ? "ausente" : avillaSha).append("\n");
+        rpt.append("N0_REPORT_PDF_SHA256|").append(pdfSha.isEmpty() ? "ausente" : pdfSha).append("\n");
+        rpt.append("N1_MSGSTORE_SHA256|").append(dbPre == null ? "ausente" : dbPre.sha256).append("|NO_HASHS_TXT|").append(dbInHashs).append("|BACKUPS_CRYPT_NO_HASHS|").append(hashsIdx.cryptBackups.size()).append("\n");
+        if (parentIpedDir != null) {
+            rpt.append("N1_CASO_IPED_PAI|HTML_MATCH|").append(matchedParentHtmls.size()).append('/').append(captureHtmlHashes.size())
+               .append("|MSGSTORE_MATCH|").append(matchedParentDb).append("\n");
+        }
+
+        boolean allPassed = !hashsIdx.fileSha256.isEmpty();
+        int totalCust = 0, totalEmb = 0, totalOrigNoHash = 0, totalMissing = 0, capIdx = 0;
+
+        List<Capture> sortedCaps = new ArrayList<>(captures);
+        sortedCaps.sort(Comparator.comparing(c -> c.name.toLowerCase(Locale.ROOT)));
+        for (Capture c : sortedCaps) {
+            capIdx++;
+            String anon = anonymizeCaptureName(c.name);
+            Path mp = resolve(c.dir, "manifest.json");
+            JSONObject manifest = (mp != null && Files.isRegularFile(mp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(mp), mp) : new JSONObject();
+            Path bp = resolve(c.dir, "origin-binding.json");
+            JSONObject binding = (bp != null && Files.isRegularFile(bp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(bp), bp) : null;
+
+            String bindingMatchStatus = "SEM_VINCULO_NO_MANIFESTO";
+            if (binding != null) {
+                JSONArray cf = binding.optJSONArray("custodyFiles");
+                String bTxt = findCustodyEntrySha(cf, "Hashs.txt");
+                String bPdf = findCustodyEntrySha(cf, "report.pdf");
+                boolean txtOk = bTxt.isEmpty() || bTxt.equalsIgnoreCase(hashsIdx.fileSha256);
+                boolean pdfOk = bPdf.isEmpty() || bPdf.equalsIgnoreCase(pdfSha);
+                JSONObject bDb = binding.optJSONObject("sourceDatabase");
+                String bDbSha = bDb == null ? "" : bDb.optString("sha256", "");
+                boolean dbOk = bDbSha.isEmpty() || (dbPre != null && bDbSha.equalsIgnoreCase(dbPre.sha256));
+                if (txtOk && pdfOk && dbOk) {
+                    bindingMatchStatus = "CONFERE";
+                } else {
+                    bindingMatchStatus = "DIVERGE_ORIGEM_ERRADA";
+                    allPassed = false;
+                }
+            }
+
+            Set<String> inlineForCap = new HashSet<>(exportedInlineBlobs);
+            if (binding != null && binding.optJSONObject("attachmentsOrigin") != null) {
+                JSONArray bi = binding.optJSONObject("attachmentsOrigin").optJSONArray("items");
+                for (int i = 0; bi != null && i < bi.length(); i++) {
+                    JSONObject row = bi.optJSONObject(i);
+                    if (row != null && "EMBUTIDO_NO_HTML_IPED".equals(row.optString("status", ""))) {
+                        inlineForCap.add(row.optString("sha256", "").toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+
+            int cCust = 0, cEmb = 0, cOrig = 0, cMiss = 0;
+            StringBuilder itemLines = new StringBuilder();
+            for (Item it : c.items) {
+                if (it.path == null || !it.path.startsWith("attachments/") || it.actual == null) continue;
+                String s = it.actual.toLowerCase(Locale.ROOT);
+                String st;
+                if (hashsIdx.shaToRelPath.containsKey(s)) { st = "CUSTODIADO_AVILLA"; cCust++; }
+                else if (inlineForCap.contains(s)) { st = "EMBUTIDO_NO_HTML_IPED"; cEmb++; }
+                else if (diskOnlyShaToRel.containsKey(s)) { st = "EM_ORIGEM_SEM_HASH_TXT"; cOrig++; }
+                else { st = "NAO_LOCALIZADO"; cMiss++; }
+                itemLines.append("  ANEXO|").append(s).append('|').append(st).append('\n');
+            }
+            totalCust += cCust; totalEmb += cEmb; totalOrigNoHash += cOrig; totalMissing += cMiss;
+            if (cMiss > 0) allPassed = false;
+
+            rpt.append("\nCAPTURA_AUDITADA|").append(capIdx).append('|').append(recordField(anon))
+               .append("|VINCULO_ORIGEM|").append(bindingMatchStatus)
+               .append("|COLLECTION_CODE|").append(binding == null ? "" : recordField(binding.optString("collectionCode", "")))
+               .append('\n');
+            if (binding != null && binding.optJSONObject("custodyTimelineGap") != null) {
+                JSONObject gap = binding.optJSONObject("custodyTimelineGap");
+                rpt.append("GAP_CUSTODIA|").append(recordField(gap.optString("status", "")))
+                   .append('|').append(recordField(gap.optString("pericialStatementPtBr", ""))).append('\n');
+            }
+            if (binding != null && binding.optJSONObject("n3SqliteAudit") != null) {
+                JSONObject n3 = binding.optJSONObject("n3SqliteAudit");
+                rpt.append("N3_MENSAGENS_PLUGIN|").append(recordField(n3.optString("status", "")))
+                   .append("|ATIVAS=").append(n3.optInt("matchedActive", 0))
+                   .append("|RECUPERADAS=").append(n3.optInt("recoveredOrNonTable", 0))
+                   .append("|DIVERGENTES=").append(n3.optInt("diverged", 0)).append('\n');
+            }
+            rpt.append("N2_ANEXOS|CUSTODIADO_AVILLA=").append(cCust)
+               .append("|EMBUTIDO_NO_HTML_IPED=").append(cEmb)
+               .append("|EM_ORIGEM_SEM_HASH_TXT=").append(cOrig)
+               .append("|NAO_LOCALIZADO=").append(cMiss).append('\n');
+            rpt.append(itemLines);
+        }
+
+        if (dbPre != null) {
+            DualDigest dbPost = dualHash(dbPath);
+            boolean originUntouched = dbPre.sha256.equalsIgnoreCase(dbPost.sha256);
+            rpt.append("\nORIGEM_MSGSTORE_INTACTA_POS_AUDITORIA|").append(originUntouched).append('\n');
+            if (!originUntouched) allPassed = false;
+        }
+        String overallStatus = allPassed ? "CONFERE (" + totalCust + " Avilla + " + totalEmb + " base64 HTML)"
+                : ("ATENCAO (naoLocalizados=" + totalMissing + ", origSemHash=" + totalOrigNoHash + ")");
+        rpt.append("RESUMO_AUDITORIA_ORIGEM|").append(overallStatus).append('\n');
+
+        String reportText = rpt.toString();
+        String reportSha = hashText(reportText);
+        Path outDir = capturesRoot.resolve("integridade");
+        createDirectoriesSafe(capturesRoot, outDir);
+        Path outFile = outDir.resolve("auditoria-origem.txt");
+        atomic(capturesRoot, outFile, reportText);
+        return new OriginAuditResult(outFile, reportText, reportSha, overallStatus, allPassed);
+    }
+
+    private static List<String> parseCsvLineSimple(String line, char delim) {
+        List<String> out = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean q = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (q) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') { sb.append('"'); i++; }
+                    else q = false;
+                } else sb.append(c);
+            } else if (c == '"') q = true;
+            else if (c == delim) { out.add(sb.toString()); sb.setLength(0); }
+            else sb.append(c);
+        }
+        out.add(sb.toString());
+        return out;
+    }
+
+    private static int csvCol(List<String> hdrs, String... keys) {
+        for (int i = 0; i < hdrs.size(); i++) {
+            String h = hdrs.get(i).trim().toLowerCase(Locale.ROOT);
+            for (String k : keys) if (h.equals(k)) return i;
+        }
+        return -1;
+    }
+
+    private static void runGuiOriginAudit(Component parent, Path capturesRoot, List<Capture> selected) {
+        JFileChooser originChooser = new JFileChooser();
+        originChooser.setDialogTitle("Selecione a pasta de origem custodiada (Avilla - com Hashs.txt / report.pdf)");
+        originChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        if (originChooser.showOpenDialog(parent) != JFileChooser.APPROVE_OPTION) return;
+        final Path originDir = originChooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+
+        JFileChooser parentChooser = new JFileChooser();
+        parentChooser.setDialogTitle("OPCIONAL: Caso IPED Pai (ex.: caso principal com Lista de Arquivos.csv) — Cancele se capturou direto");
+        parentChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        final Path parentIpedDir = parentChooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION
+                ? parentChooser.getSelectedFile().toPath().toAbsolutePath().normalize() : null;
+
+        new Thread(() -> {
+            try {
+                OriginAuditResult res = runOriginAudit(capturesRoot, selected, originDir, parentIpedDir);
+                SwingUtilities.invokeLater(() -> showOriginAuditResultWindow(parent, res));
+            } catch (Exception ex) {
+                showTopMessage(parent, "Falha na auditoria de origem:\n" + ex.getMessage(),
+                        "Auditoria de origem", JOptionPane.ERROR_MESSAGE);
+            }
+        }, "origin-audit-worker").start();
+    }
+
+    private static void showOriginAuditResultWindow(Component parent, OriginAuditResult res) {
+        JFrame win = newWindow("Verificador de Integridade - v" + VERIFIER_VERSION + " - Auditoria de origem", true);
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.add(plainLabel("Status: " + res.overallStatus));
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(hashValueRow("SHA-256 do auditoria-origem.txt", res.reportSha256, "SHA-256 do relatório de auditoria copiado."));
+        panel.add(Box.createVerticalStrut(6));
+        JTextArea area = new JTextArea(res.reportText, 16, 62);
+        area.setEditable(false);
+        area.putClientProperty("html.disable", Boolean.TRUE);
+        panel.add(new JScrollPane(area));
+        panel.add(Box.createVerticalStrut(8));
+        JPanel btns = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
+        JButton copyBtn = new JButton("Copiar relatório");
+        copyBtn.addActionListener(e -> copyToClipboard(win, res.reportText, "Relatório de auditoria copiado."));
+        JButton openBtn = new JButton("Abrir auditoria-origem.txt");
+        openBtn.addActionListener(e -> openFile(win, res.reportFile));
+        JButton closeBtn = new JButton("Fechar");
+        closeBtn.addActionListener(e -> win.dispose());
+        btns.add(copyBtn); btns.add(openBtn); btns.add(closeBtn);
+        panel.add(btns);
+        win.setContentPane(panel);
+        win.pack();
+        win.setLocationRelativeTo(parent);
+        win.setVisible(true);
+    }
+
     private static String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;");}
     private static String jsonEsc(String value){if(value==null)return "";StringBuilder out=new StringBuilder(value.length()+16);for(int i=0;i<value.length();i++){char c=value.charAt(i);switch(c){case '"':out.append("\\\"");break;case '\\':out.append("\\\\");break;case '\b':out.append("\\b");break;case '\f':out.append("\\f");break;case '\n':out.append("\\n");break;case '\r':out.append("\\r");break;case '\t':out.append("\\t");break;default:if(c<0x20)out.append(String.format("\\u%04x",(int)c));else out.append(c);}}return out.toString();}
 }

@@ -148,7 +148,7 @@ try {
         $p2Classes = Join-Path $RepoRoot 'tmp\phase2-plugin-tests'
         Remove-Item -LiteralPath $p2Classes -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $p2Classes | Out-Null
-        $p2CompileCp = "$IpedHome\lib\*;$PluginJarPath"
+        $p2CompileCp = "$PluginJarPath;$jsonJar;$IpedHome\lib\*"
         $p2Sources = @(Get-ChildItem 'src\iped\viewers' -Filter '*.java' | ForEach-Object { $_.FullName })
         & $javac21 -encoding UTF-8 -source 11 -target 11 -Xlint:-options `
             --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing `
@@ -162,7 +162,9 @@ try {
             tests\iped\viewers\JsonParsingRegressionTest.java `
             tests\iped\viewers\UiAndAuxFolderRegressionTest.java `
             tests\iped\viewers\OpenCvLoaderTest.java `
-            tests\iped\viewers\CaptureIntegrityTest.java
+            tests\iped\viewers\CaptureIntegrityTest.java `
+            tests\iped\viewers\OriginCustodyBinderTest.java `
+            tests\iped\viewers\OriginAuditEndToEndTest.java
         if ($LASTEXITCODE -ne 0) { throw 'javac phase2-plugin-tests falhou' }
         $p2RtCp = "$p2Classes;$p2CompileCp"
         foreach ($cls in @(
@@ -174,11 +176,14 @@ try {
             'iped.viewers.ChatAnnotationActionDialogTest',
             'iped.viewers.JsonParsingRegressionTest',
             'iped.viewers.UiAndAuxFolderRegressionTest',
-            'iped.viewers.CaptureIntegrityTest'
+            'iped.viewers.CaptureIntegrityTest',
+            'iped.viewers.OriginCustodyBinderTest'
         )) {
             & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp $cls
             if ($LASTEXITCODE -ne 0) { throw "Falhou: $cls" }
         }
+        & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp "$vhClasses;$p2RtCp" iped.viewers.OriginAuditEndToEndTest
+        if ($LASTEXITCODE -ne 0) { throw 'OriginAuditEndToEndTest falhou' }
         & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp iped.viewers.OpenCvLoaderTest (Join-Path $RepoRoot 'instalar_captura_chat_zap\opencv_java4120.dll')
         if ($LASTEXITCODE -ne 0) { throw 'OpenCvLoaderTest falhou' }
 

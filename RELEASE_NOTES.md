@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.0 (Estável / `main`) / Verificador 1.5.0
+
+- **Tag**: [v2.8.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.0) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.0-verificador-1.5.0.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.0/instalador-chat-captura-IPED-2.8.0-verificador-1.5.0.zip) (`94.472.170` bytes | SHA-256: `52ED8BD5D45F1E78D3CC95394C0D428006EC387F9DB41E10A2DF06FF6051FE3F`)
+- [integridade-verifier-1.5.0.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.0/integridade-verifier-1.5.0.exe) (`77.632.090` bytes | SHA-256: `20F823BF5B22E92672DEB0D6DB6150733D1F1B9CD4313E6519ABDB5E4EB51524`)
+- [integridade-verifier-1.5.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.0/integridade-verifier-1.5.0.jar) (`175.612` bytes | SHA-256: `194C1D9B6FE4AE615F882E74BE2B0ED662466F9E7AF2F887E5A8878A3242BA11`)
+- [iped-viewers-impl-4.3.1-2.8.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.0/iped-viewers-impl-4.3.1-2.8.0.jar) (`1.543.075` bytes | SHA-256: `9BF31AC81A7FDD8ADA56123BDEB2F95D751B30ADA8E705B7B2BA1637FC926F94`)
+
+### Resumo
+- Auditoria de Origem forense: vinculacao opcional no Plugin (origin-binding.json, PDFBox report.pdf + Hashs.txt UTF-16LE, correlacao MD5/SHA256 com Lista de Arquivos.csv do caso IPED pai, verificacao N3 em copia temporaria do msgstore.db e registro honesto de lacunas pos-tar) e auditoria offline no Verificador 1.5.0 (--audit-origin / Auditoria de origem... com integridade retroativa preservada para capturas legadas).
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.0**.
+
+---
 ## v2.7.0 (Estável / `main`) / Verificador 1.4.5
 
 - **Tag**: [v2.7.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.7.0) (Release estável compilada e publicada via `GiteaRunner` + `build-reproducible.ps1`)

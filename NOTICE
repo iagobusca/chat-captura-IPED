@@ -16,18 +16,19 @@ Obra base original:
   Licença upstream: GNU General Public License v3.0 (GPLv3)
 
 Modificações e extensões implementadas por: iagobusca
-Período das modificações documentadas: 2026-10-31 a 2026-11-16
+Período das modificações documentadas: 2026-10-31 a 2026-11-17
 
 Arquivos derivados do IPED 4.3.1 modificados por iagobusca:
 - src/iped/viewers/HtmlLinkViewer.java
   Modificações: captura offline (html-message-v1 e legado), anotações e links
   por mensagem, pesquisa no chat, censura visual por imagem de referência,
-  Re-Extrair com migração legada e controle determinístico de ciclo de vida
-  (dispose / OpenCV / WebView). Última modificação de código-fonte: 2026-11-16.
+  Re-Extrair com migração legada, controle determinístico de ciclo de vida
+  (dispose / OpenCV / WebView) e vinculação de cadeia de custódia de origem
+  (origin-binding.json). Última modificação de código-fonte: 2026-11-17.
 - instalar_captura_chat_zap/iped-viewer-messages.properties
 - instalar_captura_chat_zap/iped-viewer-messages_pt_BR.properties
   Modificações: chaves de interface e mensagens localizadas adicionadas para
-  o fluxo do Chat Captura IPED (2026-10-31 a 2026-11-14).
+  o fluxo do Chat Captura IPED (2026-10-31 a 2026-11-17).
 
 Módulos originais adicionados neste projeto (Copyright (C) 2026 iagobusca, GPLv3):
 - src/iped/viewers/AnnotationEligibility.java
@@ -46,6 +47,7 @@ Módulos originais adicionados neste projeto (Copyright (C) 2026 iagobusca, GPLv
 - src/iped/viewers/ChatSearchHit.java
 - src/iped/viewers/LinkedChatPickerDialog.java
 - src/iped/viewers/LinkedChatRef.java
+- src/iped/viewers/OriginCustodyBinder.java
 - src/iped/viewers/SavedChatPickerDialog.java
 - src/iped/viewers/VerifierIntegrity.java
 - verificador-integridade/src/IntegrityVerifier.java

@@ -147,7 +147,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.7.0"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.0"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -182,6 +182,8 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private volatile Path sensitiveImagesFolder;
     private volatile int sensitiveSimilarityPercent = 90;
     private volatile int sensitiveBlurPercent = 90;
+    private volatile Path originAuditFolder;
+    private volatile Path originParentIpedFolder;
     private volatile SensitiveImageMatcher sensitiveImageMatcher;
 private volatile RecaptureJob activeRecaptureJob;
     private final Set<String> sensitiveBlurHashes = new HashSet<>();
@@ -1203,6 +1205,24 @@ private void clearChatCaptureMarks() {
 
     void reportMissingOutputFolder() {
         chatCapturePanel.setStatus("ChatCapturePanel.MissingFolder"); //$NON-NLS-1$
+    }
+
+    public void setOriginAuditSources(File originDir, File parentIpedDir) {
+        this.originAuditFolder = originDir == null || originDir.getPath().trim().isEmpty() ? null : originDir.toPath();
+        this.originParentIpedFolder = parentIpedDir == null || parentIpedDir.getPath().trim().isEmpty() ? null : parentIpedDir.toPath();
+    }
+
+    public void setOriginAuditSources(Path originDir, Path parentIpedDir) {
+        this.originAuditFolder = originDir;
+        this.originParentIpedFolder = parentIpedDir;
+    }
+
+    void startChatCaptureFromUi(java.awt.Component alertParent, File outputFolder, String customFolderName,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent,
+            File originDir, File parentIpedDir) {
+        setOriginAuditSources(originDir, parentIpedDir);
+        startChatCaptureFromUi(alertParent, outputFolder, customFolderName, sensitiveImagesFolder,
+                sensitiveSimilarityPercent, sensitiveBlurPercent);
     }
 
     void startChatCaptureFromUi(java.awt.Component alertParent, File outputFolder, String customFolderName,
@@ -3274,6 +3294,8 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         long aggregateAttachmentBytes = 0;
         final long maxAggregateAttachmentBytes = MAX_HTML_MESSAGE_ATTACHMENT_BYTES * 6L;
         Set<String> uniqueAttachmentPaths = new HashSet<>();
+        Set<String> inlineMediaSha256 = new HashSet<>();
+        Map<String, String> attachmentPathBySha = new HashMap<>();
         Map<String, DecodedHtmlAttachment> resolvedCaseAttachments = new HashMap<>();
         Set<String> skippedCaseAttachments = new HashSet<>();
         String annotations = migrationJob != null && migrationJob.migrateLegacyToHtml ? "" : buildAnnotationsJson(); //$NON-NLS-1$
@@ -3326,6 +3348,8 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                     uniqueAttachmentPaths.add(relative);
                     aggregateAttachmentBytes += attachment.size;
                 }
+                inlineMediaSha256.add(attachment.sha256.toLowerCase(Locale.ROOT));
+                attachmentPathBySha.putIfAbsent(attachment.sha256.toLowerCase(Locale.ROOT), relative);
                 if (isCensoredAttachment(censor, attachment, relative, staging, censorVerdicts)) messageCensoredSha.add(attachment.sha256);
                 if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
@@ -3373,6 +3397,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                     uniqueAttachmentPaths.add(relative);
                     aggregateAttachmentBytes += attachment.size;
                 }
+                attachmentPathBySha.putIfAbsent(attachment.sha256.toLowerCase(Locale.ROOT), relative);
                 if (isCensoredAttachment(censor, attachment, relative, staging, censorVerdicts)) messageCensoredSha.add(attachment.sha256);
                 if (attachment.bytes != null) attachments.putIfAbsent(relative, attachment.bytes);
                 if (messageAttachmentPaths.add(relative)) attachmentList.put(new JSONObject().put("path", relative).put("mime", attachment.mime) //$NON-NLS-1$ //$NON-NLS-2$
@@ -3461,10 +3486,25 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             manifest.put("migration", migrationMetadata).put("migrationFile", "migration.json"); //$NON-NLS-1$ //$NON-NLS-2$
             manifest.put("migrationSha256", CaptureIntegrity.sha256(staging.resolve("migration.json"))); //$NON-NLS-1$
         }
+        Path activeOriginFolder = this.originAuditFolder;
+        Path originBindingFilePath = null;
+        if (activeOriginFolder != null) {
+            OriginCustodyBinder.OriginBindingResult originResult = OriginCustodyBinder.buildOriginBinding(
+                    activeOriginFolder, this.originParentIpedFolder, publicSourceMetadata, records,
+                    inlineMediaSha256, attachmentPathBySha, captureDir.getFileName() == null ? "" : captureDir.getFileName().toString()); //$NON-NLS-1$
+            originBindingFilePath = staging.resolve(OriginCustodyBinder.ORIGIN_BINDING_FILE);
+            CaptureIntegrity.writeAtomically(outputRoot, originBindingFilePath, originResult.fullBinding.toString(2));
+            manifest.put("originBinding", originResult.manifestSummary) //$NON-NLS-1$
+                    .put("originBindingFile", OriginCustodyBinder.ORIGIN_BINDING_FILE) //$NON-NLS-1$
+                    .put("originBindingSha256", CaptureIntegrity.sha256(originBindingFilePath)); //$NON-NLS-1$
+        }
         try {
             String messagesJson = new JSONObject().put("messages", records).toString(2); //$NON-NLS-1$
             long storedBytes = capturedHtml.getBytes(StandardCharsets.UTF_8).length + messagesJson.getBytes(StandardCharsets.UTF_8).length;
             for (byte[] attachment : attachments.values()) storedBytes += attachment.length;
+            if (originBindingFilePath != null) {
+                storedBytes += CaptureIntegrity.safeRegularFileSize(originBindingFilePath);
+            }
             if (migrationJob != null) for (String relative : migrationJob.stagedReusableAttachmentPaths) {
                 storedBytes += CaptureIntegrity.safeRegularFileSize(staging.resolve(relative));
             }

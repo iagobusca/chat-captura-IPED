@@ -51,7 +51,7 @@ $javaFxLib = Resolve-JavaFxLib -RepoRoot $repo -IpedRoot $ipedRoot
 $phase2Classes = Join-Path $repo 'tmp\phase2-plugin-tests'
 if (Test-Path $phase2Classes) { Remove-Item -Recurse -Force $phase2Classes }
 New-Item -ItemType Directory -Force -Path $phase2Classes | Out-Null
-$phase2CompileCp = "$(Join-Path $ipedRoot 'lib\*');$pluginJar"
+$phase2CompileCp = "$pluginJar;$jsonJar;$(Join-Path $ipedRoot 'lib\*')"
 $phase2Sources = @(Get-ChildItem (Join-Path $repo 'src\iped\viewers') -Filter '*.java' | ForEach-Object { $_.FullName })
 & $javac26 -encoding UTF-8 -source 11 -target 11 -Xlint:-options --module-path $javaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $phase2CompileCp -d $phase2Classes `
     $phase2Sources `
@@ -65,7 +65,9 @@ $phase2Sources = @(Get-ChildItem (Join-Path $repo 'src\iped\viewers') -Filter '*
     (Join-Path $repo 'tests\iped\viewers\UiAndAuxFolderRegressionTest.java') `
     (Join-Path $repo 'tests\iped\viewers\OpenCvLoaderTest.java') `
     (Join-Path $repo 'tests\iped\viewers\CaptureIntegrityTest.java') `
-    (Join-Path $repo 'tests\iped\viewers\VerifierIntegrityHashTest.java')
+    (Join-Path $repo 'tests\iped\viewers\VerifierIntegrityHashTest.java') `
+    (Join-Path $repo 'tests\iped\viewers\OriginCustodyBinderTest.java') `
+    (Join-Path $repo 'tests\iped\viewers\OriginAuditEndToEndTest.java')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $phase2RuntimeCp = "$phase2Classes;$phase2CompileCp"
 foreach ($cls in @(
@@ -78,11 +80,14 @@ foreach ($cls in @(
     'iped.viewers.JsonParsingRegressionTest',
     'iped.viewers.UiAndAuxFolderRegressionTest',
     'iped.viewers.CaptureIntegrityTest',
-    'iped.viewers.VerifierIntegrityHashTest'
+    'iped.viewers.VerifierIntegrityHashTest',
+    'iped.viewers.OriginCustodyBinderTest'
 )) {
     & $java26 --module-path $javaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $phase2RuntimeCp $cls
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
+& $java26 --module-path $javaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp "$classes;$phase2RuntimeCp" iped.viewers.OriginAuditEndToEndTest
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $java26 --module-path $javaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $phase2RuntimeCp iped.viewers.OpenCvLoaderTest (Join-Path $ipedRoot 'opencv_java4120.dll')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
