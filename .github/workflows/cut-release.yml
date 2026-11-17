@@ -91,7 +91,7 @@ jobs:
           key: repro-iped-4.3.1-jfx-21.0.5-temurin-21.0.13_9
 
       - name: Baixar e verificar SHA-256 de IPED 4.3.1 oficial e OpenJFX 21.0.5
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
@@ -128,11 +128,12 @@ jobs:
           if (!$jfxWeb) { throw 'javafx.web.jar nao encontrado no pacote OpenJFX 21.0.5' }
           $jfxLib = Split-Path -Parent $jfxWeb.FullName
 
-          @(
+          [string[]]$envLines = @(
             "IPED_HOME=$ipedHome",
             "JAVAFX_LIB=$jfxLib",
             "JAVA8_HOME=${{ steps.jdk8.outputs.path }}"
-          ) | Add-Content -Path $env:GITHUB_ENV -Encoding UTF8
+          )
+          [IO.File]::AppendAllLines($env:GITHUB_ENV, $envLines, [Text.UTF8Encoding]::new($false))
 
       - name: Executar corte 1-click (bump, build deterministico, suites, commit e tag)
         id: cut
@@ -142,7 +143,7 @@ jobs:
           IN_CHANNEL: ${{ inputs.channel }}
           IN_SUMMARY: ${{ inputs.summary_notes }}
           IN_DRY_RUN: ${{ inputs.dry_run }}
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $repo = (Get-Location).Path
@@ -226,7 +227,7 @@ jobs:
           }
 
           $summarySafe = ($meta.summaryDesc -replace "[\r\n]+", ' ').Trim()
-          @(
+          [string[]]$outLines = @(
             "plugin_version=$($meta.pluginVersion)",
             "verifier_version=$($meta.verifierVersion)",
             "tag_name=$($meta.tag)",
@@ -246,7 +247,8 @@ jobs:
             "plugin_sha=$($meta.pluginSha)",
             "summary_desc=$summarySafe",
             "commit_sha=$commitSha"
-          ) | Add-Content -Path $env:GITHUB_OUTPUT -Encoding UTF8
+          )
+          [IO.File]::AppendAllLines($env:GITHUB_OUTPUT, $outLines, [Text.UTF8Encoding]::new($false))
 
       - name: Enviar artefatos verificados para etapa de Deployment
         if: ${{ !inputs.dry_run }}
@@ -302,7 +304,7 @@ jobs:
           PLUGIN_SHA: ${{ needs.prepare-build-and-tag.outputs.plugin_sha }}
           SUMMARY_DESC: ${{ needs.prepare-build-and-tag.outputs.summary_desc }}
           COMMIT_SHA: ${{ needs.prepare-build-and-tag.outputs.commit_sha }}
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           function Format-DotBytes([string]$raw) {
@@ -359,4 +361,4 @@ jobs:
             "| ``$($env:JAR_ASSET)`` | ``$vJarFmt`` | ``$($env:JAR_SHA)`` |",
             "| ``$($env:PLUGIN_ASSET)`` | ``$pFmt`` | ``$($env:PLUGIN_SHA)`` |"
           ) -join "`n"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding UTF8
+          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, ($summary + "`n"), [Text.UTF8Encoding]::new($false))

@@ -80,6 +80,12 @@ $env:TEST_PLUGIN_JAR = $PluginJarPath
 Push-Location $RepoRoot
 try {
     Remove-Item Env:\PYTHONUTF8 -ErrorAction SilentlyContinue
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $winMod = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules'
+        $psMods = @($env:PSModulePath -split ';' | Where-Object { $_ -and ($_ -notmatch '\\powershell\\7') -and ($_ -notmatch '\\PowerShell\\Modules') })
+        if ($psMods -notcontains $winMod) { $psMods = @($winMod) + $psMods }
+        $env:PSModulePath = $psMods -join ';'
+    }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'verificador-integridade\prototype\test-security-spec.ps1')
     if ($LASTEXITCODE -ne 0) { throw "test-security-spec.ps1 falhou ($LASTEXITCODE)" }
 
