@@ -151,6 +151,7 @@ public final class VerifierIntegrityHashTest {
                         "invalid verifier must be replaced by trusted source: " + name);
             }
             testInstalledIpedLayoutAndMissingDir(temp);
+            testReadonlyOutdatedAndSubdirUpdates(temp, install, isValid, sha256);
         } finally {
             Files.deleteIfExists(output.resolve("integridade-verifier.jar"));
             Files.deleteIfExists(output.resolve("integridade-verifier.exe"));
@@ -205,6 +206,55 @@ public final class VerifierIntegrityHashTest {
             Files.deleteIfExists(fakeIped);
         }
         junctionOutputAndSourceAreRejected(temp);
+    }
+
+    private static void testReadonlyOutdatedAndSubdirUpdates(Path temp, Method install, Method isValid, Method sha256)
+            throws Exception {
+        Path out = Files.createDirectories(temp.resolve("readonly-subdir-output"));
+        Path existingSub = Files.createDirectories(out.resolve("integridade"));
+        Path nonCreatedSub = out.resolve("verificador-integridade");
+        Path outJar = out.resolve("integridade-verifier.jar");
+        Path outExe = out.resolve("integridade-verifier.exe");
+        Path subJar = existingSub.resolve("integridade-verifier.jar");
+        try {
+            install.invoke(null, out);
+            check(!Files.exists(nonCreatedSub), "unsolicited verificador-integridade subfolder must not be created");
+            java.nio.file.attribute.FileTime jarMtimeBefore = Files.getLastModifiedTime(outJar);
+            Thread.sleep(25L);
+            install.invoke(null, out);
+            check(jarMtimeBefore.equals(Files.getLastModifiedTime(outJar)),
+                    "valid current verifier JAR must not be rewritten unnecessarily");
+
+            Files.write(outJar, new byte[] { 1, 2, 3 });
+            Files.write(outExe, new byte[] { 4, 5, 6 });
+            Files.write(subJar, new byte[] { 7, 8, 9 });
+            for (Path ro : new Path[] { outJar, outExe, subJar }) {
+                try {
+                    Files.setAttribute(ro, "dos:readonly", Boolean.TRUE);
+                } catch (UnsupportedOperationException ignored) {
+                }
+            }
+
+            install.invoke(null, out);
+            check((Boolean) isValid.invoke(null, "integridade-verifier.jar", sha256.invoke(null, outJar)),
+                    "readonly outdated JAR must be replaced");
+            check((Boolean) isValid.invoke(null, "integridade-verifier.exe", sha256.invoke(null, outExe)),
+                    "readonly outdated EXE must be replaced");
+            check((Boolean) isValid.invoke(null, "integridade-verifier.jar", sha256.invoke(null, subJar)),
+                    "existing outdated verifier inside integridade subfolder must also be updated");
+        } finally {
+            for (Path p : new Path[] { subJar, outJar, outExe }) {
+                if (Files.exists(p)) {
+                    try {
+                        Files.setAttribute(p, "dos:readonly", Boolean.FALSE);
+                    } catch (UnsupportedOperationException ignored) {
+                    }
+                    Files.deleteIfExists(p);
+                }
+            }
+            Files.deleteIfExists(existingSub);
+            Files.deleteIfExists(out);
+        }
     }
 
     private static void junctionOutputAndSourceAreRejected(Path temp) throws Exception {

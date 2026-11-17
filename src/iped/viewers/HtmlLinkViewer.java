@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.5"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.6"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1355,8 +1355,8 @@ private void clearChatCaptureMarks() {
             showCaptureUiError(alertParent, "Captura de Chat", e.getMessage()); //$NON-NLS-1$
             return;
         }
+        VerifierIntegrity.installVerifierFiles(outputPath);
         if (alertParent != null) {
-            VerifierIntegrity.installVerifierFiles(outputPath);
             try {
                 SwingUtilities.invokeAndWait(() -> VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath));
             } catch (InterruptedException e) {
@@ -2125,6 +2125,7 @@ private void clearChatCaptureMarks() {
         int replaced = 0;
         String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
         try {
+            VerifierIntegrity.installVerifierFiles(outputRoot);
             for (int i = 0; i < captureIds.size() && !stopCaptureRequested; i++) {
                 RecaptureJob job;
                 try {

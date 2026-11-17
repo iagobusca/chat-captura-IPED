@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.6] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Captura nova e Re-Extrair agora garantem em todos os fluxos (UI e direto) a verificação de integridade-verifier (.jar/.exe) na pasta de destino e subpastas existentes (integridade/ e verificador-integridade/): adiciona se ausente, preserva se já estiver na versão atual (SHA-256 válido) e substitui automaticamente se desatualizado (inclusive limpando atributo somente leitura).
+- Verificador **1.5.4** (`200.920` bytes JAR `8180566A...` | `77.656.154` bytes EXE `959424CF...`) e Plugin **2.8.6** (`1.555.211` bytes `D6159104...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.6-verificador-1.5.4.zip` (`94.532.008` bytes `D0A9D268...`).
 ## [2.8.5] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

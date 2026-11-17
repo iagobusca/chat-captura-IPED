@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.6 (Estável / `main`) / Verificador 1.5.4
+
+- **Tag**: [v2.8.6](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.6) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.6-verificador-1.5.4.zip](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.6/instalador-chat-captura-IPED-2.8.6-verificador-1.5.4.zip) (`94.532.008` bytes | SHA-256: `D0A9D268027DB5FB77AAB542D77A3317FD74FCC9CE5D77F5EB535347609701BF`)
+- [integridade-verifier-1.5.4.exe](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.6/integridade-verifier-1.5.4.exe) (`77.656.154` bytes | SHA-256: `959424CFC4991148F23A4E41F167512C449128392618F3B070E3837E34FFF370`)
+- [integridade-verifier-1.5.4.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.6/integridade-verifier-1.5.4.jar) (`200.920` bytes | SHA-256: `8180566A0BEF7D70815FBCFFA77DE37B833B9BD4B2C87B185BB1B2A5792A41EF`)
+- [iped-viewers-impl-4.3.1-2.8.6.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.6/iped-viewers-impl-4.3.1-2.8.6.jar) (`1.555.211` bytes | SHA-256: `D61591049C3B64EE4DB050A57D90E0018B301F8163FD43B01408F0FEE675666A`)
+
+### Resumo
+- Captura nova e Re-Extrair agora garantem em todos os fluxos (UI e direto) a verificação de integridade-verifier (.jar/.exe) na pasta de destino e subpastas existentes (integridade/ e verificador-integridade/): adiciona se ausente, preserva se já estiver na versão atual (SHA-256 válido) e substitui automaticamente se desatualizado (inclusive limpando atributo somente leitura).
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.4**.
+
+---
 ## v2.8.5 (Estável / `main`) / Verificador 1.5.4
 
 - **Tag**: [v2.8.5](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.5) (Corte automatizado via `build-reproducible.ps1`)

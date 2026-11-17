@@ -22,7 +22,7 @@ public final class VerifierIntegrity {
     private static final Set<String> VALID_EXE_HASHES = Set.of("959424CFC4991148F23A4E41F167512C449128392618F3B070E3837E34FFF370");
     private static volatile boolean alertShown = false;
 
-    /** Copia os arquivos do verificador (jar/exe) para a pasta de captura, se encontrados. */
+    /** Garante o verificador (jar/exe) atualizado na pasta de destino: adiciona se ausente ou substitui se desatualizado. */
     public static void installVerifierFiles(Path outputFolder) {
         if (outputFolder == null) return;
         Path normalizedRoot = outputFolder.toAbsolutePath().normalize();
@@ -31,58 +31,114 @@ public final class VerifierIntegrity {
         } catch (IOException e) {
             return;
         }
+        Path[] extraExistingDirs = new Path[] {
+                normalizedRoot.resolve("integridade"), //$NON-NLS-1$
+                normalizedRoot.resolve("verificador-integridade") //$NON-NLS-1$
+        };
         for (String name : new String[] { JAR_NAME, EXE_NAME }) {
-            Path src = findTrustedVerifierFile(name);
-            if (src == null) continue;
-            Path dst = normalizedRoot.resolve(name);
-            try {
-                if (CaptureIntegrity.isLinkOrReparse(dst)) continue;
-            } catch (IOException e) {
-                continue;
-            }
-            boolean needCopy = !Files.isRegularFile(dst, java.nio.file.LinkOption.NOFOLLOW_LINKS);
-            if (!needCopy) {
-                try {
-                    String h = sha256(dst);
-                    if (!isValid(name, h)) needCopy = true;
-                } catch (IOException e) {
-                    needCopy = true;
-                }
-            }
-            if (!needCopy) continue;
-            Path temp = null;
-            try {
-                temp = Files.createTempFile(normalizedRoot, "." + name + ".", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
-                try (java.io.InputStream in = Files.newInputStream(src, java.nio.file.LinkOption.NOFOLLOW_LINKS);
-                     java.io.OutputStream out = Files.newOutputStream(temp,
-                             java.nio.file.StandardOpenOption.WRITE,
-                             java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-                             java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                    byte[] buf = new byte[16384];
-                    int n;
-                    while ((n = in.read(buf)) >= 0) {
-                        if (n > 0) out.write(buf, 0, n);
-                    }
-                }
-                if (!isValid(name, sha256(temp))) continue;
-                if (CaptureIntegrity.isLinkOrReparse(normalizedRoot) || CaptureIntegrity.isLinkOrReparse(dst)) continue;
-                try {
-                    Files.move(temp, dst, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-                    Files.move(temp, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                }
-            } catch (IOException ignored) {
-                // A falha ao copiar o verificador nao deve impedir a captura.
-            } finally {
-                if (temp != null) {
-                    try {
-                        Files.deleteIfExists(temp);
-                    } catch (IOException ignored) {
-                    }
+            ensureVerifierBinary(normalizedRoot, name, false);
+            for (Path subDir : extraExistingDirs) {
+                if (isNonLinkDirectory(subDir)) {
+                    ensureVerifierBinary(subDir, name, true);
                 }
             }
         }
+    }
+
+    private static void ensureVerifierBinary(Path targetDir, String name, boolean onlyIfExists) {
+        if (targetDir == null || !isNonLinkDirectory(targetDir)) {
+            return;
+        }
+        Path dst = targetDir.resolve(name);
+        try {
+            if (CaptureIntegrity.isLinkOrReparse(dst)) {
+                return;
+            }
+        } catch (IOException e) {
+            return;
+        }
+        boolean exists = Files.isRegularFile(dst, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        if (!exists && (onlyIfExists || Files.exists(dst, java.nio.file.LinkOption.NOFOLLOW_LINKS))) {
+            return;
+        }
+        if (exists) {
+            try {
+                if (isValid(name, sha256(dst))) {
+                    return;
+                }
+            } catch (IOException ignored) {
+                // Substitui o arquivo se a leitura/hash falhar.
+            }
+        }
+        Path src = findTrustedVerifierFile(name);
+        if (src == null) {
+            return;
+        }
+        Path temp = null;
+        try {
+            temp = Files.createTempFile(targetDir, "." + name + ".", ".tmp"); //$NON-NLS-1$ //$NON-NLS-2$
+            try (java.io.InputStream in = Files.newInputStream(src, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                 java.io.OutputStream out = Files.newOutputStream(temp,
+                         java.nio.file.StandardOpenOption.WRITE,
+                         java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                         java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) >= 0) {
+                    if (n > 0) out.write(buf, 0, n);
+                }
+            }
+            if (!isValid(name, sha256(temp))) {
+                return;
+            }
+            if (CaptureIntegrity.isLinkOrReparse(targetDir) || CaptureIntegrity.isLinkOrReparse(dst)) {
+                return;
+            }
+            if (exists) {
+                clearReadOnlyAttribute(dst);
+            }
+            moveReplacingWithRetry(temp, dst);
+        } catch (IOException ignored) {
+            // A falha ao copiar o verificador nao deve impedir a captura.
+        } finally {
+            if (temp != null) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    private static void clearReadOnlyAttribute(Path target) {
+        try {
+            Files.setAttribute(target, "dos:readonly", Boolean.FALSE, java.nio.file.LinkOption.NOFOLLOW_LINKS); //$NON-NLS-1$
+        } catch (UnsupportedOperationException | IOException ignored) {
+        }
+    }
+
+    private static void moveReplacingWithRetry(Path src, Path dst) throws IOException {
+        IOException lastError = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                try {
+                    Files.move(src, dst, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    Files.move(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (IOException e) {
+                lastError = e;
+                try {
+                    Thread.sleep(50L * (attempt + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+        throw lastError;
     }
 
     /** Procura somente artefatos com SHA-256 explicitamente autorizado pelo plugin. */
@@ -143,6 +199,7 @@ public final class VerifierIntegrity {
             }
             if (ipedRoot != null) {
                 candidates.add(ipedRoot.resolve("verificador-integridade")); //$NON-NLS-1$
+                candidates.add(ipedRoot);
                 candidates.add(ipedRoot.resolve("lib")); //$NON-NLS-1$
                 candidates.add(ipedRoot.resolve("plugins").resolve("chat-captura IPED").resolve("verificador-integridade")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                 candidates.add(ipedRoot.resolveSibling("verificador-integridade")); //$NON-NLS-1$
