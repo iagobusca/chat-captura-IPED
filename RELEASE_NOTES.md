@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.3 (Estável / `main`) / Verificador 1.5.2
+
+- **Tag**: [v2.8.3](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.3) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.3-verificador-1.5.2.zip](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.3/instalador-chat-captura-IPED-2.8.3-verificador-1.5.2.zip) (`94.517.624` bytes | SHA-256: `978F9F5BAD6D26FA532069A8F3C700D05555F3E500581F7907462B50CCB40DC2`)
+- [integridade-verifier-1.5.2.exe](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.3/integridade-verifier-1.5.2.exe) (`77.648.986` bytes | SHA-256: `F3582CEFE0440B6DAA7DEA8E7F425A55C33DBC29EE2BE92DF875A2D18382B238`)
+- [integridade-verifier-1.5.2.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.3/integridade-verifier-1.5.2.jar) (`193.537` bytes | SHA-256: `22C207E89F56C8A35CAA327E7A491246739A81596172521E7B807EA167DDEB7F`)
+- [iped-viewers-impl-4.3.1-2.8.3.jar](https://github.com/iagobusca/chat-captura-IPED/releases/download/v2.8.3/iped-viewers-impl-4.3.1-2.8.3.jar) (`1.554.616` bytes | SHA-256: `072999AF6249456B580F3EEAB5CE04D253201A8C9C39730AD2BFD085EA7FBEFA`)
+
+### Resumo
+- Start e Re-Extrair agora validam e propagam Pasta imagens blur, Origem Avilla e Caso IPED pai sem falhar em caminhos inválidos; Re-Extrair executa verificação seletiva e restaura/remove apenas arquivos específicos alterados, ausentes ou excedentes sem reescrever messages.json, manifest.json ou whatsapp.html íntegros.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.2**.
+
+---
 ## v2.8.2 (Estável / `main`) / Verificador 1.5.2
 
 - **Tag**: [v2.8.2](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.2) (Corte automatizado via `build-reproducible.ps1`)

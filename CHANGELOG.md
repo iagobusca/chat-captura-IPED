@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.3] - 2026-11-17
+
+### Corte Automatizado (Estável / `main`)
+- Start e Re-Extrair agora validam e propagam Pasta imagens blur, Origem Avilla e Caso IPED pai sem falhar em caminhos inválidos; Re-Extrair executa verificação seletiva e restaura/remove apenas arquivos específicos alterados, ausentes ou excedentes sem reescrever messages.json, manifest.json ou whatsapp.html íntegros.
+- Verificador **1.5.2** (`193.537` bytes JAR `22C207E8...` | `77.648.986` bytes EXE `F3582CEF...`) e Plugin **2.8.3** (`1.554.616` bytes `072999AF...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.3-verificador-1.5.2.zip` (`94.517.624` bytes `978F9F5B...`).
 ## [2.8.2] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

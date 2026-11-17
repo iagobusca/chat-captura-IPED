@@ -7,7 +7,7 @@ set "SCRIPT_ROOT=%SCRIPT_DIR:~0,-1%"
 REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
 if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar"
-set "EXPECTED_PLUGIN_SHA256=357AD1A0E7A5DEE6E3A87234B7AA1796DB80F59DBD304BA8D2562E9A0FE28306"
+set "EXPECTED_PLUGIN_SHA256=072999AF6249456B580F3EEAB5CE04D253201A8C9C39730AD2BFD085EA7FBEFA"
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
 set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%integridade-verifier.jar"
@@ -48,7 +48,7 @@ set "VERIFIER_EXE_TARGET=%VERIFIER_TARGET_DIR%\integridade-verifier.exe"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.8.2
+echo Versao do plugin: 2.8.3
 echo Verificador de integridade: 1.5.2
 echo ------------------------------------------------
 echo.

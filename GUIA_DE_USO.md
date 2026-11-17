@@ -1,4 +1,4 @@
-# Guia de Uso — Chat Captura IPED (v2.8.2) e Verificador de Integridade (v1.5.2)
+# Guia de Uso — Chat Captura IPED (v2.8.3) e Verificador de Integridade (v1.5.2)
 
 Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.5.2**.
 

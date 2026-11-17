@@ -19,8 +19,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -147,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.2"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.3"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1207,9 +1209,65 @@ private void clearChatCaptureMarks() {
         chatCapturePanel.setStatus("ChatCapturePanel.MissingFolder"); //$NON-NLS-1$
     }
 
+    static String cleanDirectoryInputPath(File folder) {
+        return folder == null ? "" : ChatCapturePanel.stripSurroundingQuotes(folder.getPath()); //$NON-NLS-1$
+    }
+
+    static Path toValidatedDirectoryPath(File folder, String fieldLabel, boolean mustExist) throws IOException {
+        String cleaned = cleanDirectoryInputPath(folder);
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        Path parsed;
+        try {
+            parsed = Paths.get(cleaned);
+        } catch (InvalidPathException e) {
+            throw new IOException("Caminho inválido para " + fieldLabel + ": " + cleaned + " (" + e.getReason() + ")", e); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        }
+        Path normalized = parsed.toAbsolutePath().normalize();
+        if (mustExist) {
+            return OriginCustodyBinder.validateSafeDirectory(normalized, fieldLabel);
+        }
+        Path root = normalized.getRoot();
+        if (root != null && !normalized.equals(root)) {
+            Path current = root;
+            for (Path part : root.relativize(normalized)) {
+                current = current.resolve(part);
+                if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && CaptureIntegrity.isLinkOrReparse(current)) {
+                    throw new IOException("Links simbólicos ou junctions não são permitidos em " + fieldLabel + ": " + current); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+            }
+        }
+        return normalized;
+    }
+
+    private void showCaptureUiError(java.awt.Component parent, String title, String message) {
+        String text = (message == null || message.trim().isEmpty()) ? title : message.trim();
+        chatCapturePanel.setStatusText(text);
+        Runnable showDialog = () -> JOptionPane.showMessageDialog(
+                parent != null ? parent : chatCapturePanel,
+                ChatCapturePanel.plainMessageComponent(text),
+                title, JOptionPane.ERROR_MESSAGE);
+        if (SwingUtilities.isEventDispatchThread()) {
+            showDialog.run();
+        } else {
+            SwingUtilities.invokeLater(showDialog);
+        }
+    }
+
+    public void setOriginAuditSourcesValidated(File originDir, File parentIpedDir) throws IOException {
+        Path originPath = toValidatedDirectoryPath(originDir, "Origem Avilla", true); //$NON-NLS-1$
+        Path parentPath = toValidatedDirectoryPath(parentIpedDir, "Caso IPED pai", true); //$NON-NLS-1$
+        this.originAuditFolder = originPath;
+        this.originParentIpedFolder = parentPath;
+    }
+
     public void setOriginAuditSources(File originDir, File parentIpedDir) {
-        this.originAuditFolder = originDir == null || originDir.getPath().trim().isEmpty() ? null : originDir.toPath();
-        this.originParentIpedFolder = parentIpedDir == null || parentIpedDir.getPath().trim().isEmpty() ? null : parentIpedDir.toPath();
+        try {
+            setOriginAuditSourcesValidated(originDir, parentIpedDir);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
     }
 
     public void setOriginAuditSources(Path originDir, Path parentIpedDir) {
@@ -1220,7 +1278,14 @@ private void clearChatCaptureMarks() {
     void startChatCaptureFromUi(java.awt.Component alertParent, File outputFolder, String customFolderName,
             File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent,
             File originDir, File parentIpedDir) {
-        setOriginAuditSources(originDir, parentIpedDir);
+        try {
+            toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+            toValidatedDirectoryPath(sensitiveImagesFolder, "Pasta imagens blur", true); //$NON-NLS-1$
+            setOriginAuditSourcesValidated(originDir, parentIpedDir);
+        } catch (IOException e) {
+            showCaptureUiError(alertParent, "Captura de Chat", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
         startChatCaptureFromUi(alertParent, outputFolder, customFolderName, sensitiveImagesFolder,
                 sensitiveSimilarityPercent, sensitiveBlurPercent);
     }
@@ -1275,9 +1340,22 @@ private void clearChatCaptureMarks() {
         if (captureRunning) {
             return;
         }
+        try {
+            toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+            toValidatedDirectoryPath(sensitiveImagesFolder, "Pasta imagens blur", true); //$NON-NLS-1$
+        } catch (IOException e) {
+            showCaptureUiError(alertParent, "Captura de Chat", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
         if (!validateCaptureStart(outputFolder)) return;
+        final Path outputPath;
+        try {
+            outputPath = toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+        } catch (IOException e) {
+            showCaptureUiError(alertParent, "Captura de Chat", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
         if (alertParent != null) {
-            Path outputPath = outputFolder.toPath();
             VerifierIntegrity.installVerifierFiles(outputPath);
             try {
                 SwingUtilities.invokeAndWait(() -> VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath));
@@ -1346,25 +1424,72 @@ private void clearChatCaptureMarks() {
 
     private void startCaptureBody(File outputFolder, String customFolderName, File sensitiveImagesFolder,
             int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
-        this.sensitiveImagesFolder = sensitiveImagesFolder == null || sensitiveImagesFolder.getPath().isBlank() ? null
-                : sensitiveImagesFolder.toPath();
+        final Path outputPath;
+        final Path validatedSensitive;
+        try {
+            outputPath = toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+            validatedSensitive = toValidatedDirectoryPath(sensitiveImagesFolder, "Pasta imagens blur", true); //$NON-NLS-1$
+        } catch (IOException e) {
+            showCaptureUiError(chatCapturePanel, "Captura de Chat", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
+        this.sensitiveImagesFolder = validatedSensitive;
         this.sensitiveSimilarityPercent = normalizeSimilarityPercent(sensitiveSimilarityPercent);
         this.sensitiveBlurPercent = normalizeBlurPercent(sensitiveBlurPercent);
         captureRunning = true;
         stopCaptureRequested = false;
         chatCapturePanel.setCaptureRunning(true);
         chatCapturePanel.setStatus("ChatCapturePanel.Capturing"); //$NON-NLS-1$
-        new Thread(() -> runChatCapture(outputFolder.toPath(), customFolderName), "IPED-chat-capture").start(); //$NON-NLS-1$
+        new Thread(() -> runChatCapture(outputPath, customFolderName), "IPED-chat-capture").start(); //$NON-NLS-1$
+    }
+
+    void startRecaptureFlowFromUi(java.awt.Component alertParent, File outputFolder,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent,
+            File originDir, File parentIpedDir) {
+        startRecaptureFlowInternal(alertParent, outputFolder, sensitiveImagesFolder,
+                sensitiveSimilarityPercent, sensitiveBlurPercent, true, originDir, parentIpedDir);
     }
 
     void startRecaptureFlowFromUi(java.awt.Component alertParent, File outputFolder,
             File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent) {
+        startRecaptureFlowInternal(alertParent, outputFolder, sensitiveImagesFolder,
+                sensitiveSimilarityPercent, sensitiveBlurPercent, false, null, null);
+    }
+
+    private void startRecaptureFlowInternal(java.awt.Component alertParent, File outputFolder,
+            File sensitiveImagesFolder, int sensitiveSimilarityPercent, int sensitiveBlurPercent,
+            boolean applyOriginSources, File originDir, File parentIpedDir) {
         if (captureRunning) {
             return;
         }
         if (outputFolder == null || outputFolder.getPath().trim().isEmpty()) {
             reportMissingOutputFolder();
             return;
+        }
+        final Path outputPath;
+        final Path validatedSensitive;
+        final Path validatedOrigin;
+        final Path validatedParentIped;
+        try {
+            outputPath = toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+            if (outputPath == null) {
+                reportMissingOutputFolder();
+                return;
+            }
+            validatedSensitive = toValidatedDirectoryPath(sensitiveImagesFolder, "Pasta imagens blur", true); //$NON-NLS-1$
+            if (applyOriginSources) {
+                validatedOrigin = toValidatedDirectoryPath(originDir, "Origem Avilla", true); //$NON-NLS-1$
+                validatedParentIped = toValidatedDirectoryPath(parentIpedDir, "Caso IPED pai", true); //$NON-NLS-1$
+            } else {
+                validatedOrigin = null;
+                validatedParentIped = null;
+            }
+        } catch (IOException e) {
+            showCaptureUiError(alertParent, "Re-Extrair", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
+        if (applyOriginSources) {
+            setOriginAuditSources(validatedOrigin, validatedParentIped);
         }
         if (!recapturePreparing.compareAndSet(false, true)) {
             return;
@@ -1375,14 +1500,14 @@ private void clearChatCaptureMarks() {
                 if (captureRunning) {
                     return;
                 }
-                Path outputPath = outputFolder.toPath();
                 VerifierIntegrity.installVerifierFiles(outputPath);
                 SwingUtilities.invokeLater(() -> {
                     try {
                         if (alertParent != null) {
                             VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath);
                         }
-                        showRecaptureDialog(outputFolder, sensitiveImagesFolder,
+                        showRecaptureDialog(outputPath.toFile(),
+                                validatedSensitive == null ? null : validatedSensitive.toFile(),
                                 sensitiveSimilarityPercent, sensitiveBlurPercent);
                     } finally {
                         recapturePreparing.set(false);
@@ -1391,6 +1516,7 @@ private void clearChatCaptureMarks() {
                 handedOff = true;
             } catch (Exception e) {
                 LOGGER.warn("Unable to prepare recapture flow", e); //$NON-NLS-1$
+                showCaptureUiError(alertParent, "Re-Extrair", e.getMessage()); //$NON-NLS-1$
             } finally {
                 if (!handedOff) {
                     recapturePreparing.set(false);
@@ -1529,8 +1655,12 @@ private void clearChatCaptureMarks() {
                     "Re-Extrair", JOptionPane.INFORMATION_MESSAGE); //$NON-NLS-1$ //$NON-NLS-2$
             return;
         }
-        this.sensitiveImagesFolder = sensitiveImagesFolder == null || sensitiveImagesFolder.getPath().isBlank() ? null
-                : sensitiveImagesFolder.toPath();
+        try {
+            this.sensitiveImagesFolder = toValidatedDirectoryPath(sensitiveImagesFolder, "Pasta imagens blur", true); //$NON-NLS-1$
+        } catch (IOException e) {
+            showCaptureUiError(chatCapturePanel, "Re-Extrair", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
         this.sensitiveSimilarityPercent = normalizeSimilarityPercent(sensitiveSimilarityPercent);
         this.sensitiveBlurPercent = normalizeBlurPercent(sensitiveBlurPercent);
         if (migrateLegacyToHtml && this.sensitiveImagesFolder == null) {
@@ -1739,10 +1869,6 @@ private void clearChatCaptureMarks() {
             // Capturas legadas podem nao ter todos os dados de assinatura; aceita
             // quando ha ancora utilizavel e ao menos uma consulta derivada.
             job.valid = hasAnchors && (hasQueries || job.legacyAnnotations);
-            if (job.htmlMessageCapture && !Files.isRegularFile(folderPath.resolve("messages.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
-                job.valid = false;
-                job.invalidReason = "messages.json não encontrado para a captura HTML"; //$NON-NLS-1$
-            }
             if (!job.valid && job.invalidReason == null) {
                 job.invalidReason = "dados insuficientes para localizar chat/inicio/fim por assinatura"; //$NON-NLS-1$
             }
@@ -2077,24 +2203,6 @@ private void clearChatCaptureMarks() {
             LOGGER.info("Recapture capture tmp folder: {}", tmpFolder); //$NON-NLS-1$
             CaptureRunResult result = runChatCaptureInternal(outputRoot, tmpName, tmpFolder);
             try {
-            if (job.htmlMessageCapture && !job.resetLegacyRecords) {
-                writeHtmlMessageReconciliation(job.folderPath, result.captureDir);
-                boolean messagesUnchanged = isHtmlReconciliationUnchanged(result.captureDir);
-                if (messagesUnchanged && isHtmlPresentationUnchanged(job, result.captureDir)) {
-                    CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
-                            .put("action", "recapture_skipped_content_unchanged")
-                            .put("result", "selected_interval_message_hashes_unchanged")); //$NON-NLS-1$ //$NON-NLS-2$
-                    deleteDirectoryIfExists(result.captureDir);
-                    updateRecaptureProgress(job, batchCurrent, batchTotal, 7,
-                            Messages.getString("ChatCapturePanel.ContentUnchanged"), false); //$NON-NLS-1$
-                    return false;
-                }
-                if (messagesUnchanged) {
-                    CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
-                            .put("action", "recapture_censorship_presentation_changed") //$NON-NLS-1$ //$NON-NLS-2$
-                            .put("previousPresentationDigest", job.priorCensorshipDigest)); //$NON-NLS-1$
-                }
-            }
             updateRecaptureProgress(job, batchCurrent, batchTotal, 5, "Validando resultado temporario da re-extracao...", false); //$NON-NLS-1$
             Path manifest = result.captureDir.resolve("manifest.json"); //$NON-NLS-1$
             String status = Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)
@@ -2106,6 +2214,35 @@ private void clearChatCaptureMarks() {
             }
 
             if (job.targetHtmlMessageCapture()) validateHtmlCaptureCandidate(job, result.captureDir);
+            if (job.htmlMessageCapture && !job.resetLegacyRecords) {
+                boolean presentationUnchanged = isHtmlPresentationUnchanged(job, result.captureDir);
+                SelectiveRepairOutcome selective = presentationUnchanged
+                        ? trySelectiveHtmlCaptureRepair(job.folderPath, result.captureDir, this.originAuditFolder != null)
+                        : SelectiveRepairOutcome.notHandled();
+                if (selective.handledInPlace) {
+                    deleteDirectoryIfExists(result.captureDir);
+                    if (!selective.modified) {
+                        CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
+                                .put("action", "recapture_skipped_content_unchanged") //$NON-NLS-1$ //$NON-NLS-2$
+                                .put("result", "selected_interval_message_hashes_unchanged")); //$NON-NLS-1$ //$NON-NLS-2$
+                        updateRecaptureProgress(job, batchCurrent, batchTotal, 7,
+                                Messages.getString("ChatCapturePanel.ContentUnchanged"), false); //$NON-NLS-1$
+                        return false;
+                    }
+                    updateRecaptureProgress(job, batchCurrent, batchTotal, 7,
+                            "Re-extração seletiva: " + selective.summary, false); //$NON-NLS-1$
+                    return true;
+                }
+                if (isReadableHtmlMessagesJson(job.folderPath)) {
+                    writeHtmlMessageReconciliation(job.folderPath, result.captureDir);
+                    if (isHtmlReconciliationUnchanged(result.captureDir) && !presentationUnchanged) {
+                        CaptureIntegrity.appendAudit(job.folderPath, new JSONObject()
+                                .put("action", "recapture_censorship_presentation_changed") //$NON-NLS-1$ //$NON-NLS-2$
+                                .put("previousPresentationDigest", job.priorCensorshipDigest)); //$NON-NLS-1$
+                    }
+                    if (job.targetHtmlMessageCapture()) validateHtmlCaptureCandidate(job, result.captureDir);
+                }
+            }
             if (!job.resetLegacyRecords) {
                 if (!job.migrateLegacyToHtml) recordRestoredArtifactAudit(job, result.captureDir);
                 appendIntegrityHistory(result.captureDir, job.folderPath,
@@ -4802,6 +4939,32 @@ Set<String> hashes = getCaptureBlockHashes(plan);
     }
 
     private String htmlMessageHash(JSONObject message) throws IOException {
+        return computeHtmlMessageHash(message);
+    }
+
+    private String htmlCaptureRootHash(JSONArray messages, String htmlSha256, String annotationsSha256,
+            String reconciliationSha256, String conversationKey, String sourceFingerprint, JSONObject sourceMetadata, String ipedVersion,
+            String pluginVersion, String startAnchor, String endAnchor) throws IOException {
+        return computeHtmlCaptureRootHash(messages, htmlSha256, annotationsSha256, reconciliationSha256,
+                conversationKey, sourceFingerprint, sourceMetadata, ipedVersion, pluginVersion, startAnchor, endAnchor);
+    }
+
+    private static class DecodedHtmlAttachment {
+        final String mime; final byte[] bytes; final String sha256; final String extension; final String name; final long size;
+        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension) {
+            this(mime, bytes, sha256, extension, bytes == null ? 0 : bytes.length);
+        }
+        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension, long size) {
+            this.mime = mime;
+            this.bytes = bytes;
+            this.sha256 = sha256;
+            this.extension = extension;
+            this.name = sha256 + "." + extension;
+            this.size = size;
+        }
+    }
+
+    static String computeHtmlMessageHash(JSONObject message) throws IOException {
         StringBuilder canonical = new StringBuilder("html-message-v1-message\n"); //$NON-NLS-1$
         appendHtmlMessageField(canonical, message.optString("domId")); //$NON-NLS-1$
         appendHtmlMessageField(canonical, Integer.toString(message.optInt("order", -1))); //$NON-NLS-1$
@@ -4823,7 +4986,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         return CaptureIntegrity.sha256Text(canonical.toString());
     }
 
-    private String htmlCaptureRootHash(JSONArray messages, String htmlSha256, String annotationsSha256,
+    static String computeHtmlCaptureRootHash(JSONArray messages, String htmlSha256, String annotationsSha256,
             String reconciliationSha256, String conversationKey, String sourceFingerprint, JSONObject sourceMetadata, String ipedVersion,
             String pluginVersion, String startAnchor, String endAnchor) throws IOException {
         StringBuilder canonical = new StringBuilder("html-message-v1-root\n"); //$NON-NLS-1$
@@ -4849,24 +5012,671 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         return CaptureIntegrity.sha256Text(canonical.toString());
     }
 
-    private void appendHtmlMessageField(StringBuilder canonical, String value) {
+    private static void appendHtmlMessageField(StringBuilder canonical, String value) {
         String field = value == null ? "" : value; //$NON-NLS-1$
         canonical.append(field.length()).append(':').append(field).append('\n');
     }
 
-    private static class DecodedHtmlAttachment {
-        final String mime; final byte[] bytes; final String sha256; final String extension; final String name; final long size;
-        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension) {
-            this(mime, bytes, sha256, extension, bytes == null ? 0 : bytes.length);
+    static final class SelectiveRepairOutcome {
+        final boolean handledInPlace;
+        final boolean modified;
+        final List<String> restoredPaths;
+        final List<String> removedPaths;
+        final String summary;
+
+        private SelectiveRepairOutcome(boolean handledInPlace, boolean modified,
+                List<String> restoredPaths, List<String> removedPaths, String summary) {
+            this.handledInPlace = handledInPlace;
+            this.modified = modified;
+            this.restoredPaths = Collections.unmodifiableList(new ArrayList<>(restoredPaths));
+            this.removedPaths = Collections.unmodifiableList(new ArrayList<>(removedPaths));
+            this.summary = summary == null ? "" : summary; //$NON-NLS-1$
         }
-        DecodedHtmlAttachment(String mime, byte[] bytes, String sha256, String extension, long size) {
-            this.mime = mime;
-            this.bytes = bytes;
+
+        static SelectiveRepairOutcome notHandled() {
+            return new SelectiveRepairOutcome(false, false, Collections.emptyList(), Collections.emptyList(), ""); //$NON-NLS-1$
+        }
+
+        static SelectiveRepairOutcome unchanged() {
+            return new SelectiveRepairOutcome(true, false, Collections.emptyList(), Collections.emptyList(), "sem alterações"); //$NON-NLS-1$
+        }
+
+        static SelectiveRepairOutcome repaired(List<String> restored, List<String> removed) {
+            String summary = "restaurados=" + restored.size() + ", removidos=" + removed.size(); //$NON-NLS-1$ //$NON-NLS-2$
+            return new SelectiveRepairOutcome(true, true, restored, removed, summary);
+        }
+    }
+
+    private static final class CandidateAttachmentSpec {
+        final String relativePath;
+        final String sha256;
+        final long size;
+        final Path candidateFile;
+
+        CandidateAttachmentSpec(String relativePath, String sha256, long size, Path candidateFile) {
+            this.relativePath = relativePath;
             this.sha256 = sha256;
-            this.extension = extension;
-            this.name = sha256 + "." + extension;
             this.size = size;
+            this.candidateFile = candidateFile;
         }
+    }
+
+    static SelectiveRepairOutcome trySelectiveHtmlCaptureRepair(Path existingDir, Path candidateDir,
+            boolean hasActiveOriginDir) throws IOException {
+        if (existingDir == null || candidateDir == null) {
+            return SelectiveRepairOutcome.notHandled();
+        }
+        Path existingRoot = OriginCustodyBinder.validateSafeDirectory(existingDir, "captura existente"); //$NON-NLS-1$
+        Path candidateRoot = OriginCustodyBinder.validateSafeDirectory(candidateDir, "captura candidata"); //$NON-NLS-1$
+
+        JSONObject candidateManifest = parseJsonObjectSafe(candidateRoot.resolve("manifest.json"), CaptureIntegrity.MAX_JSON_BYTES); //$NON-NLS-1$
+        JSONObject candidateWrapper = parseJsonObjectSafe(candidateRoot.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$
+        if (candidateManifest == null || candidateWrapper == null
+                || !"html-message-v1".equals(candidateManifest.optString("captureFormat")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"completed".equals(candidateManifest.optString("status")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"complete".equals(candidateManifest.optString("state"))) { //$NON-NLS-1$ //$NON-NLS-2$
+            return SelectiveRepairOutcome.notHandled();
+        }
+        JSONArray candidateMessages = candidateWrapper.optJSONArray("messages"); //$NON-NLS-1$
+        if (candidateMessages == null || candidateMessages.length() == 0) {
+            return SelectiveRepairOutcome.notHandled();
+        }
+        Path candidateHtmlPath = candidateRoot.resolve("whatsapp.html"); //$NON-NLS-1$
+        if (!isSafeRegularFileUnderLimit(candidateHtmlPath, MAX_HTML_MESSAGE_CAPTURE_BYTES)) {
+            return SelectiveRepairOutcome.notHandled();
+        }
+        String candidateHtmlSha = CaptureIntegrity.sha256(candidateHtmlPath);
+        Path candidateAnnotationsPath = candidateRoot.resolve("annotations.json"); //$NON-NLS-1$
+        String candidateAnnotationsSha = isSafeRegularFileUnderLimit(candidateAnnotationsPath, CaptureIntegrity.MAX_JSON_BYTES)
+                ? CaptureIntegrity.sha256(candidateAnnotationsPath)
+                : ""; //$NON-NLS-1$
+        String conversationKey = candidateManifest.optString("conversationKey", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        Map<String, CandidateAttachmentSpec> expectedAttachments = collectCandidateAttachments(candidateRoot, candidateMessages);
+        if (expectedAttachments == null) {
+            return SelectiveRepairOutcome.notHandled();
+        }
+
+        JSONObject oldManifest = parseJsonObjectSafe(existingRoot.resolve("manifest.json"), CaptureIntegrity.MAX_JSON_BYTES); //$NON-NLS-1$
+        JSONObject oldWrapper = parseJsonObjectSafe(existingRoot.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$
+        boolean oldMessagesValidOnDisk = isExistingMessagesJsonValid(oldWrapper, candidateMessages, conversationKey);
+        if (!isEligibleForSelectiveRepair(existingRoot, oldManifest, oldWrapper, oldMessagesValidOnDisk,
+                candidateManifest, candidateMessages, candidateAnnotationsSha, candidateHtmlSha)) {
+            return SelectiveRepairOutcome.notHandled();
+        }
+
+        String oldReconciliationSha = oldManifest == null ? "" : oldManifest.optString("reconciliationSha256", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        boolean preserveReconciliation = !oldReconciliationSha.isEmpty();
+        if (preserveReconciliation) {
+            Path recPath = existingRoot.resolve("message-reconciliation.json"); //$NON-NLS-1$
+            if (parseJsonObjectSafe(recPath, CaptureIntegrity.MAX_JSON_BYTES) == null
+                    || !CaptureIntegrity.sha256(recPath).equalsIgnoreCase(oldReconciliationSha)) {
+                return SelectiveRepairOutcome.notHandled();
+            }
+        }
+        boolean preserveMigration = oldManifest != null && oldManifest.optJSONObject("migration") != null; //$NON-NLS-1$
+        boolean preserveLegacyAnnotations = preserveMigration
+                && oldManifest.optJSONObject("migration").optBoolean("legacyAnnotationsPreserved", false); //$NON-NLS-1$ //$NON-NLS-2$
+        if (preserveMigration && (!isSafeRegularFileUnderLimit(existingRoot.resolve("migration.json"), CaptureIntegrity.MAX_JSON_BYTES) //$NON-NLS-1$
+                || (preserveLegacyAnnotations && !isSafeRegularFileUnderLimit(existingRoot.resolve("legacy-annotations.json"), CaptureIntegrity.MAX_JSON_BYTES)))) { //$NON-NLS-1$
+            return SelectiveRepairOutcome.notHandled();
+        }
+
+        Path existingHtmlPath = existingRoot.resolve("whatsapp.html"); //$NON-NLS-1$
+        String existingHtmlSha = isSafeRegularFileUnderLimit(existingHtmlPath, MAX_HTML_MESSAGE_CAPTURE_BYTES)
+                ? CaptureIntegrity.sha256(existingHtmlPath)
+                : ""; //$NON-NLS-1$
+        String oldDeclHtmlSha = oldManifest == null ? "" : oldManifest.optString("htmlSha256", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        boolean htmlMatchesCandidate = !existingHtmlSha.isEmpty() && existingHtmlSha.equalsIgnoreCase(candidateHtmlSha);
+        boolean htmlMatchesValidOldManifest = !existingHtmlSha.isEmpty() && oldManifest != null
+                && !oldDeclHtmlSha.isEmpty() && existingHtmlSha.equalsIgnoreCase(oldDeclHtmlSha)
+                && isManifestRootHashValidFor(oldManifest, candidateMessages, oldDeclHtmlSha,
+                        oldManifest.optString("annotationsSha256", ""), oldReconciliationSha); //$NON-NLS-1$
+        boolean htmlFileOk = htmlMatchesCandidate || htmlMatchesValidOldManifest;
+        String effectiveHtmlSha = htmlFileOk ? existingHtmlSha : candidateHtmlSha;
+
+        Path existingAnnotationsPath = existingRoot.resolve("annotations.json"); //$NON-NLS-1$
+        boolean annotationsFileOk = candidateAnnotationsSha.isEmpty()
+                || (parseJsonObjectSafe(existingAnnotationsPath, CaptureIntegrity.MAX_JSON_BYTES) != null
+                        && CaptureIntegrity.sha256(existingAnnotationsPath).equalsIgnoreCase(candidateAnnotationsSha));
+
+        Path existingOriginPath = existingRoot.resolve(OriginCustodyBinder.ORIGIN_BINDING_FILE);
+        Path candidateOriginPath = candidateRoot.resolve(OriginCustodyBinder.ORIGIN_BINDING_FILE);
+        String oldDeclOriginSha = oldManifest == null ? "" : oldManifest.optString("originBindingSha256", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        boolean originExpectedOnDisk = false;
+        boolean writeOriginBinding = false;
+        boolean updateManifestOrigin = false;
+        if (hasActiveOriginDir) {
+            JSONObject candidateOriginObj = parseJsonObjectSafe(candidateOriginPath, CaptureIntegrity.MAX_JSON_BYTES);
+            if (candidateOriginObj == null || candidateManifest.optJSONObject("originBinding") == null) { //$NON-NLS-1$
+                return SelectiveRepairOutcome.notHandled();
+            }
+            originExpectedOnDisk = true;
+            JSONObject oldOriginObj = parseJsonObjectSafe(existingOriginPath, CaptureIntegrity.MAX_JSON_BYTES);
+            String existingOriginSha = oldOriginObj == null ? "" : CaptureIntegrity.sha256(existingOriginPath); //$NON-NLS-1$
+            boolean existingOriginValid = !existingOriginSha.isEmpty()
+                    && existingOriginSha.equalsIgnoreCase(oldDeclOriginSha)
+                    && oldManifest != null && oldManifest.optJSONObject("originBinding") != null; //$NON-NLS-1$
+            boolean semanticMatch = existingOriginValid
+                    && isSemanticOriginBindingEquivalent(oldManifest, oldOriginObj, candidateManifest, candidateOriginObj);
+            if (!semanticMatch) {
+                writeOriginBinding = true;
+                updateManifestOrigin = true;
+            }
+        } else if (!oldDeclOriginSha.isEmpty()) {
+            if (!isSafeRegularFileUnderLimit(existingOriginPath, CaptureIntegrity.MAX_JSON_BYTES)
+                    || !CaptureIntegrity.sha256(existingOriginPath).equalsIgnoreCase(oldDeclOriginSha)) {
+                throw new IOException("Artefato origin-binding.json ausente ou divergente; informe Origem Avilla para restaurar o vínculo de custódia."); //$NON-NLS-1$
+            }
+            originExpectedOnDisk = true;
+        } else if (oldManifest == null && Files.exists(existingOriginPath, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("manifest.json ausente com origin-binding.json presente; informe Origem Avilla para restaurar os metadados."); //$NON-NLS-1$
+        }
+
+        List<CandidateAttachmentSpec> attachmentsToRestore = new ArrayList<>();
+        for (CandidateAttachmentSpec spec : expectedAttachments.values()) {
+            Path target = CaptureIntegrity.resolveContained(existingRoot, spec.relativePath);
+            if (!isSafeRegularFileUnderLimit(target, MAX_HTML_MESSAGE_ATTACHMENT_BYTES)
+                    || CaptureIntegrity.safeRegularFileSize(target) != spec.size
+                    || !CaptureIntegrity.sha256(target).equalsIgnoreCase(spec.sha256)) {
+                attachmentsToRestore.add(spec);
+            }
+        }
+
+        Set<String> expectedTrackableFiles = new HashSet<>(expectedAttachments.keySet());
+        expectedTrackableFiles.add("messages.json"); //$NON-NLS-1$
+        expectedTrackableFiles.add("whatsapp.html"); //$NON-NLS-1$
+        if (!candidateAnnotationsSha.isEmpty()) expectedTrackableFiles.add("annotations.json"); //$NON-NLS-1$
+        if (originExpectedOnDisk) expectedTrackableFiles.add(OriginCustodyBinder.ORIGIN_BINDING_FILE);
+        if (preserveReconciliation) expectedTrackableFiles.add("message-reconciliation.json"); //$NON-NLS-1$
+        if (preserveMigration) expectedTrackableFiles.add("migration.json"); //$NON-NLS-1$
+        if (preserveLegacyAnnotations) expectedTrackableFiles.add("legacy-annotations.json"); //$NON-NLS-1$
+
+        Set<String> allowedFiles = new HashSet<>(expectedTrackableFiles);
+        allowedFiles.add("manifest.json"); //$NON-NLS-1$
+        allowedFiles.add("integridade.json"); //$NON-NLS-1$
+        allowedFiles.add(CaptureIntegrity.AUDIT_FILE);
+
+        List<String> extraFilesToDelete = new ArrayList<>();
+        Path normalizedExistingRoot = existingRoot.toAbsolutePath().normalize();
+        for (Path file : CaptureIntegrity.listRegularFilesSafe(normalizedExistingRoot, CaptureIntegrity.MAX_INVENTORY_FILES)) {
+            String rel = normalizedExistingRoot.relativize(file.toAbsolutePath().normalize()).toString().replace('\\', '/');
+            if (!allowedFiles.contains(rel)) {
+                extraFilesToDelete.add(rel);
+            }
+        }
+
+        boolean manifestNeedsWrite = !isManifestValidForTarget(oldManifest, candidateMessages, effectiveHtmlSha,
+                candidateAnnotationsSha, oldReconciliationSha, candidateManifest, updateManifestOrigin);
+
+        JSONObject prevIntegrity = parseJsonObjectSafe(existingRoot.resolve("integridade.json"), CaptureIntegrity.MAX_JSON_BYTES); //$NON-NLS-1$
+        boolean anyFileChanged = !oldMessagesValidOnDisk || !htmlFileOk || !annotationsFileOk
+                || !attachmentsToRestore.isEmpty() || !extraFilesToDelete.isEmpty()
+                || writeOriginBinding || manifestNeedsWrite;
+        if (!anyFileChanged && isExistingIntegrityValidForDisk(existingRoot, prevIntegrity, expectedTrackableFiles)) {
+            return SelectiveRepairOutcome.unchanged();
+        }
+
+        List<String> restoredPaths = new ArrayList<>();
+        List<String> removedPaths = new ArrayList<>();
+        for (String extraRel : extraFilesToDelete) {
+            Path extraTarget = CaptureIntegrity.resolveContained(existingRoot, extraRel);
+            if (Files.deleteIfExists(extraTarget)) {
+                removedPaths.add(extraRel);
+                CaptureIntegrity.appendAudit(existingRoot, new JSONObject()
+                        .put("action", "unexpected_artifact_removed_by_selective_repair") //$NON-NLS-1$ //$NON-NLS-2$
+                        .put("path", extraRel)); //$NON-NLS-1$
+            }
+        }
+        deleteEmptyNonCoreSubdirectories(existingRoot);
+
+        for (CandidateAttachmentSpec spec : attachmentsToRestore) {
+            byte[] bytes = Files.readAllBytes(spec.candidateFile);
+            if (bytes.length != spec.size || !CaptureIntegrity.sha256Bytes(bytes).equalsIgnoreCase(spec.sha256)) {
+                throw new IOException("Anexo candidato divergente durante reparo seletivo: " + spec.relativePath); //$NON-NLS-1$
+            }
+            Path target = CaptureIntegrity.resolveContained(existingRoot, spec.relativePath);
+            CaptureIntegrity.writeBytesAtomically(existingRoot, target, bytes, MAX_HTML_MESSAGE_ATTACHMENT_BYTES);
+            restoredPaths.add(spec.relativePath);
+        }
+        if (!oldMessagesValidOnDisk) {
+            copyRegularFileAtomically(candidateRoot.resolve("messages.json"), existingRoot, existingRoot.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$ //$NON-NLS-2$
+            restoredPaths.add("messages.json"); //$NON-NLS-1$
+        }
+        if (!htmlFileOk) {
+            copyRegularFileAtomically(candidateHtmlPath, existingRoot, existingHtmlPath, MAX_HTML_MESSAGE_CAPTURE_BYTES);
+            restoredPaths.add("whatsapp.html"); //$NON-NLS-1$
+        }
+        if (!annotationsFileOk && !candidateAnnotationsSha.isEmpty()) {
+            copyRegularFileAtomically(candidateAnnotationsPath, existingRoot, existingAnnotationsPath, CaptureIntegrity.MAX_JSON_BYTES);
+            restoredPaths.add("annotations.json"); //$NON-NLS-1$
+        }
+        if (writeOriginBinding) {
+            copyRegularFileAtomically(candidateOriginPath, existingRoot, existingOriginPath, CaptureIntegrity.MAX_JSON_BYTES);
+            restoredPaths.add(OriginCustodyBinder.ORIGIN_BINDING_FILE);
+        }
+        if (manifestNeedsWrite) {
+            JSONObject updatedManifest = buildUpdatedSelectiveManifest(oldManifest, candidateManifest, candidateMessages,
+                    effectiveHtmlSha, candidateAnnotationsSha, oldReconciliationSha, updateManifestOrigin);
+            CaptureIntegrity.writeAtomically(existingRoot, existingRoot.resolve("manifest.json"), updatedManifest.toString(2)); //$NON-NLS-1$
+            restoredPaths.add("manifest.json"); //$NON-NLS-1$
+        }
+
+        boolean prevChainValid = isIntegrityEventChainValid(prevIntegrity);
+        JSONObject nextIntegrity = CaptureIntegrity.integrityRecord(existingRoot, prevChainValid ? prevIntegrity : null,
+                "recapture_selective_repair", CHAT_CAPTURE_PLUGIN_VERSION); //$NON-NLS-1$
+        CaptureIntegrity.writeAtomically(existingRoot, existingRoot.resolve("integridade.json"), nextIntegrity.toString(2)); //$NON-NLS-1$
+        restoredPaths.add("integridade.json"); //$NON-NLS-1$
+
+        CaptureIntegrity.appendAudit(existingRoot, new JSONObject()
+                .put("action", "recapture_selective_repair") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("restoredPaths", new JSONArray(restoredPaths)) //$NON-NLS-1$
+                .put("removedPaths", new JSONArray(removedPaths))); //$NON-NLS-1$
+        return SelectiveRepairOutcome.repaired(restoredPaths, removedPaths);
+    }
+
+    static boolean isReadableHtmlMessagesJson(Path captureDir) {
+        if (captureDir == null) return false;
+        return parseJsonObjectSafe(captureDir.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES) != null; //$NON-NLS-1$
+    }
+
+    private static JSONObject parseJsonObjectSafe(Path path, long maxBytes) {
+        if (path == null || !isSafeRegularFileUnderLimit(path, maxBytes)) {
+            return null;
+        }
+        try {
+            return new JSONObject(CaptureIntegrity.readJsonUtf8Limited(path, maxBytes));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isSafeRegularFileUnderLimit(Path path, long maxBytes) {
+        try {
+            return path != null && !CaptureIntegrity.isLinkOrReparse(path)
+                    && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                    && CaptureIntegrity.safeRegularFileSize(path) <= maxBytes;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static void copyRegularFileAtomically(Path source, Path captureRoot, Path destination, long maxBytes) throws IOException {
+        byte[] bytes = Files.readAllBytes(source);
+        CaptureIntegrity.writeBytesAtomically(captureRoot, destination, bytes, maxBytes);
+    }
+
+    private static Map<String, CandidateAttachmentSpec> collectCandidateAttachments(Path candidateRoot, JSONArray candidateMessages)
+            throws IOException {
+        Map<String, CandidateAttachmentSpec> map = new LinkedHashMap<>();
+        for (int i = 0; i < candidateMessages.length(); i++) {
+            JSONObject msg = candidateMessages.optJSONObject(i);
+            if (msg == null) return null;
+            JSONArray atts = msg.optJSONArray("attachments"); //$NON-NLS-1$
+            if (atts == null) continue;
+            for (int j = 0; j < atts.length(); j++) {
+                JSONObject att = atts.optJSONObject(j);
+                if (att == null) return null;
+                String relPath = att.optString("path", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                String sha = att.optString("sha256", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                long size = att.optLong("size", -1L); //$NON-NLS-1$
+                if (relPath.isEmpty() || sha.isEmpty() || size < 1 || size > MAX_HTML_MESSAGE_ATTACHMENT_BYTES) {
+                    return null;
+                }
+                Path resolved = CaptureIntegrity.resolveContained(candidateRoot, relPath);
+                if (!isSafeRegularFileUnderLimit(resolved, MAX_HTML_MESSAGE_ATTACHMENT_BYTES)
+                        || CaptureIntegrity.safeRegularFileSize(resolved) != size
+                        || !CaptureIntegrity.sha256(resolved).equalsIgnoreCase(sha)) {
+                    return null;
+                }
+                map.putIfAbsent(relPath, new CandidateAttachmentSpec(relPath, sha, size, resolved));
+            }
+        }
+        return map;
+    }
+
+    private static boolean isEligibleForSelectiveRepair(Path existingRoot, JSONObject oldManifest, JSONObject oldWrapper,
+            boolean oldMessagesValidOnDisk, JSONObject candidateManifest, JSONArray candidateMessages,
+            String candidateAnnotationsSha, String candidateHtmlSha) throws IOException {
+        if (oldManifest != null) {
+            if (oldManifest.has("captureFormat") && !"html-message-v1".equals(oldManifest.optString("captureFormat"))) { //$NON-NLS-1$ //$NON-NLS-2$
+                return false;
+            }
+            String oldKey = oldManifest.optString("conversationKey", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            String candKey = candidateManifest.optString("conversationKey", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            if (!oldKey.isEmpty() && !oldKey.equalsIgnoreCase(candKey)) {
+                return false;
+            }
+            JSONObject oldAnchors = oldManifest.optJSONObject("anchors"); //$NON-NLS-1$
+            JSONObject candAnchors = candidateManifest.optJSONObject("anchors"); //$NON-NLS-1$
+            if (oldAnchors != null && candAnchors != null
+                    && (!oldAnchors.optString("start", "").equals(candAnchors.optString("start", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                            || !oldAnchors.optString("end", "").equals(candAnchors.optString("end", "")))) { //$NON-NLS-1$ //$NON-NLS-2$
+                return false;
+            }
+            if (!censorshipPresentationDigest(oldManifest).equalsIgnoreCase(censorshipPresentationDigest(candidateManifest))) {
+                return false;
+            }
+            if (!oldManifest.optString("annotationsSha256", "").equalsIgnoreCase(candidateAnnotationsSha)) { //$NON-NLS-1$
+                return false;
+            }
+            if (oldMessagesValidOnDisk) {
+                return true;
+            }
+            JSONArray oldPublicHashes = oldManifest.optJSONArray("messageHashes"); //$NON-NLS-1$
+            return oldPublicHashes != null && sameMessageHashSequence(oldPublicHashes, candidateMessages);
+        }
+        if (!oldMessagesValidOnDisk) {
+            return false;
+        }
+        if (Files.exists(existingRoot.resolve("message-reconciliation.json"), LinkOption.NOFOLLOW_LINKS) //$NON-NLS-1$
+                || Files.exists(existingRoot.resolve("migration.json"), LinkOption.NOFOLLOW_LINKS)) { //$NON-NLS-1$
+            return false;
+        }
+        if (!censorshipPresentationDigest(candidateManifest).isEmpty()) {
+            Path existingHtmlPath = existingRoot.resolve("whatsapp.html"); //$NON-NLS-1$
+            if (!isSafeRegularFileUnderLimit(existingHtmlPath, MAX_HTML_MESSAGE_CAPTURE_BYTES)
+                    || !CaptureIntegrity.sha256(existingHtmlPath).equalsIgnoreCase(candidateHtmlSha)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String censorshipPresentationDigest(JSONObject manifest) {
+        if (manifest == null) return ""; //$NON-NLS-1$
+        JSONObject censorship = manifest.optJSONObject("censorship"); //$NON-NLS-1$
+        return censorship == null ? "" : censorship.optString("presentationDigest", ""); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static boolean sameMessageHashSequence(JSONArray left, JSONArray right) {
+        if (left == null || right == null || left.length() != right.length()) {
+            return false;
+        }
+        for (int i = 0; i < left.length(); i++) {
+            JSONObject a = left.optJSONObject(i);
+            JSONObject b = right.optJSONObject(i);
+            if (a == null || b == null) return false;
+            if (!a.optString("domId", "").equals(b.optString("domId", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("key", "").equalsIgnoreCase(b.optString("key", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("messageHash", "").equalsIgnoreCase(b.optString("messageHash", ""))) { //$NON-NLS-1$ //$NON-NLS-2$
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isExistingMessagesJsonValid(JSONObject oldWrapper, JSONArray candidateMessages,
+            String conversationKey) {
+        if (oldWrapper == null || candidateMessages == null || conversationKey == null || conversationKey.isEmpty()) {
+            return false;
+        }
+        if (oldWrapper.keySet().size() != 1 || !oldWrapper.has("messages")) { //$NON-NLS-1$
+            return false;
+        }
+        JSONArray existingMessages = oldWrapper.optJSONArray("messages"); //$NON-NLS-1$
+        if (!sameMessageHashSequence(existingMessages, candidateMessages)) {
+            return false;
+        }
+        Map<String, Integer> ordinals = new HashMap<>();
+        try {
+            for (int i = 0; i < existingMessages.length(); i++) {
+                JSONObject row = existingMessages.optJSONObject(i);
+                JSONObject cand = candidateMessages.optJSONObject(i);
+                if (row == null || cand == null || row.optInt("order", -1) != i) { //$NON-NLS-1$
+                    return false;
+                }
+                String natural = row.optString("timestamp", "") + "\n" + row.optString("sender", "") + "\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                        + row.optString("direction", "") + "\n" + row.optString("type", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                int expectedOrdinal = ordinals.getOrDefault(natural, 0);
+                ordinals.put(natural, expectedOrdinal + 1);
+                if (row.optInt("duplicateOrdinal", -1) != expectedOrdinal) { //$NON-NLS-1$
+                    return false;
+                }
+                String expectedKey = CaptureIntegrity.sha256Text(
+                        conversationKey + "\n" + row.optString("domId", "") + "\n" + natural + "\n" + expectedOrdinal); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                if (!expectedKey.equalsIgnoreCase(row.optString("key", ""))) { //$NON-NLS-1$
+                    return false;
+                }
+                if (!computeHtmlMessageHash(row).equalsIgnoreCase(row.optString("messageHash", ""))) { //$NON-NLS-1$
+                    return false;
+                }
+                if (!CaptureIntegrity.canonicalJson(row).equals(CaptureIntegrity.canonicalJson(cand))) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean isSemanticOriginBindingEquivalent(JSONObject oldManifest, JSONObject oldOrigin,
+            JSONObject candidateManifest, JSONObject candidateOrigin) {
+        if (oldManifest == null || oldOrigin == null || candidateManifest == null || candidateOrigin == null) {
+            return false;
+        }
+        JSONObject oldSummary = oldManifest.optJSONObject("originBinding"); //$NON-NLS-1$
+        JSONObject candSummary = candidateManifest.optJSONObject("originBinding"); //$NON-NLS-1$
+        if (oldSummary == null || candSummary == null
+                || !CaptureIntegrity.canonicalJson(oldSummary).equals(CaptureIntegrity.canonicalJson(candSummary))) {
+            return false;
+        }
+        String[] trackedSections = new String[] {
+                "originBindingVersion", "status", "collectionCode", "originFolderRelativeName", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                "custodyFiles", "hashsTxtIndexedEntries", "sourceDatabase", "postExtractionComplement", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                "ipedLineage", "attachmentsOrigin", "n3SqliteAudit", "custodyTimelineGap" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        };
+        for (String key : trackedSections) {
+            if (!CaptureIntegrity.canonicalJson(oldOrigin.opt(key)).equals(CaptureIntegrity.canonicalJson(candidateOrigin.opt(key)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isManifestRootHashValidFor(JSONObject manifest, JSONArray messages, String htmlSha,
+            String annotationsSha, String reconciliationSha) {
+        if (manifest == null || messages == null) return false;
+        JSONObject anchors = manifest.optJSONObject("anchors"); //$NON-NLS-1$
+        if (anchors == null) return false;
+        try {
+            String expected = computeHtmlCaptureRootHash(messages, htmlSha, annotationsSha, reconciliationSha,
+                    manifest.optString("conversationKey", ""), manifest.optString("sourceFingerprint", ""), //$NON-NLS-1$ //$NON-NLS-2$
+                    manifest.optJSONObject("sourceMetadata"), manifest.optString("ipedVersion", "4.3.1"), //$NON-NLS-1$ //$NON-NLS-2$
+                    manifest.optString("pluginVersion", CHAT_CAPTURE_PLUGIN_VERSION),
+                    anchors.optString("start", ""), anchors.optString("end", "")); //$NON-NLS-1$ //$NON-NLS-2$
+            return expected.equalsIgnoreCase(manifest.optString("captureRootHash", "")); //$NON-NLS-1$
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean isManifestValidForTarget(JSONObject oldManifest, JSONArray candidateMessages,
+            String effectiveHtmlSha, String candidateAnnotationsSha, String reconciliationSha,
+            JSONObject candidateManifest, boolean updateManifestOrigin) {
+        if (oldManifest == null || updateManifestOrigin) {
+            return false;
+        }
+        if (oldManifest.optInt("schemaVersion", 0) != 1
+                || !"html-message-v1".equals(oldManifest.optString("captureFormat")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"4.3.1".equals(oldManifest.optString("ipedVersion")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"completed".equals(oldManifest.optString("status")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"complete".equals(oldManifest.optString("state")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !"messages.json".equals(oldManifest.optString("messagesFile")) //$NON-NLS-1$ //$NON-NLS-2$
+                || oldManifest.optInt("messageCount", -1) != candidateMessages.length()) { //$NON-NLS-1$
+            return false;
+        }
+        if (!oldManifest.optString("htmlSha256", "").equalsIgnoreCase(effectiveHtmlSha) //$NON-NLS-1$
+                || !oldManifest.optString("annotationsSha256", "").equalsIgnoreCase(candidateAnnotationsSha) //$NON-NLS-1$
+                || !oldManifest.optString("reconciliationSha256", "").equalsIgnoreCase(reconciliationSha) //$NON-NLS-1$
+                || !oldManifest.optString("conversationKey", "").equalsIgnoreCase(candidateManifest.optString("conversationKey", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !oldManifest.optString("sourceFingerprint", "").equalsIgnoreCase(candidateManifest.optString("sourceFingerprint", ""))) { //$NON-NLS-1$ //$NON-NLS-2$
+            return false;
+        }
+        JSONObject anchors = oldManifest.optJSONObject("anchors"); //$NON-NLS-1$
+        if (anchors == null
+                || !anchors.optString("start", "").equals(candidateMessages.getJSONObject(0).optString("domId", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                || !anchors.optString("end", "").equals(candidateMessages.getJSONObject(candidateMessages.length() - 1).optString("domId", ""))) { //$NON-NLS-1$ //$NON-NLS-2$
+            return false;
+        }
+        if (oldManifest.optJSONObject("sourceMetadata") == null
+                || !sameMessageHashSequence(oldManifest.optJSONArray("messageHashes"), candidateMessages)) {
+            return false;
+        }
+        return isManifestRootHashValidFor(oldManifest, candidateMessages, effectiveHtmlSha, candidateAnnotationsSha, reconciliationSha);
+    }
+
+    private static JSONObject buildUpdatedSelectiveManifest(JSONObject oldManifest, JSONObject candidateManifest,
+            JSONArray candidateMessages, String effectiveHtmlSha, String candidateAnnotationsSha,
+            String oldReconciliationSha, boolean updateManifestOrigin) throws IOException {
+        boolean salvageOld = oldManifest != null
+                && !oldManifest.optString("conversationKey", "").isEmpty() //$NON-NLS-1$
+                && !oldManifest.optString("sourceFingerprint", "").isEmpty() //$NON-NLS-1$
+                && oldManifest.optJSONObject("sourceMetadata") != null; //$NON-NLS-1$
+        JSONObject target = new JSONObject((salvageOld ? oldManifest : candidateManifest).toString());
+        target.put("schemaVersion", 1) //$NON-NLS-1$
+                .put("captureFormat", "html-message-v1") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("ipedVersion", salvageOld ? oldManifest.optString("ipedVersion", "4.3.1") : candidateManifest.optString("ipedVersion", "4.3.1")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                .put("pluginVersion", salvageOld ? oldManifest.optString("pluginVersion", CHAT_CAPTURE_PLUGIN_VERSION) : candidateManifest.optString("pluginVersion", CHAT_CAPTURE_PLUGIN_VERSION)) //$NON-NLS-1$
+                .put("status", "completed") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("state", "complete") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("messagesFile", "messages.json") //$NON-NLS-1$ //$NON-NLS-2$
+                .put("messageCount", candidateMessages.length()) //$NON-NLS-1$
+                .put("anchors", new JSONObject(candidateManifest.getJSONObject("anchors").toString())) //$NON-NLS-1$
+                .put("htmlSha256", effectiveHtmlSha) //$NON-NLS-1$
+                .put("annotationsSha256", candidateAnnotationsSha) //$NON-NLS-1$
+                .put("messageHashes", new JSONArray(candidateManifest.getJSONArray("messageHashes").toString())); //$NON-NLS-1$
+        if (!oldReconciliationSha.isEmpty()) {
+            target.put("reconciliationSha256", oldReconciliationSha); //$NON-NLS-1$
+            target.put("reconciliationFile", "message-reconciliation.json"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (updateManifestOrigin) {
+            target.put("originBinding", new JSONObject(candidateManifest.getJSONObject("originBinding").toString())) //$NON-NLS-1$
+                    .put("originBindingFile", OriginCustodyBinder.ORIGIN_BINDING_FILE) //$NON-NLS-1$
+                    .put("originBindingSha256", candidateManifest.getString("originBindingSha256")); //$NON-NLS-1$
+        }
+        if (target.optString("createdAt", "").isEmpty()) { //$NON-NLS-1$
+            target.put("createdAt", candidateManifest.optString("createdAt", OffsetDateTime.now(ZoneOffset.UTC).toString())); //$NON-NLS-1$
+        }
+        JSONObject anchors = target.getJSONObject("anchors"); //$NON-NLS-1$
+        target.put("captureRootHash", computeHtmlCaptureRootHash(candidateMessages, effectiveHtmlSha, candidateAnnotationsSha,
+                oldReconciliationSha, target.getString("conversationKey"), target.getString("sourceFingerprint"),
+                target.getJSONObject("sourceMetadata"), target.getString("ipedVersion"), target.getString("pluginVersion"),
+                anchors.getString("start"), anchors.getString("end")));
+        return target;
+    }
+
+    private static boolean isIntegrityEventChainValid(JSONObject integrityObj) {
+        if (integrityObj == null || integrityObj.optInt("schemaVersion", 0) < 2) {
+            return false;
+        }
+        JSONArray artifacts = integrityObj.optJSONArray("artifacts"); //$NON-NLS-1$
+        JSONArray events = integrityObj.optJSONArray("events"); //$NON-NLS-1$
+        if (artifacts == null || artifacts.length() == 0 || events == null || events.length() == 0) {
+            return false;
+        }
+        try {
+            List<JSONObject> sorted = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            for (int i = 0; i < artifacts.length(); i++) {
+                JSONObject item = artifacts.optJSONObject(i);
+                if (item == null) return false;
+                String rel = item.optString("path", ""); //$NON-NLS-1$
+                String sha = item.optString("sha256", ""); //$NON-NLS-1$
+                if (rel.isEmpty() || !seen.add(rel.toLowerCase(Locale.ROOT))
+                        || !sha.matches("(?i)[0-9a-f]{64}") || item.optLong("size", -1L) < 0) { //$NON-NLS-1$
+                    return false;
+                }
+                sorted.add(item);
+            }
+            sorted.sort(Comparator.comparing(x -> x.optString("path", ""))); //$NON-NLS-1$
+            StringBuilder inv = new StringBuilder();
+            for (JSONObject item : sorted) {
+                inv.append(item.optString("path", "")).append('|') //$NON-NLS-1$
+                        .append(item.optLong("size", 0)).append('|') //$NON-NLS-1$
+                        .append(item.optString("sha256", "")).append('\n'); //$NON-NLS-1$
+            }
+            String expectedRoot = CaptureIntegrity.sha256Text(inv.toString());
+            if (!expectedRoot.equalsIgnoreCase(integrityObj.optString("contentRootHash", ""))) { //$NON-NLS-1$
+                return false;
+            }
+            String prevHash = ""; //$NON-NLS-1$
+            String lastRoot = ""; //$NON-NLS-1$
+            for (int i = 0; i < events.length(); i++) {
+                JSONObject event = events.optJSONObject(i);
+                if (event == null || event.optInt("sequence", -1) != i + 1) return false;
+                if (!prevHash.equals(event.optString("previousRecordHash", ""))) return false;
+                String eventRoot = event.optString("contentRootHash", ""); //$NON-NLS-1$
+                String recordHash = event.optString("recordHash", ""); //$NON-NLS-1$
+                if (!eventRoot.matches("(?i)[0-9a-f]{64}") || !recordHash.matches("(?i)[0-9a-f]{64}")) { //$NON-NLS-1$
+                    return false;
+                }
+                JSONObject payload = new JSONObject(event.toString());
+                payload.remove("recordHash"); //$NON-NLS-1$
+                String fmt = event.optString("recordHashFormat", ""); //$NON-NLS-1$
+                String canonical = CaptureIntegrity.sha256Text(CaptureIntegrity.canonicalJson(payload));
+                boolean hashOk = "canonical-v1".equals(fmt) //$NON-NLS-1$
+                        ? recordHash.equalsIgnoreCase(canonical)
+                        : (recordHash.equalsIgnoreCase(canonical) || recordHash.equalsIgnoreCase(CaptureIntegrity.sha256Text(payload.toString())));
+                if (!hashOk) return false;
+                prevHash = recordHash;
+                lastRoot = eventRoot;
+            }
+            return expectedRoot.equalsIgnoreCase(lastRoot);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isExistingIntegrityValidForDisk(Path captureDir, JSONObject integrityObj,
+            Set<String> expectedTrackableFiles) {
+        if (!isIntegrityEventChainValid(integrityObj)) {
+            return false;
+        }
+        try {
+            JSONArray artifacts = integrityObj.optJSONArray("artifacts"); //$NON-NLS-1$
+            Set<String> recorded = new HashSet<>();
+            for (int i = 0; i < artifacts.length(); i++) {
+                JSONObject row = artifacts.optJSONObject(i);
+                String rel = row.optString("path", ""); //$NON-NLS-1$
+                recorded.add(rel);
+                Path file = CaptureIntegrity.resolveContained(captureDir, rel);
+                if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                        || CaptureIntegrity.safeRegularFileSize(file) != row.optLong("size", -1L) //$NON-NLS-1$
+                        || !CaptureIntegrity.sha256(file).equalsIgnoreCase(row.optString("sha256", ""))) { //$NON-NLS-1$
+                    return false;
+                }
+            }
+            return recorded.containsAll(expectedTrackableFiles);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static void deleteEmptyNonCoreSubdirectories(Path root) throws IOException {
+        Files.walkFileTree(root, Collections.emptySet(), 16, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
+                if (CaptureIntegrity.isLinkOrReparse(dir)) {
+                    return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                }
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                if (exc != null) throw exc;
+                if (!dir.equals(root) && !CaptureIntegrity.isLinkOrReparse(dir)) {
+                    try (Stream<Path> children = Files.list(dir)) {
+                        if (children.findAny().isEmpty()) {
+                            Files.deleteIfExists(dir);
+                        }
+                    }
+                }
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private static class ReusableAttachment {

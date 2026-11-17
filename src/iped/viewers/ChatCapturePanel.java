@@ -269,19 +269,31 @@ public class ChatCapturePanel extends JPanel {
                 return;
             }
             if (viewer != null) {
+                saveOriginPreferences();
                 viewer.startRecaptureFlowFromUi(this, destination, getSensitiveImagesFolder(),
-                        getSensitiveSimilarityPercent(), getSensitiveBlurPercent());
+                        getSensitiveSimilarityPercent(), getSensitiveBlurPercent(),
+                        getOriginFolder(), getParentIpedFolder());
             }
         });
         annotateSaved.addActionListener(e -> viewer.annotateSavedChat());
         saveAnnotations.addActionListener(e -> viewer.saveAnnotations());
     }
 
-    static File resolveValidOutputFolder(String folderText) {
+    static String stripSurroundingQuotes(String folderText) {
         if (folderText == null) {
-            return null;
+            return ""; //$NON-NLS-1$
         }
         String trimmed = folderText.trim();
+        while (trimmed.length() >= 2
+                && ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) //$NON-NLS-1$ //$NON-NLS-2$
+                        || (trimmed.startsWith("'") && trimmed.endsWith("'")))) { //$NON-NLS-1$ //$NON-NLS-2$
+            trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+        }
+        return trimmed;
+    }
+
+    static File resolveValidOutputFolder(String folderText) {
+        String trimmed = stripSurroundingQuotes(folderText);
         return trimmed.isEmpty() ? null : new File(trimmed);
     }
 
@@ -528,17 +540,17 @@ public class ChatCapturePanel extends JPanel {
     }
 
     public File getOriginFolder() {
-        String path = originFolderField.getText() == null ? "" : originFolderField.getText().trim(); //$NON-NLS-1$
+        String path = stripSurroundingQuotes(originFolderField.getText());
         return path.isEmpty() ? null : new File(path);
     }
 
     public File getParentIpedFolder() {
-        String path = parentIpedFolderField.getText() == null ? "" : parentIpedFolderField.getText().trim(); //$NON-NLS-1$
+        String path = stripSurroundingQuotes(parentIpedFolderField.getText());
         return path.isEmpty() ? null : new File(path);
     }
 
     private File getSensitiveImagesFolder() {
-        String path = sensitiveImagesFolder.getText().trim();
+        String path = stripSurroundingQuotes(sensitiveImagesFolder.getText());
         return path.isEmpty() ? null : new File(path);
     }
 
