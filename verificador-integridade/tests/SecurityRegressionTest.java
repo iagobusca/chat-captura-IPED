@@ -53,6 +53,7 @@ public final class SecurityRegressionTest {
             alignedHeaderContractAcceptsSafeTableHeadingsAndRejectsUnsafeDataAttrs();
             unquotedQuoteHtmlBypassPayloadsAreRejected();
             openFileGuardRejectsJunctionAndMissingFiles(root);
+            originAuditN3DivergenceAndFailClosedValidation(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -1804,6 +1805,210 @@ public final class SecurityRegressionTest {
                 }
             }
             deleteTree(caseDir);
+        }
+    }
+
+    private static void originAuditN3DivergenceAndFailClosedValidation(Path root) throws Exception {
+        // 1. N3 text matching must never accept substrings, empty DB wildcards, or arbitrary text after ISO timestamps
+        if (IntegrityVerifier.matchesForensicMessageText("Ola", "Ola eu vou matar ele", "", "")) {
+            throw new AssertionError("Substring match in N3 must fail");
+        }
+        if (IntegrityVerifier.matchesForensicMessageText("Ola eu vou matar ele", "Ola", "", "")) {
+            throw new AssertionError("Reverse substring match in N3 must fail");
+        }
+        if (IntegrityVerifier.matchesForensicMessageText("", "Texto forjado", "", "")) {
+            throw new AssertionError("Empty DB text must not act as wildcard");
+        }
+        if (IntegrityVerifier.matchesForensicMessageText("Msg original", "Msg original 2026-11-16 10:00:00 texto forjado", "", "")) {
+            throw new AssertionError("Arbitrary suffix after ISO timestamp must not match");
+        }
+        if (!IntegrityVerifier.matchesForensicMessageText(
+                "Mensagem editada",
+                "Joao Mensagem editada 2026-11-16 10:00:00 -03:00 Editada em 2026-11-16 10:05:00 -03:00",
+                "Joao",
+                "")) {
+            throw new AssertionError("Explicit Editada em ISO suffix with sender must match");
+        }
+        if (!IntegrityVerifier.matchesForensicMessageText("Caf\u00E9", "Cafe\u0301", "", "")) {
+            throw new AssertionError("NFC canonical equivalence must match");
+        }
+
+        Method verify = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+        verify.setAccessible(true);
+        Method runAudit = IntegrityVerifier.class.getDeclaredMethod("runOriginAudit",
+                Path.class, List.class, Path.class, Path.class, Path.class, java.util.function.Consumer.class);
+        runAudit.setAccessible(true);
+        Class<?> oaResCls = Class.forName("IntegrityVerifier$OriginAuditResult");
+        Field passedField = oaResCls.getDeclaredField("passed");
+        passedField.setAccessible(true);
+        Field statusField = oaResCls.getDeclaredField("overallStatus");
+        statusField.setAccessible(true);
+        Field reportTextField = oaResCls.getDeclaredField("reportText");
+        reportTextField.setAccessible(true);
+        Method htmlMethod = IntegrityVerifier.class.getDeclaredMethod(
+                "buildOriginAuditHtml", oaResCls, Path.class, Path.class, Path.class, int.class);
+        htmlMethod.setAccessible(true);
+
+        // Setup valid Avilla origin folder
+        Path origin = Files.createDirectories(root.resolve("OriginAuditFailClosed/CaseX/CopyAll/dev1"));
+        String dummyFileSha = repeat('a', 64);
+        String hashsTxtContent = "Algorithm : SHA256\r\nHash      : " + dummyFileSha + "\r\nPath      : C:\\CaseX\\dummy.txt\r\n\r\n";
+        byte[] hashsTxtUtf16 = hashsTxtContent.getBytes(StandardCharsets.UTF_16LE);
+        byte[] hashsTxtBytes = new byte[hashsTxtUtf16.length + 2];
+        hashsTxtBytes[0] = (byte) 0xFF;
+        hashsTxtBytes[1] = (byte) 0xFE;
+        System.arraycopy(hashsTxtUtf16, 0, hashsTxtBytes, 2, hashsTxtUtf16.length);
+        Path hashsTxtPath = origin.resolve("Hashs.txt");
+        Files.write(hashsTxtPath, hashsTxtBytes);
+        String hashsTxtSha = sha256Bytes(hashsTxtBytes);
+
+        byte[] avillaBytes = "avilla-stub".getBytes(StandardCharsets.UTF_8);
+        Files.write(origin.resolve("Hashs.avilla"), avillaBytes);
+        String avillaSha = sha256Bytes(avillaBytes);
+        byte[] pdfBytes = "%PDF-1.4 stub".getBytes(StandardCharsets.US_ASCII);
+        Files.write(origin.resolve("report.pdf"), pdfBytes);
+        String pdfSha = sha256Bytes(pdfBytes);
+
+        JSONArray validCustodyFiles = new JSONArray()
+                .put(new JSONObject().put("fileName", "Hashs.txt").put("sha256", hashsTxtSha))
+                .put(new JSONObject().put("fileName", "Hashs.avilla").put("sha256", avillaSha))
+                .put(new JSONObject().put("fileName", "report.pdf").put("sha256", pdfSha));
+
+        // 2. N3 divergence reported by plugin must fail overall audit and style st-bad in HTML
+        Path capDivRoot = Files.createDirectories(root.resolve("AuditN3Div"));
+        Path capDiv = Files.createDirectories(capDivRoot.resolve("Chat_N3Div-20261116-120000"));
+        createValidHtmlMessageCapture(capDiv, "Mensagem capturada");
+        JSONObject n3DivBinding = new JSONObject()
+                .put("originBindingVersion", 1)
+                .put("status", "DIVERGENCIA_CUSTODIA_N3")
+                .put("custodyFiles", validCustodyFiles)
+                .put("n3SqliteAudit", new JSONObject()
+                        .put("status", "COM_DIVERGENCIAS")
+                        .put("matchedActive", 0)
+                        .put("recoveredOrNonTable", 0)
+                        .put("diverged", 1)
+                        .put("prePostCopyOriginSha256Match", true));
+        byte[] n3DivBytes = n3DivBinding.toString(2).getBytes(StandardCharsets.UTF_8);
+        Files.write(capDiv.resolve("origin-binding.json"), n3DivBytes);
+        JSONObject manDiv = new JSONObject(new String(Files.readAllBytes(capDiv.resolve("manifest.json")), StandardCharsets.UTF_8));
+        manDiv.put("originBindingFile", "origin-binding.json")
+              .put("originBindingSha256", sha256Bytes(n3DivBytes))
+              .put("originBinding", new JSONObject().put("originBindingVersion", 1).put("status", "DIVERGENCIA_CUSTODIA_N3"));
+        Files.write(capDiv.resolve("manifest.json"), manDiv.toString(2).getBytes(StandardCharsets.UTF_8));
+        Files.write(capDiv.resolve("integridade.json"),
+                buildLocalIntegrityRecordForFiles(capDiv, new String[]{"whatsapp.html", "messages.json", "origin-binding.json"})
+                        .toString(2).getBytes(StandardCharsets.UTF_8));
+
+        List<IntegrityVerifier.Capture> divCaps = IntegrityVerifier.discover(capDivRoot);
+        for (IntegrityVerifier.Capture c : divCaps) verify.invoke(null, c);
+        Object divRes = runAudit.invoke(null, capDivRoot, divCaps, origin, null, null, null);
+        if ((Boolean) passedField.get(divRes)) {
+            throw new AssertionError("runOriginAudit must fail when n3SqliteAudit reports COM_DIVERGENCIAS");
+        }
+        String divStatus = (String) statusField.get(divRes);
+        String divRpt = (String) reportTextField.get(divRes);
+        if (!divStatus.contains("divergenciasN3=") || !divRpt.contains("N3_MENSAGENS_PLUGIN|COM_DIVERGENCIAS")) {
+            throw new AssertionError("Expected divergenciasN3 fail reason, got: " + divStatus + "\n" + divRpt);
+        }
+        String divHtml = (String) htmlMethod.invoke(null, divRes, origin, null, capDivRoot, 1);
+        if (!divHtml.contains("banner-bad") || !divHtml.contains("class=\"st-bad\"><code>COM_DIVERGENCIAS")) {
+            throw new AssertionError("Origin audit HTML must highlight COM_DIVERGENCIAS as st-bad");
+        }
+
+        // 3. Fail-closed when origin-binding lacks cryptographic anchors (SEM_REFERENCIA_CRIPTO) or omits Hashs.txt
+        Path capNoAnchorRoot = Files.createDirectories(root.resolve("AuditNoAnchor"));
+        Path capNoAnchor = Files.createDirectories(capNoAnchorRoot.resolve("Chat_NoAnchor-20261116-120001"));
+        createValidHtmlMessageCapture(capNoAnchor, "Mensagem sem ancora");
+        JSONObject noAnchorBinding = new JSONObject()
+                .put("originBindingVersion", 1)
+                .put("status", "REFERENCIA_CUSTODIA_AUSENTE")
+                .put("custodyFiles", new JSONArray())
+                .put("sourceDatabase", new JSONObject());
+        byte[] noAnchorBytes = noAnchorBinding.toString(2).getBytes(StandardCharsets.UTF_8);
+        Files.write(capNoAnchor.resolve("origin-binding.json"), noAnchorBytes);
+        JSONObject manNoAnc = new JSONObject(new String(Files.readAllBytes(capNoAnchor.resolve("manifest.json")), StandardCharsets.UTF_8));
+        manNoAnc.put("originBindingFile", "origin-binding.json")
+                .put("originBindingSha256", sha256Bytes(noAnchorBytes))
+                .put("originBinding", new JSONObject().put("originBindingVersion", 1).put("status", "REFERENCIA_CUSTODIA_AUSENTE"));
+        Files.write(capNoAnchor.resolve("manifest.json"), manNoAnc.toString(2).getBytes(StandardCharsets.UTF_8));
+        Files.write(capNoAnchor.resolve("integridade.json"),
+                buildLocalIntegrityRecordForFiles(capNoAnchor, new String[]{"whatsapp.html", "messages.json", "origin-binding.json"})
+                        .toString(2).getBytes(StandardCharsets.UTF_8));
+
+        List<IntegrityVerifier.Capture> noAncCaps = IntegrityVerifier.discover(capNoAnchorRoot);
+        for (IntegrityVerifier.Capture c : noAncCaps) verify.invoke(null, c);
+        Object noAncRes = runAudit.invoke(null, capNoAnchorRoot, noAncCaps, origin, null, null, null);
+        if ((Boolean) passedField.get(noAncRes) || !((String) reportTextField.get(noAncRes)).contains("SEM_REFERENCIA_CRIPTO")) {
+            throw new AssertionError("Empty custody binding must fail closed as SEM_REFERENCIA_CRIPTO");
+        }
+
+        // Origin without Hashs.txt must also fail closed
+        Path originNoHashs = Files.createDirectories(root.resolve("OriginWithoutHashsTxt"));
+        Files.write(originNoHashs.resolve("Hashs.avilla"), avillaBytes);
+        Object noHashsRes = runAudit.invoke(null, capNoAnchorRoot, noAncCaps, originNoHashs, null, null, null);
+        if ((Boolean) passedField.get(noHashsRes) || !((String) statusField.get(noHashsRes)).contains("hashsTxtAusente=true")) {
+            throw new AssertionError("Origin missing Hashs.txt must fail closed with hashsTxtAusente=true");
+        }
+
+        // 4. MD5-only HTML/CSV match (without itemSha256 / SHA256 column) must NOT certify EMBUTIDO_NO_HTML_IPED or MSGSTORE_MATCH
+        byte[] inlinePng = new byte[] { (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 1, 2, 3, 4 };
+        String inlineSha = sha256Bytes(inlinePng);
+        Path md5Parent = Files.createDirectories(root.resolve("ParentMd5Only"));
+        Path md5ExpDir = Files.createDirectories(md5Parent.resolve("Exportados"));
+        byte[] expHtmlBytes = ("<html><img src=\"data:image/png;base64,"
+                + java.util.Base64.getEncoder().encodeToString(inlinePng) + "\"></html>").getBytes(StandardCharsets.UTF_8);
+        Files.write(md5ExpDir.resolve("exp.html"), expHtmlBytes);
+        MessageDigest md5Digest = MessageDigest.getInstance("MD5");
+        byte[] md5Raw = md5Digest.digest(expHtmlBytes);
+        StringBuilder md5Hex = new StringBuilder();
+        for (byte b : md5Raw) md5Hex.append(Character.forDigit((b >>> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+        String expHtmlMd5 = md5Hex.toString();
+        String md5Csv = "\"Nome\";\"MD5\";\"Caminho\"\n\"exp.html\";\"" + expHtmlMd5 + "\";\"Exportados/exp.html\"\n";
+        Files.write(md5Parent.resolve("Lista de Arquivos.csv"), md5Csv.getBytes(StandardCharsets.UTF_8));
+
+        Path capMd5Root = Files.createDirectories(root.resolve("AuditMd5Only"));
+        Path capMd5 = Files.createDirectories(capMd5Root.resolve("Chat_Md5Only-20261116-120002"));
+        Files.createDirectories(capMd5.resolve("attachments"));
+        String relAtt = "attachments/" + inlineSha + ".png";
+        Files.write(capMd5.resolve(relAtt), inlinePng);
+        createValidHtmlMessageCapture(capMd5, "Com anexo md5");
+        String origHtml = new String(Files.readAllBytes(capMd5.resolve("whatsapp.html")), StandardCharsets.UTF_8);
+        String modalHtml = origHtml.replace("</body>",
+                "<section class=\"capture-modal\" id=\"preview-" + inlineSha + "\"><img src=\"" + relAtt
+                        + "\"><a href=\"" + relAtt + "\" download=\"att.png\">Baixar</a>"
+                        + "<a href=\"#\" class=\"capture-close\">Fechar</a></section></body>");
+        Files.write(capMd5.resolve("whatsapp.html"), modalHtml.getBytes(StandardCharsets.UTF_8));
+        JSONObject md5MsgsWrapper = new JSONObject(new String(Files.readAllBytes(capMd5.resolve("messages.json")), StandardCharsets.UTF_8));
+        JSONArray md5Msgs = md5MsgsWrapper.getJSONArray("messages");
+        JSONObject md5Msg = md5Msgs.getJSONObject(0);
+        md5Msg.getJSONArray("attachments").put(new JSONObject()
+                .put("path", relAtt).put("mime", "image/png").put("size", inlinePng.length).put("sha256", inlineSha));
+        Method msgHashM = IntegrityVerifier.class.getDeclaredMethod("htmlMessageHash", JSONObject.class);
+        msgHashM.setAccessible(true);
+        String newMsgHash = (String) msgHashM.invoke(null, md5Msg);
+        md5Msg.put("messageHash", newMsgHash);
+        Files.write(capMd5.resolve("messages.json"), md5MsgsWrapper.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        JSONObject manMd5 = new JSONObject(new String(Files.readAllBytes(capMd5.resolve("manifest.json")), StandardCharsets.UTF_8));
+        manMd5.getJSONObject("sourceMetadata").put("itemHash", expHtmlMd5);
+        manMd5.getJSONArray("messageHashes").getJSONObject(0).put("messageHash", newMsgHash);
+        String modalSha = sha256Utf8(modalHtml);
+        manMd5.put("htmlSha256", modalSha);
+        Method rootHashM = IntegrityVerifier.class.getDeclaredMethod(
+                "htmlCaptureRootHash", JSONArray.class, String.class, String.class, String.class, JSONObject.class);
+        rootHashM.setAccessible(true);
+        manMd5.put("captureRootHash", (String) rootHashM.invoke(null, md5Msgs, modalSha, "", "", manMd5));
+        Files.write(capMd5.resolve("manifest.json"), manMd5.toString(2).getBytes(StandardCharsets.UTF_8));
+        Files.write(capMd5.resolve("integridade.json"),
+                buildLocalIntegrityRecordForFiles(capMd5, new String[]{"whatsapp.html", "messages.json", relAtt})
+                        .toString(2).getBytes(StandardCharsets.UTF_8));
+
+        List<IntegrityVerifier.Capture> md5Caps = IntegrityVerifier.discover(capMd5Root);
+        for (IntegrityVerifier.Capture c : md5Caps) verify.invoke(null, c);
+        Object md5Res = runAudit.invoke(null, capMd5Root, md5Caps, origin, md5Parent, null, null);
+        String md5Rpt = (String) reportTextField.get(md5Res);
+        if ((Boolean) passedField.get(md5Res) || !md5Rpt.contains("NAO_LOCALIZADO=1") || md5Rpt.contains("EMBUTIDO_NO_HTML_IPED=1")) {
+            throw new AssertionError("MD5-only CSV/HTML must NOT certify EMBUTIDO_NO_HTML_IPED:\n" + md5Rpt);
         }
     }
 

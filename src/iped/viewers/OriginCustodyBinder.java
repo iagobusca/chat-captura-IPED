@@ -22,10 +22,12 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -41,6 +43,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,6 +68,11 @@ final class OriginCustodyBinder {
     static final int ORIGIN_BINDING_VERSION = 1;
     static final String ORIGIN_BINDING_FILE = "origin-binding.json";
     private static final long MAX_PDF_BYTES = 64L * 1024L * 1024L;
+    private static final int MAX_PDF_PAGES_SAMPLED = 30;
+    private static final int MAX_PDF_TEXT_CHARS = 2 * 1024 * 1024;
+    private static final long PDF_PARSE_TIMEOUT_SECONDS = 10L;
+    private static final int MAX_ORIGIN_WALK_DEPTH = 12;
+    private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final long MAX_HASHS_TXT_BYTES = 512L * 1024L * 1024L;
     private static final long MAX_CSV_BYTES = 512L * 1024L * 1024L;
     private static final long MAX_EXPORTED_HTML_BYTES = 64L * 1024L * 1024L;
@@ -104,7 +116,7 @@ final class OriginCustodyBinder {
 
         JSONObject ipedLineage = inspectIpedLineage(normOrigin, normParentIped, sourceMetadata, dbFiles, hashsIndex);
         Set<String> parentExportedInlineBlobShas = collectExportedHtmlInlineBlobs(
-                normParentIped, sourceMetadata == null ? "" : sourceMetadata.optString("itemHash", ""));
+                normParentIped, resolveSourceItemSha256(sourceMetadata));
         Set<String> allInlineBlobs = new HashSet<>(parentExportedInlineBlobShas);
         if (inlineMediaSha256 != null) {
             for (String s : inlineMediaSha256) {
@@ -130,7 +142,7 @@ final class OriginCustodyBinder {
                 .put("outputFolderName", captureOutputFolderName == null ? "" : captureOutputFolderName);
 
         String collectionCode = pdfInfo.collectionCode.isEmpty() ? inferCollectionCodeFromRoot(normOrigin) : pdfInfo.collectionCode;
-        String overallStatus = computeOverallStatus(custodyFiles, dbFiles, gapInfo, ipedLineage);
+        String overallStatus = computeOverallStatus(custodyFiles, hashsIndex, dbFiles, gapInfo, ipedLineage, n3Audit);
 
         JSONObject full = new JSONObject()
                 .put("originBindingVersion", ORIGIN_BINDING_VERSION)
@@ -240,27 +252,73 @@ final class OriginCustodyBinder {
         info.md5 = fh.md5;
         info.lastModifiedUtc = Instant.ofEpochMilli(Files.getLastModifiedTime(pdfPath, LinkOption.NOFOLLOW_LINKS).toMillis()).toString();
 
+        ExecutorService pdfExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "chat-captura-pdf-custody");
+            t.setDaemon(true);
+            return t;
+        });
         try {
             Class<?> pdDocCls = Class.forName("org.apache.pdfbox.pdmodel.PDDocument");
             Class<?> stripperCls = Class.forName("org.apache.pdfbox.text.PDFTextStripper");
-            Method loadMethod = pdDocCls.getMethod("load", File.class);
-            Method closeMethod = pdDocCls.getMethod("close");
             Method getTextMethod = stripperCls.getMethod("getText", pdDocCls);
-            Object doc = loadMethod.invoke(null, pdfPath.toFile());
-            String text;
-            try {
-                Object stripper = stripperCls.getDeclaredConstructor().newInstance();
-                text = String.valueOf(getTextMethod.invoke(stripper, doc));
-            } finally {
-                closeMethod.invoke(doc);
-            }
+            Method closeMethod = pdDocCls.getMethod("close");
+
+            CompletableFuture<String> parseFuture = CompletableFuture.supplyAsync(() -> {
+                Object doc = null;
+                try {
+                    try {
+                        Class<?> memCls = Class.forName("org.apache.pdfbox.io.MemoryUsageSetting");
+                        Method setupMixed = memCls.getMethod("setupMixed", long.class);
+                        Object memSetting = setupMixed.invoke(null, 8L * 1024L * 1024L);
+                        Method loadMixed = pdDocCls.getMethod("load", File.class, memCls);
+                        doc = loadMixed.invoke(null, pdfPath.toFile(), memSetting);
+                    } catch (NoSuchMethodException | ClassNotFoundException fallback) {
+                        Method loadMethod = pdDocCls.getMethod("load", File.class);
+                        doc = loadMethod.invoke(null, pdfPath.toFile());
+                    }
+                    Object stripper = stripperCls.getDeclaredConstructor().newInstance();
+                    try {
+                        Method getNumberOfPages = pdDocCls.getMethod("getNumberOfPages");
+                        int pageCount = (Integer) getNumberOfPages.invoke(doc);
+                        if (pageCount > 0) {
+                            Method setStartPage = stripperCls.getMethod("setStartPage", int.class);
+                            Method setEndPage = stripperCls.getMethod("setEndPage", int.class);
+                            setStartPage.invoke(stripper, 1);
+                            setEndPage.invoke(stripper, Math.min(pageCount, MAX_PDF_PAGES_SAMPLED));
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    String extracted = String.valueOf(getTextMethod.invoke(stripper, doc));
+                    return extracted.length() > MAX_PDF_TEXT_CHARS
+                            ? extracted.substring(0, MAX_PDF_TEXT_CHARS)
+                            : extracted;
+                } catch (RuntimeException re) {
+                    throw re;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    if (doc != null) {
+                        try {
+                            closeMethod.invoke(doc);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            }, pdfExecutor);
+
+            String text = parseFuture.get(PDF_PARSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             extractCustodyFieldsFromPdfText(text, info);
             info.parseStatus = "extraido_pdfbox";
         } catch (ClassNotFoundException noPdfBox) {
             info.parseStatus = "pdfbox_indisponivel";
+        } catch (TimeoutException timeout) {
+            LOGGER.warn("Timeout controlado ({}s) ao extrair metadados tecnicos de report.pdf", PDF_PARSE_TIMEOUT_SECONDS);
+            info.parseStatus = "timeout_leitura_pdf";
         } catch (Exception e) {
             LOGGER.warn("Falha controlada ao extrair metadados tecnicos de report.pdf: {}", e.getMessage());
             info.parseStatus = "erro_leitura_pdf";
+        } finally {
+            pdfExecutor.shutdownNow();
         }
         return info;
     }
@@ -477,36 +535,65 @@ final class OriginCustodyBinder {
         return s;
     }
 
+    private static void applyReportPdfCrossCheck(
+            JSONObject entry,
+            CustodyReportInfo pdfInfo,
+            String declaredSha256,
+            String actualSha256,
+            String declaredMd5,
+            String actualMd5) {
+        if (!pdfInfo.present) {
+            entry.put("matchesReportPdfStatus", "NAO_VERIFICAVEL_PDF_AUSENTE");
+            return;
+        }
+        boolean hasDeclaredSha = declaredSha256 != null && !declaredSha256.isEmpty();
+        boolean hasDeclaredMd5 = declaredMd5 != null && !declaredMd5.isEmpty();
+        if (hasDeclaredSha) {
+            boolean shaMatch = declaredSha256.equalsIgnoreCase(actualSha256);
+            boolean md5Match = !hasDeclaredMd5 || declaredMd5.equalsIgnoreCase(actualMd5);
+            entry.put("matchesReportPdf", shaMatch && md5Match);
+            entry.put("matchesReportPdfAlgorithm", "SHA-256");
+            entry.put("matchesReportPdfStatus", (shaMatch && md5Match) ? "CONFERE_SHA256" : "DIVERGE");
+        } else if (hasDeclaredMd5) {
+            // MD5 jamais valida integridade isoladamente quando SHA-256 nao foi declarado.
+            boolean md5Match = declaredMd5.equalsIgnoreCase(actualMd5);
+            entry.put("matchesReportPdfSha256Verified", false);
+            entry.put("matchesReportPdfMd5Informative", md5Match);
+            entry.put("matchesReportPdfStatus", md5Match ? "NAO_VERIFICAVEL_SEM_SHA256_NO_PDF" : "DIVERGE_MD5_NO_PDF");
+            entry.put("reportPdfHashNote", md5Match ? "MD5_INFORMATIVO_SEM_SHA256_NO_PDF" : "DIVERGENCIA_MD5_NO_PDF");
+            if (!md5Match) {
+                entry.put("matchesReportPdf", false);
+            }
+        } else {
+            entry.put("matchesReportPdfStatus", "NAO_VERIFICAVEL_SEM_HASH_DECLARADO_NO_PDF");
+            entry.put("reportPdfHashNote", "SEM_HASH_DECLARADO_NO_PDF");
+        }
+    }
+
     private static JSONArray inspectCustodyFiles(Path originRoot, CustodyReportInfo pdfInfo, HashsTxtIndex hashsIndex) throws IOException {
         JSONArray files = new JSONArray();
         if (hashsIndex.present) {
-            boolean md5Ok = pdfInfo.declaredHashsTxtMd5.isEmpty() || pdfInfo.declaredHashsTxtMd5.equalsIgnoreCase(hashsIndex.fileMd5);
-            boolean shaOk = pdfInfo.declaredHashsTxtSha256.isEmpty() || pdfInfo.declaredHashsTxtSha256.equalsIgnoreCase(hashsIndex.fileSha256);
             JSONObject obj = new JSONObject()
                     .put("name", "Hashs.txt")
                     .put("sha256", hashsIndex.fileSha256)
                     .put("md5", hashsIndex.fileMd5)
                     .put("encoding", hashsIndex.encoding)
                     .put("lastModifiedUtc", hashsIndex.lastModifiedUtc);
-            if (pdfInfo.present && (!pdfInfo.declaredHashsTxtSha256.isEmpty() || !pdfInfo.declaredHashsTxtMd5.isEmpty())) {
-                obj.put("matchesReportPdf", md5Ok && shaOk);
-            }
+            applyReportPdfCrossCheck(obj, pdfInfo, pdfInfo.declaredHashsTxtSha256, hashsIndex.fileSha256,
+                    pdfInfo.declaredHashsTxtMd5, hashsIndex.fileMd5);
             files.put(obj);
         }
         Path avillaPath = findCaseInsensitiveFile(originRoot, "Hashs.avilla");
         if (avillaPath != null) {
             FileHashes afh = hashFileDual(avillaPath);
-            boolean md5Ok = pdfInfo.declaredHashsAvillaMd5.isEmpty() || pdfInfo.declaredHashsAvillaMd5.equalsIgnoreCase(afh.md5);
-            boolean shaOk = pdfInfo.declaredHashsAvillaSha256.isEmpty() || pdfInfo.declaredHashsAvillaSha256.equalsIgnoreCase(afh.sha256);
             JSONObject obj = new JSONObject()
                     .put("name", "Hashs.avilla")
                     .put("sha256", afh.sha256)
                     .put("md5", afh.md5)
                     .put("note", "Arquivo cifrado + HMAC proprio do Avilla; validado por hash contra report.pdf")
                     .put("lastModifiedUtc", Instant.ofEpochMilli(Files.getLastModifiedTime(avillaPath, LinkOption.NOFOLLOW_LINKS).toMillis()).toString());
-            if (pdfInfo.present && (!pdfInfo.declaredHashsAvillaSha256.isEmpty() || !pdfInfo.declaredHashsAvillaMd5.isEmpty())) {
-                obj.put("matchesReportPdf", md5Ok && shaOk);
-            }
+            applyReportPdfCrossCheck(obj, pdfInfo, pdfInfo.declaredHashsAvillaSha256, afh.sha256,
+                    pdfInfo.declaredHashsAvillaMd5, afh.md5);
             files.put(obj);
         }
         if (pdfInfo.present) {
@@ -635,6 +722,7 @@ final class OriginCustodyBinder {
 
     private static Path findDatabaseBounded(Path root, String targetName, int maxDepth) throws IOException {
         Path[] found = new Path[1];
+        final int[] scannedCount = new int[1];
         Files.walkFileTree(root, Collections.emptySet(), maxDepth, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -650,6 +738,9 @@ final class OriginCustodyBinder {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (++scannedCount[0] > MAX_ORIGIN_WALK_FILES) {
+                    return FileVisitResult.TERMINATE;
+                }
                 if (!attrs.isSymbolicLink() && !attrs.isOther() && attrs.isRegularFile()
                         && file.getFileName() != null && targetName.equalsIgnoreCase(file.getFileName().toString())) {
                     found[0] = file;
@@ -681,21 +772,42 @@ final class OriginCustodyBinder {
         return info;
     }
 
+    private static String resolveSourceItemSha256(JSONObject sourceMetadata) {
+        if (sourceMetadata == null) return "";
+        String itemSha = sourceMetadata.optString("itemSha256", "").trim().toLowerCase(Locale.ROOT);
+        if (itemSha.matches("[0-9a-f]{64}")) {
+            return itemSha;
+        }
+        String itemHash = sourceMetadata.optString("itemHash", "").trim().toLowerCase(Locale.ROOT);
+        return itemHash.matches("[0-9a-f]{64}") ? itemHash : "";
+    }
+
+    private static String resolveLegacySourceItemMd5(JSONObject sourceMetadata) {
+        if (sourceMetadata == null) return "";
+        String itemHash = sourceMetadata.optString("itemHash", "").trim().toLowerCase(Locale.ROOT);
+        return itemHash.matches("[0-9a-f]{32}") ? itemHash : "";
+    }
+
     private static JSONObject inspectIpedLineage(
             Path originRoot,
             Path parentIpedRoot,
             JSONObject sourceMetadata,
             OriginDbFiles dbFiles,
             HashsTxtIndex hashsIndex) throws IOException {
-        String itemHash = sourceMetadata == null ? "" : sourceMetadata.optString("itemHash", "").trim().toLowerCase(Locale.ROOT);
-        String itemHashAlg = itemHash.length() == 64 ? "SHA-256" : (itemHash.length() == 32 ? "MD5" : "DESCONHECIDO");
+        String itemSha256 = resolveSourceItemSha256(sourceMetadata);
+        String legacyItemMd5 = resolveLegacySourceItemMd5(sourceMetadata);
+        String itemHashAlg = !itemSha256.isEmpty() ? "SHA-256" : (!legacyItemMd5.isEmpty() ? "MD5_INFORMATIVO_SEM_SHA256" : "DESCONHECIDO");
         JSONObject out = new JSONObject()
                 .put("currentItemHashAlgorithm", itemHashAlg)
-                .put("currentItemHash", itemHash)
+                .put("currentItemHash", !itemSha256.isEmpty() ? itemSha256 : legacyItemMd5)
+                .put("currentItemSha256", itemSha256)
                 .put("parentIpedProvided", parentIpedRoot != null)
                 .put("htmlMatchedInParentIpedCsv", false)
                 .put("msgstoreMatchedInParentIpedCsv", false)
-                .put("cryptBackupsMatchedInParentIpedCsv", 0);
+                .put("cryptBackupsMatchedInParentIpedCsv", 0)
+                .put("htmlMatchedMd5InformativeOnly", false)
+                .put("msgstoreMatchedMd5InformativeOnly", false)
+                .put("cryptBackupsMatchedMd5InformativeOnly", 0);
 
         if (parentIpedRoot == null) {
             return out;
@@ -740,8 +852,10 @@ final class OriginCustodyBinder {
             int sha256Col = findColumnIndex(headers, "sha256", "sha-256");
             int nameCol = findColumnIndex(headers, "nome", "name");
 
-            boolean htmlMatched = false;
-            boolean dbMatched = false;
+            boolean htmlMatchedSha = false;
+            boolean dbMatchedSha = false;
+            boolean htmlMatchedMd5Only = false;
+            boolean dbMatchedMd5Only = false;
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isEmpty()) continue;
@@ -750,28 +864,43 @@ final class OriginCustodyBinder {
                 String rowSha256 = sha256Col >= 0 && sha256Col < cols.size() ? cols.get(sha256Col).trim().toLowerCase(Locale.ROOT) : "";
                 String rowName = nameCol >= 0 && nameCol < cols.size() ? cols.get(nameCol).trim().toLowerCase(Locale.ROOT) : "";
 
-                if (!itemHash.isEmpty() && ((itemHash.length() == 32 && itemHash.equals(rowMd5))
-                        || (itemHash.length() == 64 && itemHash.equals(rowSha256)))) {
-                    htmlMatched = true;
+                if (!itemSha256.isEmpty() && !rowSha256.isEmpty() && itemSha256.equals(rowSha256)) {
+                    htmlMatchedSha = true;
+                } else if (!legacyItemMd5.isEmpty() && rowSha256.isEmpty() && legacyItemMd5.equals(rowMd5)) {
+                    htmlMatchedMd5Only = true;
                 }
-                if (!dbFiles.msgstoreMd5.isEmpty() && dbFiles.msgstoreMd5.equals(rowMd5) && rowName.contains("msgstore")) {
-                    dbMatched = true;
-                }
-                if (!dbFiles.msgstoreSha256.isEmpty() && dbFiles.msgstoreSha256.equals(rowSha256) && rowName.contains("msgstore")) {
-                    dbMatched = true;
+                if (rowName.contains("msgstore")) {
+                    if (!dbFiles.msgstoreSha256.isEmpty() && !rowSha256.isEmpty()) {
+                        if (dbFiles.msgstoreSha256.equals(rowSha256)) {
+                            dbMatchedSha = true;
+                        }
+                    } else if (rowSha256.isEmpty() && !dbFiles.msgstoreMd5.isEmpty() && dbFiles.msgstoreMd5.equals(rowMd5)) {
+                        dbMatchedMd5Only = true;
+                    }
                 }
                 if (!rowSha256.isEmpty() && cryptShas.contains(rowSha256)) {
                     matchedCryptIds.add(rowSha256);
-                }
-                if (!rowMd5.isEmpty() && originCryptMd5s.contains(rowMd5)) {
+                } else if (rowSha256.isEmpty() && !rowMd5.isEmpty() && originCryptMd5s.contains(rowMd5)) {
                     matchedCryptMd5s.add(rowMd5);
                 }
             }
-            int matchedTotal = Math.max(matchedCryptIds.size(), matchedCryptMd5s.size());
-            out.put("htmlMatchedInParentIpedCsv", htmlMatched);
-            out.put("msgstoreMatchedInParentIpedCsv", dbMatched);
-            out.put("cryptBackupsMatchedInParentIpedCsv", matchedTotal);
-            out.put("status", htmlMatched && dbMatched ? "PAI_VINCULADO" : (htmlMatched || dbMatched ? "PAI_PARCIAL" : "PAI_SEM_CORRESPONDENCIA"));
+            out.put("htmlMatchedInParentIpedCsv", htmlMatchedSha);
+            out.put("msgstoreMatchedInParentIpedCsv", dbMatchedSha);
+            out.put("cryptBackupsMatchedInParentIpedCsv", matchedCryptIds.size());
+            out.put("htmlMatchedMd5InformativeOnly", htmlMatchedMd5Only);
+            out.put("msgstoreMatchedMd5InformativeOnly", dbMatchedMd5Only);
+            out.put("cryptBackupsMatchedMd5InformativeOnly", matchedCryptMd5s.size());
+            String status;
+            if (htmlMatchedSha && dbMatchedSha) {
+                status = "PAI_VINCULADO";
+            } else if (htmlMatchedSha || dbMatchedSha) {
+                status = "PAI_PARCIAL";
+            } else if (htmlMatchedMd5Only || dbMatchedMd5Only) {
+                status = "PAI_SOMENTE_MD5_INFORMATIVO_SEM_SHA256";
+            } else {
+                status = "PAI_SEM_CORRESPONDENCIA";
+            }
+            out.put("status", status);
         }
         return out;
     }
@@ -825,16 +954,18 @@ final class OriginCustodyBinder {
         return -1;
     }
 
-    private static Set<String> collectExportedHtmlInlineBlobs(Path parentIpedRoot, String expectedItemHash) {
+    private static Set<String> collectExportedHtmlInlineBlobs(Path parentIpedRoot, String expectedItemSha256) {
         Set<String> out = new HashSet<>();
-        if (parentIpedRoot == null || expectedItemHash == null || expectedItemHash.isBlank()) {
+        if (parentIpedRoot == null || expectedItemSha256 == null || !expectedItemSha256.trim().matches("(?i)[0-9a-f]{64}")) {
             return out;
         }
+        String targetSha = expectedItemSha256.trim().toLowerCase(Locale.ROOT);
         Path expDir = parentIpedRoot.resolve("Exportados");
         try {
             if (!Files.isDirectory(expDir, LinkOption.NOFOLLOW_LINKS) || CaptureIntegrity.isLinkOrReparse(expDir)) {
                 return out;
             }
+            final int[] scannedCount = new int[1];
             Files.walkFileTree(expDir, Collections.emptySet(), 6, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -846,6 +977,9 @@ final class OriginCustodyBinder {
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (++scannedCount[0] > MAX_ORIGIN_WALK_FILES) {
+                        return FileVisitResult.TERMINATE;
+                    }
                     if (!attrs.isRegularFile() || attrs.isSymbolicLink() || attrs.isOther()) {
                         return FileVisitResult.CONTINUE;
                     }
@@ -856,10 +990,9 @@ final class OriginCustodyBinder {
                     if (attrs.size() > MAX_EXPORTED_HTML_BYTES) {
                         return FileVisitResult.CONTINUE;
                     }
-                    FileHashes fh = hashFileDual(file);
-                    boolean match = (expectedItemHash.length() == 32 && fh.md5.equalsIgnoreCase(expectedItemHash))
-                            || (expectedItemHash.length() == 64 && fh.sha256.equalsIgnoreCase(expectedItemHash));
-                    if (match) {
+                    // Decisao de correspondencia do HTML exportado exige SHA-256 (nunca MD5 isolado).
+                    String actualSha = CaptureIntegrity.sha256(file);
+                    if (actualSha.equalsIgnoreCase(targetSha)) {
                         String html = CaptureIntegrity.readUtf8Limited(file, MAX_EXPORTED_HTML_BYTES);
                         Matcher m = INLINE_DATA_URI_PATTERN.matcher(html);
                         while (m.find()) {
@@ -881,6 +1014,7 @@ final class OriginCustodyBinder {
 
     private static final class AttachmentTraceSummary {
         int uniqueAttachments;
+        boolean originDiskScanTruncated;
         final Map<String, Integer> counts = new LinkedHashMap<>();
         final JSONArray items = new JSONArray();
 
@@ -894,6 +1028,7 @@ final class OriginCustodyBinder {
         JSONObject toJson() {
             return new JSONObject()
                     .put("uniqueAttachments", uniqueAttachments)
+                    .put("originDiskScanTruncated", originDiskScanTruncated)
                     .put("counts", new JSONObject(counts))
                     .put("items", items);
         }
@@ -952,7 +1087,9 @@ final class OriginCustodyBinder {
                 originRel = "(inline data-URI em HTML exportado pelo IPED)";
             } else {
                 if (diskShaToRel == null) {
-                    diskShaToRel = scanMissingAttachmentsBySize(originRoot, capturedRecords, seenShas, inlineMediaShas, hashsIndex);
+                    boolean[] truncatedOut = new boolean[1];
+                    diskShaToRel = scanMissingAttachmentsBySize(originRoot, capturedRecords, seenShas, inlineMediaShas, hashsIndex, truncatedOut);
+                    summary.originDiskScanTruncated = truncatedOut[0];
                 }
                 String diskRel = diskShaToRel.get(sha);
                 if (diskRel != null) {
@@ -983,7 +1120,8 @@ final class OriginCustodyBinder {
             JSONArray capturedRecords,
             Set<String> seenShas,
             Set<String> inlineMediaShas,
-            HashsTxtIndex hashsIndex) throws IOException {
+            HashsTxtIndex hashsIndex,
+            boolean[] truncatedOut) throws IOException {
         Map<String, String> out = new HashMap<>();
         Set<Long> targetSizes = new HashSet<>();
         Set<String> targetShas = new HashSet<>();
@@ -1008,10 +1146,15 @@ final class OriginCustodyBinder {
             return out;
         }
         Path normOrigin = originRoot.toAbsolutePath().normalize();
-        Files.walkFileTree(normOrigin, new SimpleFileVisitor<Path>() {
+        final int[] scannedCount = new int[1];
+        Files.walkFileTree(normOrigin, Collections.emptySet(), MAX_ORIGIN_WALK_DEPTH, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 if (!dir.equals(normOrigin) && (attrs.isSymbolicLink() || attrs.isOther() || CaptureIntegrity.isLinkOrReparse(dir))) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                String name = dir.getFileName() == null ? "" : dir.getFileName().toString().toLowerCase(Locale.ROOT);
+                if ("cache".equals(name) || "code_cache".equals(name) || "app_webview".equals(name) || name.startsWith(".thumb")) {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
                 return FileVisitResult.CONTINUE;
@@ -1019,6 +1162,12 @@ final class OriginCustodyBinder {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (++scannedCount[0] > MAX_ORIGIN_WALK_FILES) {
+                    if (truncatedOut != null && truncatedOut.length > 0) {
+                        truncatedOut[0] = true;
+                    }
+                    return FileVisitResult.TERMINATE;
+                }
                 if (!attrs.isSymbolicLink() && !attrs.isOther() && attrs.isRegularFile()
                         && targetSizes.contains(attrs.size())) {
                     String s = CaptureIntegrity.sha256(file).toLowerCase(Locale.ROOT);
@@ -1063,7 +1212,7 @@ final class OriginCustodyBinder {
             }
 
             List<Long> positiveIds = new ArrayList<>();
-            Map<Long, String> expectedTextById = new HashMap<>();
+            Map<Long, JSONObject> expectedRecordById = new HashMap<>();
             int nonPositive = 0;
             for (int i = 0; i < capturedRecords.length(); i++) {
                 JSONObject rec = capturedRecords.optJSONObject(i);
@@ -1073,7 +1222,7 @@ final class OriginCustodyBinder {
                     long id = Long.parseLong(domId);
                     if (id > 0) {
                         positiveIds.add(id);
-                        expectedTextById.put(id, rec.optString("text", ""));
+                        expectedRecordById.put(id, rec);
                     } else {
                         nonPositive++;
                     }
@@ -1124,9 +1273,12 @@ final class OriginCustodyBinder {
                                 recoveredOrAbsent++;
                                 continue;
                             }
-                            String dbTxt = normalizeWhitespace(foundTexts.get(id));
-                            String capTxt = normalizeWhitespace(expectedTextById.get(id));
-                            if (dbTxt.isEmpty() || capTxt.contains(dbTxt) || dbTxt.contains(capTxt)) {
+                            String dbTxt = foundTexts.get(id);
+                            JSONObject rec = expectedRecordById.get(id);
+                            String capTxt = rec != null ? rec.optString("text", "") : "";
+                            String sender = rec != null ? rec.optString("sender", "") : "";
+                            String time = rec != null ? rec.optString("timestamp", "") : "";
+                            if (matchesForensicMessageText(dbTxt, capTxt, sender, time)) {
                                 matched++;
                             } else {
                                 diverged++;
@@ -1138,7 +1290,19 @@ final class OriginCustodyBinder {
 
             String postSha = CaptureIntegrity.sha256(dbFiles.msgstorePath);
             boolean intact = preSha.equalsIgnoreCase(postSha);
-            out.put("status", diverged == 0 && intact ? "CONFERE" : (diverged > 0 ? "COM_DIVERGENCIAS" : "ALTERACAO_ORIGEM_DETECTADA"))
+            String n3Status;
+            if (!intact) {
+                n3Status = "ALTERACAO_ORIGEM_DETECTADA";
+            } else if (diverged > 0) {
+                n3Status = "COM_DIVERGENCIAS";
+            } else if (matched > 0) {
+                n3Status = "CONFERE";
+            } else if (positiveIds.isEmpty()) {
+                n3Status = "SEM_MENSAGENS_TABELA_ATIVA";
+            } else {
+                n3Status = "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO";
+            }
+            out.put("status", n3Status)
                     .put("schema", schemaUsed)
                     .put("prePostCopyOriginSha256Match", intact)
                     .put("matchedActive", matched)
@@ -1177,8 +1341,66 @@ final class OriginCustodyBinder {
         }
     }
 
+    static boolean matchesForensicMessageText(String dbRaw, String capRaw, String senderRaw, String timeRaw) {
+        String db = normalizeWhitespace(dbRaw);
+        String cap = normalizeWhitespace(capRaw);
+        if (db.isEmpty() && cap.isEmpty()) {
+            return true;
+        }
+        if (db.isEmpty() || cap.isEmpty()) {
+            return false;
+        }
+        if (canonicalTextSha256Equals(db, cap)) {
+            return true;
+        }
+        String stripped = cap;
+        String sender = normalizeWhitespace(senderRaw);
+        if (!sender.isEmpty() && stripped.startsWith(sender)) {
+            stripped = stripped.substring(sender.length()).trim();
+        }
+        String time = normalizeWhitespace(timeRaw);
+        if (!time.isEmpty() && stripped.endsWith(time)) {
+            stripped = stripped.substring(0, stripped.length() - time.length()).trim();
+        }
+        if (canonicalTextSha256Equals(db, stripped)) {
+            return true;
+        }
+        String noTimeSuffix = stripped.replaceAll("\\s+\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?$", "").trim();
+        if (canonicalTextSha256Equals(db, noTimeSuffix)) {
+            return true;
+        }
+        String noIsoSuffix = stripped.replaceAll(
+                "\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?"
+                        + "(?:\\s+Editada\\s+em\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?)?$",
+                "").trim();
+        if (canonicalTextSha256Equals(db, noIsoSuffix)) {
+            return true;
+        }
+        String noTimePrefix = stripped.replaceFirst("^\\d{1,2}:\\d{2}(?::\\d{2})?\\s+", "").trim();
+        return canonicalTextSha256Equals(db, noTimePrefix);
+    }
+
+    private static boolean canonicalTextSha256Equals(String canonicalA, String canonicalB) {
+        if (canonicalA == null || canonicalB == null || canonicalA.isEmpty() || canonicalB.isEmpty()) {
+            return false;
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digestA = md.digest(canonicalA.getBytes(StandardCharsets.UTF_8));
+            md.reset();
+            byte[] digestB = md.digest(canonicalB.getBytes(StandardCharsets.UTF_8));
+            return MessageDigest.isEqual(digestA, digestB);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 indisponivel na JVM", e);
+        }
+    }
+
     private static String normalizeWhitespace(String value) {
-        return value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        if (value == null) {
+            return "";
+        }
+        String nfc = Normalizer.normalize(value, Normalizer.Form.NFC);
+        return nfc.replaceAll("[\\s\\u00A0\\u2007\\u202F]+", " ").trim();
     }
 
     private static JSONObject buildTimelineGap(
@@ -1199,7 +1421,9 @@ final class OriginCustodyBinder {
         String formalAt = !hashsIndex.lastModifiedUtc.isEmpty() ? hashsIndex.lastModifiedUtc : pdfInfo.lastModifiedUtc;
 
         String statement;
-        if (!hasDb) {
+        if (!hashsIndex.present) {
+            statement = "Hashs.txt ausente na pasta de origem informada; referencia criptografica inicial nao verificavel.";
+        } else if (!hasDb) {
             statement = "Extracao e custodia Avilla referenciadas pelo relatorio e Hashs.txt; msgstore.db nao localizado na raiz informada.";
         } else if (inHashs) {
             statement = "Extracao realizada em " + extWindow + ", com custodia integral formalizada no Avilla em " + formalAt
@@ -1221,8 +1445,9 @@ final class OriginCustodyBinder {
                     + "a " + embCount + " blob(s) embutido(s) no HTML exportado.";
         }
 
-        String gapStatus = inHashs ? "CUSTODIA_COMPLETA"
-                : (compOk ? "CUSTODIA_COMPLEMENTADA_POS_TAR" : "CUSTODIA_PARCIAL_COM_CONTINUIDADE_DOCUMENTADA");
+        String gapStatus = !hashsIndex.present ? "REFERENCIA_HASHS_TXT_AUSENTE"
+                : (inHashs ? "CUSTODIA_COMPLETA"
+                : (compOk ? "CUSTODIA_COMPLEMENTADA_POS_TAR" : "CUSTODIA_PARCIAL_COM_CONTINUIDADE_DOCUMENTADA"));
 
         return new JSONObject()
                 .put("hasPostManifestGap", gap)
@@ -1233,12 +1458,36 @@ final class OriginCustodyBinder {
                 .put("pericialStatementPtBr", statement);
     }
 
-    private static String computeOverallStatus(JSONArray custodyFiles, OriginDbFiles dbFiles, JSONObject gapInfo, JSONObject ipedLineage) {
+    private static String computeOverallStatus(
+            JSONArray custodyFiles,
+            HashsTxtIndex hashsIndex,
+            OriginDbFiles dbFiles,
+            JSONObject gapInfo,
+            JSONObject ipedLineage,
+            JSONObject n3Audit) {
         for (int i = 0; i < custodyFiles.length(); i++) {
             JSONObject cf = custodyFiles.optJSONObject(i);
             if (cf != null && cf.has("matchesReportPdf") && !cf.optBoolean("matchesReportPdf", true)) {
                 return "DIVERGENCIA_CUSTODIA";
             }
+        }
+        if (n3Audit != null) {
+            String n3Status = n3Audit.optString("status", "");
+            int diverged = n3Audit.optInt("diverged", 0);
+            boolean prePostMatch = n3Audit.optBoolean("prePostCopyOriginSha256Match", true);
+            if (!prePostMatch || "ALTERACAO_ORIGEM_DETECTADA".equalsIgnoreCase(n3Status)) {
+                return "ALTERACAO_ORIGEM_DETECTADA";
+            }
+            if (diverged > 0 || "COM_DIVERGENCIAS".equalsIgnoreCase(n3Status)) {
+                return "DIVERGENCIA_CUSTODIA_N3";
+            }
+            if ("erro_sqlite_leitura".equalsIgnoreCase(n3Status)
+                    || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equalsIgnoreCase(n3Status)) {
+                return "FALHA_AUDITORIA_N3";
+            }
+        }
+        if (hashsIndex == null || !hashsIndex.present) {
+            return "REFERENCIA_CUSTODIA_AUSENTE";
         }
         return gapInfo.optString("status", "VINCULADO");
     }

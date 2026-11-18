@@ -9,10 +9,13 @@ import java.awt.event.WindowEvent;
 import javax.swing.ImageIcon;
 import java.awt.datatransfer.StringSelection;
 import java.io.*;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -35,8 +38,9 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.5";
+    private static final String VERIFIER_VERSION = "1.5.6";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
+    private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
     private static final class HtmlElementToken {
         final String tag;
@@ -1656,7 +1660,8 @@ public final class IntegrityVerifier {
     private static void verifyMessageCapture(Capture c,JSONObject manifest) throws Exception {
         if(manifest.optInt("schemaVersion",0)!=1||!"4.3.1".equals(manifest.optString("ipedVersion"))||!"completed".equals(manifest.optString("status"))||!"complete".equals(manifest.optString("state")))throw new IOException("Formato de captura HTML, estado ou versão IPED incompatível.");
         JSONObject sourceMetadata=manifest.optJSONObject("sourceMetadata"),anchors=manifest.optJSONObject("anchors");
-        if(sourceMetadata==null||anchors==null||sourceMetadata.optString("name","").length()>1024||sourceMetadata.optLong("size",-1)<0||sourceMetadata.optString("type","").length()>256||sourceMetadata.optString("itemHash","").length()>128||!manifest.optString("sourceFingerprint","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("conversationKey","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("captureRootHash","").matches("(?i)[0-9a-f]{64}"))throw new IOException("Metadados de origem, âncoras ou hashes do manifesto são inválidos.");
+        String itemSha256Meta=sourceMetadata==null?"":sourceMetadata.optString("itemSha256","");
+        if(sourceMetadata==null||anchors==null||sourceMetadata.optString("name","").length()>1024||sourceMetadata.optLong("size",-1)<0||sourceMetadata.optString("type","").length()>256||sourceMetadata.optString("itemHash","").length()>128||(!itemSha256Meta.isEmpty()&&!itemSha256Meta.matches("(?i)[0-9a-f]{64}"))||!manifest.optString("sourceFingerprint","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("conversationKey","").matches("(?i)[0-9a-f]{64}")||!manifest.optString("captureRootHash","").matches("(?i)[0-9a-f]{64}"))throw new IOException("Metadados de origem, âncoras ou hashes do manifesto são inválidos.");
         String messagesName=manifest.optString("messagesFile","");if(!"messages.json".equals(messagesName))throw new IOException("Arquivo de mensagens inválido.");
         Path messagesPath=resolve(c.dir,messagesName);if(messagesPath==null)throw new IOException("Caminho do manifesto de mensagens inválido.");
         JSONObject wrapper=parseBoundedJson(readUtf8Limited(messagesPath,MAX_HTML_CAPTURE_BYTES),messagesPath);JSONArray messages=wrapper.optJSONArray("messages");
@@ -2106,7 +2111,7 @@ public final class IntegrityVerifier {
         JSONObject counts=reconciliation.optJSONObject("counts");if(counts==null||counts.optInt("unchanged",-1)!=unchanged||counts.optInt("changed",-1)!=changed||counts.optInt("missingInCurrentSource",-1)!=missing||counts.optInt("newInInterval",-1)!=added)throw new IOException("Contagens da reconciliação divergem dos registros.");
         Item report=new Item();report.path="message-reconciliation.json";report.expected=reconciliationSha;report.actual=reconciliationSha;report.bytes=safeRegularFileSize(path);report.state="reconciliação por mensagem íntegra";c.items.add(report);return statesById;
     }
-    private static String htmlCaptureRootHash(JSONArray messages,String htmlSha,String annotationsSha,String reconciliationSha,JSONObject manifest)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-root\n");appendHtmlField(canonical,htmlSha);appendHtmlField(canonical,annotationsSha);appendHtmlField(canonical,reconciliationSha);appendHtmlField(canonical,manifest.optString("conversationKey",""));appendHtmlField(canonical,manifest.optString("sourceFingerprint",""));JSONObject source=manifest.optJSONObject("sourceMetadata");appendHtmlField(canonical,source==null?"":source.optString("name",""));appendHtmlField(canonical,source==null?"":Long.toString(source.optLong("size",-1)));appendHtmlField(canonical,source==null?"":source.optString("type",""));appendHtmlField(canonical,source==null?"":source.optString("itemHash",""));appendHtmlField(canonical,source==null?"":Boolean.toString(source.optBoolean("deleted",false)));appendHtmlField(canonical,manifest.optString("ipedVersion",""));appendHtmlField(canonical,manifest.optString("pluginVersion",""));JSONObject anchors=manifest.optJSONObject("anchors");appendHtmlField(canonical,anchors==null?"":anchors.optString("start",""));appendHtmlField(canonical,anchors==null?"":anchors.optString("end",""));for(int i=0;i<messages.length();i++){JSONObject message=messages.getJSONObject(i);appendHtmlField(canonical,message.optString("key",""));appendHtmlField(canonical,message.optString("messageHash",""));}return hashText(canonical.toString());}
+    private static String htmlCaptureRootHash(JSONArray messages,String htmlSha,String annotationsSha,String reconciliationSha,JSONObject manifest)throws Exception{StringBuilder canonical=new StringBuilder("html-message-v1-root\n");appendHtmlField(canonical,htmlSha);appendHtmlField(canonical,annotationsSha);appendHtmlField(canonical,reconciliationSha);appendHtmlField(canonical,manifest.optString("conversationKey",""));appendHtmlField(canonical,manifest.optString("sourceFingerprint",""));JSONObject source=manifest.optJSONObject("sourceMetadata");appendHtmlField(canonical,source==null?"":source.optString("name",""));appendHtmlField(canonical,source==null?"":Long.toString(source.optLong("size",-1)));appendHtmlField(canonical,source==null?"":source.optString("type",""));appendHtmlField(canonical,source==null?"":source.optString("itemHash",""));appendHtmlField(canonical,source==null?"":Boolean.toString(source.optBoolean("deleted",false)));String itemSha256=source==null?"":source.optString("itemSha256","");if(!itemSha256.isEmpty())appendHtmlField(canonical,itemSha256);appendHtmlField(canonical,manifest.optString("ipedVersion",""));appendHtmlField(canonical,manifest.optString("pluginVersion",""));JSONObject anchors=manifest.optJSONObject("anchors");appendHtmlField(canonical,anchors==null?"":anchors.optString("start",""));appendHtmlField(canonical,anchors==null?"":anchors.optString("end",""));for(int i=0;i<messages.length();i++){JSONObject message=messages.getJSONObject(i);appendHtmlField(canonical,message.optString("key",""));appendHtmlField(canonical,message.optString("messageHash",""));}return hashText(canonical.toString());}
     private static void appendHtmlField(StringBuilder canonical,String value){String field=value==null?"":value;canonical.append(field.length()).append(':').append(field).append('\n');}
     private static boolean hasControlChars(String s){
         for(int i=0;i<s.length();i++){char ch=s.charAt(i);if(ch<0x20||ch==0x7f)return true;}
@@ -2919,6 +2924,7 @@ public final class IntegrityVerifier {
             if (p != null && Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) return p;
         }
         final Path[] found = new Path[1];
+        final int[] visited = { 0 };
         Files.walkFileTree(originDir, Collections.<FileVisitOption>emptySet(), 10, new SimpleFileVisitor<Path>() {
             @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
                 if (!d.equals(originDir) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d))) return FileVisitResult.SKIP_SUBTREE;
@@ -2927,6 +2933,7 @@ public final class IntegrityVerifier {
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
+                if (++visited[0] > MAX_ORIGIN_WALK_FILES) return FileVisitResult.TERMINATE;
                 if (!a.isSymbolicLink() && !a.isOther() && a.isRegularFile() && f.getFileName() != null
                         && "msgstore.db".equalsIgnoreCase(f.getFileName().toString())) {
                     found[0] = f;
@@ -2951,26 +2958,28 @@ public final class IntegrityVerifier {
         }
     }
 
-    private static Set<String> collectExportedInlineBlobs(Path searchRoot, Set<String> targetItemHashes) throws Exception {
+    private static Set<String> collectExportedInlineBlobs(Path searchRoot, Set<String> targetItemSha256s) throws Exception {
         Set<String> blobs = new HashSet<>();
-        if (searchRoot == null || targetItemHashes.isEmpty()) return blobs;
+        if (searchRoot == null || targetItemSha256s == null || targetItemSha256s.isEmpty()) return blobs;
         String rootName = searchRoot.getFileName() == null ? "" : searchRoot.getFileName().toString();
         Path exp = "Exportados".equalsIgnoreCase(rootName) ? searchRoot : searchRoot.resolve("Exportados");
         if (!Files.exists(exp, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(exp) || !Files.isDirectory(exp, LinkOption.NOFOLLOW_LINKS)) return blobs;
         Pattern dataUri = Pattern.compile("data:(?:image|audio|video)/[^;\"'\\s]+;base64,([A-Za-z0-9+/=]+)", Pattern.CASE_INSENSITIVE);
         final Path realExp = exp.toRealPath();
+        final int[] visited = { 0 };
         Files.walkFileTree(exp, Collections.<FileVisitOption>emptySet(), 6, new SimpleFileVisitor<Path>() {
             @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
                 if (!d.equals(exp) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d) || !d.toRealPath().startsWith(realExp))) return FileVisitResult.SKIP_SUBTREE;
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) throws IOException {
+                if (++visited[0] > MAX_ORIGIN_WALK_FILES) return FileVisitResult.TERMINATE;
                 if (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(f) || !a.isRegularFile()) return FileVisitResult.CONTINUE;
                 String name = f.getFileName() == null ? "" : f.getFileName().toString().toLowerCase(Locale.ROOT);
                 if ((!name.endsWith(".html") && !name.endsWith(".htm")) || a.size() > MAX_HTML_CAPTURE_BYTES) return FileVisitResult.CONTINUE;
                 try {
-                    DualDigest dh = dualHash(f);
-                    if (targetItemHashes.contains(dh.md5) || targetItemHashes.contains(dh.sha256)) {
+                    String fileSha256 = hash(f).toLowerCase(Locale.ROOT);
+                    if (targetItemSha256s.contains(fileSha256)) {
                         String html = readUtf8Limited(f, MAX_HTML_CAPTURE_BYTES);
                         Matcher m = dataUri.matcher(html);
                         while (m.find()) {
@@ -3020,8 +3029,9 @@ public final class IntegrityVerifier {
         DualDigest dbPre = dbPath == null ? null : dualHash(dbPath);
         boolean dbInHashs = dbPre != null && hashsIdx.shaToRelPath.containsKey(dbPre.sha256);
 
-        // Coleta itemHashes das capturas + anexos unicos
-        Set<String> captureHtmlHashes = new HashSet<>();
+        // Coleta itemHashes (preferindo SHA-256; MD5 apenas informativo) das capturas + anexos unicos
+        Set<String> captureHtmlSha256s = new HashSet<>();
+        Set<String> captureHtmlMd5s = new HashSet<>();
         Map<String, Long> neededAttachmentSizes = new HashMap<>();
         for (Capture c : captures) {
             Path mp = resolve(c.dir, "manifest.json");
@@ -3029,8 +3039,11 @@ public final class IntegrityVerifier {
                 JSONObject m = parseBoundedJson(readUtf8Limited(mp), mp);
                 JSONObject sm = m.optJSONObject("sourceMetadata");
                 if (sm != null) {
+                    String iSha = sm.optString("itemSha256", "").trim().toLowerCase(Locale.ROOT);
+                    if (iSha.matches("[0-9a-f]{64}")) captureHtmlSha256s.add(iSha);
                     String ih = sm.optString("itemHash", "").trim().toLowerCase(Locale.ROOT);
-                    if (!ih.isEmpty()) captureHtmlHashes.add(ih);
+                    if (ih.matches("[0-9a-f]{64}")) captureHtmlSha256s.add(ih);
+                    else if (ih.matches("[0-9a-f]{32}")) captureHtmlMd5s.add(ih);
                 }
             }
             for (Item it : c.items) {
@@ -3040,10 +3053,12 @@ public final class IntegrityVerifier {
             }
         }
 
-        // Busca parent IPED CSV e HTMLs exportados
+        // Busca parent IPED CSV (somente SHA-256 tem valor decisorio; MD5 e apenas informativo) e HTMLs exportados
         auditStep(progress, "Etapa 5/9: correlacionando com Lista de Arquivos.csv do caso (se informado)...");
         Set<String> matchedParentHtmls = new HashSet<>();
+        Set<String> matchedParentHtmlsMd5Info = new HashSet<>();
         boolean matchedParentDb = false;
+        boolean matchedParentDbMd5Info = false;
         if (parentIpedDir != null) {
             Path csv = resolve(parentIpedDir, "Lista de Arquivos.csv");
             if (csv != null && Files.isRegularFile(csv, LinkOption.NOFOLLOW_LINKS)) {
@@ -3061,10 +3076,17 @@ public final class IntegrityVerifier {
                             String md5v = md5Col >= 0 && md5Col < row.size() ? row.get(md5Col).trim().toLowerCase(Locale.ROOT) : "";
                             String shav = shaCol >= 0 && shaCol < row.size() ? row.get(shaCol).trim().toLowerCase(Locale.ROOT) : "";
                             String nmv = nameCol >= 0 && nameCol < row.size() ? row.get(nameCol).trim().toLowerCase(Locale.ROOT) : "";
-                            if (captureHtmlHashes.contains(md5v)) matchedParentHtmls.add(md5v);
-                            if (captureHtmlHashes.contains(shav)) matchedParentHtmls.add(shav);
-                            if (dbPre != null && nmv.contains("msgstore") && (dbPre.md5.equals(md5v) || dbPre.sha256.equals(shav))) {
-                                matchedParentDb = true;
+                            if (!shav.isEmpty() && captureHtmlSha256s.contains(shav)) {
+                                matchedParentHtmls.add(shav);
+                            } else if (!md5v.isEmpty() && captureHtmlMd5s.contains(md5v)) {
+                                matchedParentHtmlsMd5Info.add(md5v);
+                            }
+                            if (dbPre != null && nmv.contains("msgstore")) {
+                                if (!shav.isEmpty() && dbPre.sha256.equalsIgnoreCase(shav)) {
+                                    matchedParentDb = true;
+                                } else if (!md5v.isEmpty() && dbPre.md5.equalsIgnoreCase(md5v)) {
+                                    matchedParentDbMd5Info = true;
+                                }
                             }
                         }
                     }
@@ -3072,13 +3094,13 @@ public final class IntegrityVerifier {
             }
         }
 
-        // Blobs inline base64 de HTMLs exportados encontrados no caso pai, subcaso ou pasta raiz
+        // Blobs inline base64 de HTMLs exportados encontrados no caso pai, subcaso ou pasta raiz (somente SHA-256)
         auditStep(progress, "Etapa 6/9: lendo HTMLs exportados e mídias embutidas (base64)...");
         Set<String> exportedInlineBlobs = new HashSet<>();
-        if (parentIpedDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(parentIpedDir, captureHtmlHashes));
-        if (subcaseDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(subcaseDir, captureHtmlHashes));
-        exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot, captureHtmlHashes));
-        if (capturesRoot.getParent() != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot.getParent(), captureHtmlHashes));
+        if (parentIpedDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(parentIpedDir, captureHtmlSha256s));
+        if (subcaseDir != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(subcaseDir, captureHtmlSha256s));
+        exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot, captureHtmlSha256s));
+        if (capturesRoot.getParent() != null) exportedInlineBlobs.addAll(collectExportedInlineBlobs(capturesRoot.getParent(), captureHtmlSha256s));
 
         // Pre-filtro por tamanho na origem somente para anexos nao resolvidos em Hashs.txt / blobs inline
         Set<Long> missingSizes = new HashSet<>();
@@ -3089,15 +3111,24 @@ public final class IntegrityVerifier {
             }
         }
         Map<String, String> diskOnlyShaToRel = new HashMap<>();
+        final boolean[] originWalkTruncated = { false };
         if (!missingSizes.isEmpty()) {
             auditStep(progress, "Etapa 7/9: procurando na origem " + missingSizes.size() + " anexo(s) fora do Hashs.txt (pré-filtro por tamanho)...");
             Path realOrig = originDir.toRealPath();
-            Files.walkFileTree(originDir, new SimpleFileVisitor<Path>() {
+            final int MAX_ORIGIN_WALK_DEPTH = 12;
+            final int[] scannedCount = new int[1];
+            Files.walkFileTree(originDir, Collections.emptySet(), MAX_ORIGIN_WALK_DEPTH, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult preVisitDirectory(Path d, BasicFileAttributes a) throws IOException {
                     if (!d.equals(originDir) && (a.isSymbolicLink() || a.isOther() || isLinkOrReparse(d) || !d.toRealPath().startsWith(realOrig))) return FileVisitResult.SKIP_SUBTREE;
+                    String name = d.getFileName() == null ? "" : d.getFileName().toString().toLowerCase(Locale.ROOT);
+                    if ("cache".equals(name) || "code_cache".equals(name) || "app_webview".equals(name) || name.startsWith(".thumb")) return FileVisitResult.SKIP_SUBTREE;
                     return FileVisitResult.CONTINUE;
                 }
                 @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) throws IOException {
+                    if (++scannedCount[0] > MAX_ORIGIN_WALK_FILES) {
+                        originWalkTruncated[0] = true;
+                        return FileVisitResult.TERMINATE;
+                    }
                     if (!a.isSymbolicLink() && !a.isOther() && a.isRegularFile() && missingSizes.contains(a.size())) {
                         try {
                             String fh = hash(f).toLowerCase(Locale.ROOT);
@@ -3121,100 +3152,200 @@ public final class IntegrityVerifier {
         rpt.append("N0_REPORT_PDF_SHA256|").append(pdfSha.isEmpty() ? "ausente" : pdfSha).append("\n");
         rpt.append("N1_MSGSTORE_SHA256|").append(dbPre == null ? "ausente" : dbPre.sha256).append("|NO_HASHS_TXT|").append(dbInHashs).append("|BACKUPS_CRYPT_NO_HASHS|").append(hashsIdx.cryptBackups.size()).append("\n");
         if (parentIpedDir != null) {
-            rpt.append("N1_CASO_IPED_PAI|HTML_MATCH|").append(matchedParentHtmls.size()).append('/').append(captureHtmlHashes.size())
-               .append("|MSGSTORE_MATCH|").append(matchedParentDb).append("\n");
+            rpt.append("N1_CASO_IPED_PAI|HTML_MATCH|").append(matchedParentHtmls.size()).append('/').append(captureHtmlSha256s.size())
+               .append("|MSGSTORE_MATCH|").append(matchedParentDb);
+            if (!matchedParentHtmlsMd5Info.isEmpty() || matchedParentDbMd5Info) {
+                rpt.append("|MD5_INFORMATIVO_SEM_SHA256|html=").append(matchedParentHtmlsMd5Info.size())
+                   .append(",msgstore=").append(matchedParentDbMd5Info);
+            }
+            rpt.append('\n');
+        }
+        if (originWalkTruncated[0]) {
+            rpt.append("SCAN_ORIGEM_TRUNCADO|true|LIMITE_ARQUIVOS=").append(MAX_ORIGIN_WALK_FILES).append('\n');
         }
 
         boolean allPassed = !hashsIdx.fileSha256.isEmpty();
         int totalCust = 0, totalEmb = 0, totalOrigNoHash = 0, totalMissing = 0, capIdx = 0;
+        int totalN3Diverged = 0, totalBindingDiverged = 0;
 
         List<Capture> sortedCaps = new ArrayList<>(captures);
         sortedCaps.sort(Comparator.comparing(c -> c.name.toLowerCase(Locale.ROOT)));
-        for (Capture c : sortedCaps) {
-            capIdx++;
-            auditStep(progress, "Etapa 8/9: auditando captura " + capIdx + "/" + sortedCaps.size() + "...");
-            String anon = anonymizeCaptureName(c.name);
-            Path mp = resolve(c.dir, "manifest.json");
-            JSONObject manifest = (mp != null && Files.isRegularFile(mp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(mp), mp) : new JSONObject();
-            Path bp = resolve(c.dir, "origin-binding.json");
-            JSONObject binding = (bp != null && Files.isRegularFile(bp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(bp), bp) : null;
+        Path n3TempDir = null;
+        Path n3TempDb = null;
+        boolean sqliteDriverChecked = false;
+        boolean sqliteDriverAvailable = false;
+        try {
+            for (Capture c : sortedCaps) {
+                capIdx++;
+                auditStep(progress, "Etapa 8/9: auditando captura " + capIdx + "/" + sortedCaps.size() + "...");
+                String anon = anonymizeCaptureName(c.name);
+                Path bp = resolve(c.dir, "origin-binding.json");
+                JSONObject binding = (bp != null && Files.isRegularFile(bp, LinkOption.NOFOLLOW_LINKS)) ? parseBoundedJson(readUtf8Limited(bp), bp) : null;
 
-            String bindingMatchStatus = "SEM_VINCULO_NO_MANIFESTO";
-            if (binding != null) {
-                JSONArray cf = binding.optJSONArray("custodyFiles");
-                String bTxt = findCustodyEntrySha(cf, "Hashs.txt");
-                String bPdf = findCustodyEntrySha(cf, "report.pdf");
-                boolean txtOk = bTxt.isEmpty() || bTxt.equalsIgnoreCase(hashsIdx.fileSha256);
-                boolean pdfOk = bPdf.isEmpty() || bPdf.equalsIgnoreCase(pdfSha);
-                JSONObject bDb = binding.optJSONObject("sourceDatabase");
-                String bDbSha = bDb == null ? "" : bDb.optString("sha256", "");
-                boolean dbOk = bDbSha.isEmpty() || (dbPre != null && bDbSha.equalsIgnoreCase(dbPre.sha256));
-                if (txtOk && pdfOk && dbOk) {
-                    bindingMatchStatus = "CONFERE";
-                } else {
-                    bindingMatchStatus = "DIVERGE_ORIGEM_ERRADA";
-                    allPassed = false;
-                }
-            }
+                String bindingMatchStatus = "SEM_VINCULO_NO_MANIFESTO";
+                if (binding != null) {
+                    JSONArray cf = binding.optJSONArray("custodyFiles");
+                    String bTxt = findCustodyEntrySha(cf, "Hashs.txt");
+                    String bAvilla = findCustodyEntrySha(cf, "Hashs.avilla");
+                    String bPdf = findCustodyEntrySha(cf, "report.pdf");
+                    JSONObject bDb = binding.optJSONObject("sourceDatabase");
+                    String bDbSha = bDb == null ? "" : bDb.optString("sha256", "");
 
-            Set<String> inlineForCap = new HashSet<>(exportedInlineBlobs);
-            if (binding != null && binding.optJSONObject("attachmentsOrigin") != null) {
-                JSONArray bi = binding.optJSONObject("attachmentsOrigin").optJSONArray("items");
-                for (int i = 0; bi != null && i < bi.length(); i++) {
-                    JSONObject row = bi.optJSONObject(i);
-                    if (row != null && "EMBUTIDO_NO_HTML_IPED".equals(row.optString("status", ""))) {
-                        inlineForCap.add(row.optString("sha256", "").toLowerCase(Locale.ROOT));
+                    boolean hasAnchor = false;
+                    boolean diverge = false;
+
+                    if (!bTxt.isEmpty()) {
+                        hasAnchor = true;
+                        if (hashsIdx.fileSha256.isEmpty() || !bTxt.equalsIgnoreCase(hashsIdx.fileSha256)) {
+                            diverge = true;
+                        }
+                    } else if (!hashsIdx.fileSha256.isEmpty()) {
+                        diverge = true;
+                    }
+
+                    if (!bAvilla.isEmpty()) {
+                        hasAnchor = true;
+                        if (avillaSha.isEmpty() || !bAvilla.equalsIgnoreCase(avillaSha)) {
+                            diverge = true;
+                        }
+                    } else if (!avillaSha.isEmpty()) {
+                        diverge = true;
+                    }
+
+                    if (!bDbSha.isEmpty()) {
+                        hasAnchor = true;
+                        if (dbPre == null || !bDbSha.equalsIgnoreCase(dbPre.sha256)) {
+                            diverge = true;
+                        }
+                    }
+
+                    if (!bPdf.isEmpty()) {
+                        if (pdfSha.isEmpty() || !bPdf.equalsIgnoreCase(pdfSha)) {
+                            diverge = true;
+                        }
+                    }
+
+                    if (!hasAnchor) {
+                        bindingMatchStatus = "SEM_REFERENCIA_CRIPTO";
+                        allPassed = false;
+                        totalBindingDiverged++;
+                    } else if (diverge) {
+                        bindingMatchStatus = "DIVERGE_ORIGEM_ERRADA";
+                        allPassed = false;
+                        totalBindingDiverged++;
+                    } else {
+                        bindingMatchStatus = "CONFERE";
                     }
                 }
-            }
 
-            int cCust = 0, cEmb = 0, cOrig = 0, cMiss = 0;
-            StringBuilder itemLines = new StringBuilder();
-            for (Item it : c.items) {
-                if (it.path == null || !it.path.startsWith("attachments/") || it.actual == null) continue;
-                String s = it.actual.toLowerCase(Locale.ROOT);
-                String st;
-                if (hashsIdx.shaToRelPath.containsKey(s)) { st = "CUSTODIADO_AVILLA"; cCust++; }
-                else if (inlineForCap.contains(s)) { st = "EMBUTIDO_NO_HTML_IPED"; cEmb++; }
-                else if (diskOnlyShaToRel.containsKey(s)) { st = "EM_ORIGEM_SEM_HASH_TXT"; cOrig++; }
-                else { st = "NAO_LOCALIZADO"; cMiss++; }
-                itemLines.append("  ANEXO|").append(s).append('|').append(st).append('\n');
-            }
-            totalCust += cCust; totalEmb += cEmb; totalOrigNoHash += cOrig; totalMissing += cMiss;
-            if (cMiss > 0) allPassed = false;
+                Set<String> inlineForCap = new HashSet<>(exportedInlineBlobs);
+                if (binding != null && binding.optJSONObject("attachmentsOrigin") != null) {
+                    JSONArray bi = binding.optJSONObject("attachmentsOrigin").optJSONArray("items");
+                    for (int i = 0; bi != null && i < bi.length(); i++) {
+                        JSONObject row = bi.optJSONObject(i);
+                        if (row != null && "EMBUTIDO_NO_HTML_IPED".equals(row.optString("status", ""))) {
+                            String shaInline = row.optString("sha256", "").toLowerCase(Locale.ROOT);
+                            if (shaInline.matches("[0-9a-f]{64}")) {
+                                inlineForCap.add(shaInline);
+                            }
+                        }
+                    }
+                }
 
-            rpt.append("\nCAPTURA_AUDITADA|").append(capIdx).append('|').append(recordField(anon))
-               .append("|VINCULO_ORIGEM|").append(bindingMatchStatus)
-               .append("|COLLECTION_CODE|").append(binding == null ? "" : recordField(binding.optString("collectionCode", "")))
-               .append('\n');
-            if (binding != null && binding.optJSONObject("custodyTimelineGap") != null) {
-                JSONObject gap = binding.optJSONObject("custodyTimelineGap");
-                rpt.append("GAP_CUSTODIA|").append(recordField(gap.optString("status", "")))
-                   .append('|').append(recordField(gap.optString("pericialStatementPtBr", ""))).append('\n');
+                int cCust = 0, cEmb = 0, cOrig = 0, cMiss = 0;
+                StringBuilder itemLines = new StringBuilder();
+                for (Item it : c.items) {
+                    if (it.path == null || !it.path.startsWith("attachments/") || it.actual == null) continue;
+                    String s = it.actual.toLowerCase(Locale.ROOT);
+                    String st;
+                    if (hashsIdx.shaToRelPath.containsKey(s)) { st = "CUSTODIADO_AVILLA"; cCust++; }
+                    else if (inlineForCap.contains(s)) { st = "EMBUTIDO_NO_HTML_IPED"; cEmb++; }
+                    else if (diskOnlyShaToRel.containsKey(s)) { st = "EM_ORIGEM_SEM_HASH_TXT"; cOrig++; }
+                    else { st = "NAO_LOCALIZADO"; cMiss++; }
+                    itemLines.append("  ANEXO|").append(s).append('|').append(st).append('\n');
+                }
+                totalCust += cCust; totalEmb += cEmb; totalOrigNoHash += cOrig; totalMissing += cMiss;
+                if (cMiss > 0) allPassed = false;
+
+                rpt.append("\nCAPTURA_AUDITADA|").append(capIdx).append('|').append(recordField(anon))
+                   .append("|VINCULO_ORIGEM|").append(bindingMatchStatus)
+                   .append("|COLLECTION_CODE|").append(binding == null ? "" : recordField(binding.optString("collectionCode", "")))
+                   .append('\n');
+                if (binding != null && binding.optJSONObject("custodyTimelineGap") != null) {
+                    JSONObject gap = binding.optJSONObject("custodyTimelineGap");
+                    rpt.append("GAP_CUSTODIA|").append(recordField(gap.optString("status", "")))
+                       .append('|').append(recordField(gap.optString("pericialStatementPtBr", ""))).append('\n');
+                }
+                if (binding != null && binding.optJSONObject("n3SqliteAudit") != null) {
+                    JSONObject n3 = binding.optJSONObject("n3SqliteAudit");
+                    String n3St = n3.optString("status", "");
+                    int n3Div = n3.optInt("diverged", 0);
+                    boolean prePostMatch = n3.optBoolean("prePostCopyOriginSha256Match", true);
+                    if (n3Div > 0
+                            || "COM_DIVERGENCIAS".equalsIgnoreCase(n3St)
+                            || !prePostMatch
+                            || "ALTERACAO_ORIGEM_DETECTADA".equalsIgnoreCase(n3St)
+                            || "erro_sqlite_leitura".equalsIgnoreCase(n3St)
+                            || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equalsIgnoreCase(n3St)) {
+                        allPassed = false;
+                        totalN3Diverged += (n3Div > 0 ? n3Div : 1);
+                    }
+                    rpt.append("N3_MENSAGENS_PLUGIN|").append(recordField(n3St))
+                       .append("|ATIVAS=").append(n3.optInt("matchedActive", 0))
+                       .append("|RECUPERADAS=").append(n3.optInt("recoveredOrNonTable", 0))
+                       .append("|DIVERGENTES=").append(n3Div).append('\n');
+                }
+                if (dbPath != null && Files.isRegularFile(dbPath, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(dbPath)) {
+                    Path messagesFile = resolve(c.dir, "messages.json");
+                    if (messagesFile != null && Files.isRegularFile(messagesFile, LinkOption.NOFOLLOW_LINKS)) {
+                        if (!sqliteDriverChecked) {
+                            sqliteDriverAvailable = isSqliteDriverAvailable();
+                            sqliteDriverChecked = true;
+                        }
+                        if (sqliteDriverAvailable && n3TempDb == null) {
+                            n3TempDir = Files.createTempDirectory("verifier-n3-");
+                            n3TempDb = copyOriginSqliteToTempDir(dbPath, n3TempDir);
+                        }
+                        IndependentN3Outcome independentN3 = runIndependentN3VerificationIfPossible(n3TempDb, messagesFile, sqliteDriverAvailable);
+                        if (independentN3 != null) {
+                            rpt.append("N3_MENSAGENS_VERIFICADOR|").append(independentN3.toReportLine()).append('\n');
+                            if (independentN3.isFailure()) {
+                                allPassed = false;
+                                totalN3Diverged += (independentN3.diverged > 0 ? independentN3.diverged : 1);
+                            }
+                        }
+                    }
+                }
+                rpt.append("N2_ANEXOS|CUSTODIADO_AVILLA=").append(cCust)
+                   .append("|EMBUTIDO_NO_HTML_IPED=").append(cEmb)
+                   .append("|EM_ORIGEM_SEM_HASH_TXT=").append(cOrig)
+                   .append("|NAO_LOCALIZADO=").append(cMiss).append('\n');
+                rpt.append(itemLines);
             }
-            if (binding != null && binding.optJSONObject("n3SqliteAudit") != null) {
-                JSONObject n3 = binding.optJSONObject("n3SqliteAudit");
-                rpt.append("N3_MENSAGENS_PLUGIN|").append(recordField(n3.optString("status", "")))
-                   .append("|ATIVAS=").append(n3.optInt("matchedActive", 0))
-                   .append("|RECUPERADAS=").append(n3.optInt("recoveredOrNonTable", 0))
-                   .append("|DIVERGENTES=").append(n3.optInt("diverged", 0)).append('\n');
-            }
-            rpt.append("N2_ANEXOS|CUSTODIADO_AVILLA=").append(cCust)
-               .append("|EMBUTIDO_NO_HTML_IPED=").append(cEmb)
-               .append("|EM_ORIGEM_SEM_HASH_TXT=").append(cOrig)
-               .append("|NAO_LOCALIZADO=").append(cMiss).append('\n');
-            rpt.append(itemLines);
+        } finally {
+            deleteTempDirQuietly(n3TempDir);
         }
 
+        boolean originUntouched = true;
         if (dbPre != null) {
             auditStep(progress, "Etapa 9/9: reconferindo msgstore.db (prova de que a origem não foi alterada) e gravando relatório...");
             DualDigest dbPost = dualHash(dbPath);
-            boolean originUntouched = dbPre.sha256.equalsIgnoreCase(dbPost.sha256);
+            originUntouched = dbPre.sha256.equalsIgnoreCase(dbPost.sha256);
             rpt.append("\nORIGEM_MSGSTORE_INTACTA_POS_AUDITORIA|").append(originUntouched).append('\n');
             if (!originUntouched) allPassed = false;
         }
+
+        List<String> failReasons = new ArrayList<>();
+        if (totalMissing > 0) failReasons.add("naoLocalizados=" + totalMissing);
+        if (originWalkTruncated[0] && totalMissing > 0) failReasons.add("scanOrigemTruncado=true");
+        if (totalOrigNoHash > 0) failReasons.add("origSemHash=" + totalOrigNoHash);
+        if (totalN3Diverged > 0) failReasons.add("divergenciasN3=" + totalN3Diverged);
+        if (totalBindingDiverged > 0) failReasons.add("divergenciasVinculo=" + totalBindingDiverged);
+        if (dbPre != null && !originUntouched) failReasons.add("origemAlterada=true");
+        if (hashsIdx.fileSha256.isEmpty()) failReasons.add("hashsTxtAusente=true");
+
         String overallStatus = allPassed ? "CONFERE (" + totalCust + " Avilla + " + totalEmb + " base64 HTML)"
-                : ("ATENCAO (naoLocalizados=" + totalMissing + ", origSemHash=" + totalOrigNoHash + ")");
+                : ("ATENCAO (" + (failReasons.isEmpty() ? "falhaDeAuditoria" : String.join(", ", failReasons)) + ")");
         rpt.append("RESUMO_AUDITORIA_ORIGEM|").append(overallStatus).append('\n');
 
         String reportText = rpt.toString();
@@ -3251,6 +3382,246 @@ public final class IntegrityVerifier {
             for (String k : keys) if (h.equals(k)) return i;
         }
         return -1;
+    }
+
+    private static boolean isSqliteDriverAvailable() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    private static Path copyOriginSqliteToTempDir(Path originDbPath, Path tempDir) throws IOException {
+        Path tempDb = tempDir.resolve("msgstore.db");
+        Files.copy(originDbPath, tempDb, StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS);
+        Path originParent = originDbPath.getParent();
+        if (originParent != null) {
+            String baseName = originDbPath.getFileName().toString();
+            for (String suffix : new String[] { "-wal", "-shm" }) {
+                Path sidecar = originParent.resolve(baseName + suffix);
+                if (Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(sidecar)) {
+                    Files.copy(sidecar, tempDir.resolve(baseName + suffix), StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS);
+                }
+            }
+        }
+        return tempDb;
+    }
+
+    private static void deleteTempDirQuietly(Path dir) {
+        if (dir == null) return;
+        try {
+            final List<Path> all = new ArrayList<>();
+            Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    all.add(file);
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult postVisitDirectory(Path d, IOException exc) {
+                    all.add(d);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            Collections.reverse(all);
+            for (Path p : all) {
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {}
+    }
+
+    static final class IndependentN3Outcome {
+        final String status;
+        final int matchedActive;
+        final int absentOrNonTable;
+        final int diverged;
+        final String detail;
+
+        IndependentN3Outcome(String status, int matchedActive, int absentOrNonTable, int diverged, String detail) {
+            this.status = status;
+            this.matchedActive = matchedActive;
+            this.absentOrNonTable = absentOrNonTable;
+            this.diverged = diverged;
+            this.detail = detail == null ? "" : detail;
+        }
+
+        boolean isFailure() {
+            return diverged > 0
+                    || "COM_DIVERGENCIAS".equals(status)
+                    || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equals(status)
+                    || "ERRO_LEITURA_SQLITE".equals(status)
+                    || "SCHEMA_DESCONHECIDO".equals(status);
+        }
+
+        String toReportLine() {
+            if ("CONFERE".equals(status) || "COM_DIVERGENCIAS".equals(status) || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equals(status)) {
+                return status + "|ATIVAS=" + matchedActive + "|RECUPERADAS=" + absentOrNonTable + "|DIVERGENTES=" + diverged;
+            }
+            if (!detail.isEmpty()) {
+                return status + "|" + recordField(detail);
+            }
+            return status;
+        }
+    }
+
+    private static IndependentN3Outcome runIndependentN3VerificationIfPossible(Path tempDbPath, Path messagesJsonFile, boolean sqliteDriverAvailable) {
+        try {
+            if (!sqliteDriverAvailable || tempDbPath == null) {
+                return new IndependentN3Outcome("DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING", 0, 0, 0, "");
+            }
+            JSONObject wrapper = parseBoundedJson(readUtf8Limited(messagesJsonFile), messagesJsonFile);
+            JSONArray msgs = wrapper.optJSONArray("messages");
+            if (msgs == null || msgs.isEmpty()) return new IndependentN3Outcome("SEM_MENSAGENS_JSON", 0, 0, 0, "");
+            List<Long> positiveIds = new ArrayList<>();
+            Map<Long, JSONObject> recById = new HashMap<>();
+            int nonPos = 0;
+            for (int i = 0; i < msgs.length(); i++) {
+                JSONObject m = msgs.optJSONObject(i);
+                if (m == null) continue;
+                String domId = m.optString("domId", "").trim();
+                try {
+                    long id = Long.parseLong(domId);
+                    if (id > 0) {
+                        positiveIds.add(id);
+                        recById.put(id, m);
+                    } else nonPos++;
+                } catch (NumberFormatException nfe) {
+                    nonPos++;
+                }
+            }
+            if (positiveIds.isEmpty()) return new IndependentN3Outcome("SEM_MENSAGENS_TABELA_ATIVA", 0, nonPos, 0, "");
+            int matched = 0, diverged = 0, absent = nonPos;
+
+            Class<?> dmCls = Class.forName("java.sql.DriverManager");
+            Method getConn = dmCls.getMethod("getConnection", String.class);
+            AutoCloseable con = (AutoCloseable) getConn.invoke(null, "jdbc:sqlite:" + tempDbPath.toAbsolutePath());
+            try {
+                boolean hasMsg = checkSqliteTable(con, "message");
+                boolean hasMsgs = !hasMsg && checkSqliteTable(con, "messages");
+                if (!hasMsg && !hasMsgs) return new IndependentN3Outcome("SCHEMA_DESCONHECIDO", 0, nonPos, 0, "");
+                String sqlCols = hasMsg
+                        ? "SELECT _id, text_data FROM message WHERE _id IN ("
+                        : "SELECT _id, data FROM messages WHERE _id IN (";
+                Method prepStmt = con.getClass().getMethod("prepareStatement", String.class);
+                for (int offset = 0; offset < positiveIds.size(); offset += 400) {
+                    List<Long> chunk = positiveIds.subList(offset, Math.min(positiveIds.size(), offset + 400));
+                    StringBuilder q = new StringBuilder(sqlCols);
+                    for (int k = 0; k < chunk.size(); k++) {
+                        if (k > 0) q.append(',');
+                        q.append('?');
+                    }
+                    q.append(')');
+                    Map<Long, String> found = new HashMap<>();
+                    AutoCloseable ps = (AutoCloseable) prepStmt.invoke(con, q.toString());
+                    try {
+                        Method setLong = ps.getClass().getMethod("setLong", int.class, long.class);
+                        for (int k = 0; k < chunk.size(); k++) setLong.invoke(ps, k + 1, chunk.get(k));
+                        Method execQ = ps.getClass().getMethod("executeQuery");
+                        AutoCloseable rs = (AutoCloseable) execQ.invoke(ps);
+                        try {
+                            Method next = rs.getClass().getMethod("next");
+                            Method getL = rs.getClass().getMethod("getLong", int.class);
+                            Method getS = rs.getClass().getMethod("getString", int.class);
+                            while ((Boolean) next.invoke(rs)) {
+                                long id = (Long) getL.invoke(rs, 1);
+                                String txt = (String) getS.invoke(rs, 2);
+                                found.put(id, txt == null ? "" : txt);
+                            }
+                        } finally {
+                            rs.close();
+                        }
+                    } finally {
+                        ps.close();
+                    }
+                    for (Long id : chunk) {
+                        if (!found.containsKey(id)) { absent++; continue; }
+                        String dbTxt = found.get(id);
+                        JSONObject rec = recById.get(id);
+                        String capTxt = rec != null ? rec.optString("text", "") : "";
+                        String sender = rec != null ? rec.optString("sender", "") : "";
+                        String time = rec != null ? rec.optString("timestamp", "") : "";
+                        if (matchesForensicMessageText(dbTxt, capTxt, sender, time)) matched++;
+                        else diverged++;
+                    }
+                }
+            } finally {
+                con.close();
+            }
+            String st;
+            if (diverged > 0) st = "COM_DIVERGENCIAS";
+            else if (matched > 0) st = "CONFERE";
+            else st = "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO";
+            return new IndependentN3Outcome(st, matched, absent, diverged, "");
+        } catch (ClassNotFoundException noSqlite) {
+            return new IndependentN3Outcome("DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING", 0, 0, 0, "");
+        } catch (Exception e) {
+            return new IndependentN3Outcome("ERRO_LEITURA_SQLITE", 0, 0, 0, e.getMessage());
+        }
+    }
+
+    private static boolean checkSqliteTable(AutoCloseable con, String table) {
+        try {
+            Method prep = con.getClass().getMethod("prepareStatement", String.class);
+            AutoCloseable ps = (AutoCloseable) prep.invoke(con, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?");
+            try {
+                Method setS = ps.getClass().getMethod("setString", int.class, String.class);
+                setS.invoke(ps, 1, table);
+                Method exec = ps.getClass().getMethod("executeQuery");
+                AutoCloseable rs = (AutoCloseable) exec.invoke(ps);
+                try {
+                    Method next = rs.getClass().getMethod("next");
+                    return (Boolean) next.invoke(rs);
+                } finally {
+                    rs.close();
+                }
+            } finally {
+                ps.close();
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean matchesForensicMessageText(String dbRaw, String capRaw, String senderRaw, String timeRaw) {
+        String db = normalizeWhitespace(dbRaw);
+        String cap = normalizeWhitespace(capRaw);
+        if (db.isEmpty() && cap.isEmpty()) return true;
+        if (db.isEmpty() || cap.isEmpty()) return false;
+        if (canonicalTextSha256Equals(db, cap)) return true;
+        String stripped = cap;
+        String sender = normalizeWhitespace(senderRaw);
+        if (!sender.isEmpty() && stripped.startsWith(sender)) stripped = stripped.substring(sender.length()).trim();
+        String time = normalizeWhitespace(timeRaw);
+        if (!time.isEmpty() && stripped.endsWith(time)) stripped = stripped.substring(0, stripped.length() - time.length()).trim();
+        if (canonicalTextSha256Equals(db, stripped)) return true;
+        String noTimeSuffix = stripped.replaceAll("\\s+\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?$", "").trim();
+        if (canonicalTextSha256Equals(db, noTimeSuffix)) return true;
+        String noIsoSuffix = stripped.replaceAll(
+                "\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?"
+                        + "(?:\\s+Editada\\s+em\\s+\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}(?::\\d{2})?(?:\\s*[-+]\\d{2}:?\\d{2})?)?$",
+                "").trim();
+        if (canonicalTextSha256Equals(db, noIsoSuffix)) return true;
+        String noTimePrefix = stripped.replaceFirst("^\\d{1,2}:\\d{2}(?::\\d{2})?\\s+", "").trim();
+        return canonicalTextSha256Equals(db, noTimePrefix);
+    }
+
+    private static boolean canonicalTextSha256Equals(String canonicalA, String canonicalB) {
+        if (canonicalA == null || canonicalB == null || canonicalA.isEmpty() || canonicalB.isEmpty()) return false;
+        try {
+            MessageDigest md = MessageDigest.getInstance(ALG);
+            byte[] da = md.digest(canonicalA.getBytes(StandardCharsets.UTF_8));
+            md.reset();
+            byte[] db = md.digest(canonicalB.getBytes(StandardCharsets.UTF_8));
+            return MessageDigest.isEqual(da, db);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 indisponivel na JVM", e);
+        }
+    }
+
+    private static String normalizeWhitespace(String value) {
+        if (value == null) return "";
+        String nfc = Normalizer.normalize(value, Normalizer.Form.NFC);
+        return nfc.replaceAll("[\\s\\u00A0\\u2007\\u202F]+", " ").trim();
     }
 
     private static void showOriginAuditWorkspace(Component parent, Path capturesRoot, List<Capture> selected) throws Exception {
@@ -3528,10 +3899,26 @@ public final class IntegrityVerifier {
             String tag = bar > 0 ? trimmed.substring(0, bar) : trimmed;
             String rest = bar > 0 ? trimmed.substring(bar + 1) : "";
             String cls = "";
-            if (trimmed.contains("NAO_LOCALIZADO") && !trimmed.contains("NAO_LOCALIZADO=0")) cls = "st-bad";
-            else if (trimmed.contains("DIVERGE_ORIGEM_ERRADA") || trimmed.contains("INTACTA_POS_AUDITORIA|false")) cls = "st-bad";
-            else if (trimmed.contains("EM_ORIGEM_SEM_HASH_TXT") && !trimmed.contains("EM_ORIGEM_SEM_HASH_TXT=0")) cls = "st-warn";
-            else if (trimmed.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE") || trimmed.contains("CUSTODIADO_AVILLA") || trimmed.contains("EMBUTIDO_NO_HTML_IPED") || trimmed.contains("|CONFERE")) cls = "st-ok";
+            boolean isN3DivNonZero = trimmed.contains("DIVERGENTES=") && !trimmed.contains("DIVERGENTES=0");
+            if ((trimmed.contains("NAO_LOCALIZADO") && !trimmed.contains("NAO_LOCALIZADO=0"))
+                    || trimmed.contains("DIVERGE_ORIGEM_ERRADA")
+                    || trimmed.contains("INTACTA_POS_AUDITORIA|false")
+                    || trimmed.contains("COM_DIVERGENCIAS")
+                    || trimmed.contains("ALTERACAO_ORIGEM_DETECTADA")
+                    || trimmed.contains("SEM_REFERENCIA_CRIPTO")
+                    || trimmed.contains("MENSAGENS_NAO_ENCONTRADAS_NO_BANCO")
+                    || trimmed.contains("ERRO_LEITURA_SQLITE")
+                    || trimmed.contains("erro_sqlite_leitura")
+                    || trimmed.contains("SCHEMA_DESCONHECIDO")
+                    || trimmed.contains("FALHA_AUDITORIA")
+                    || isN3DivNonZero) {
+                cls = "st-bad";
+            } else if ((trimmed.contains("EM_ORIGEM_SEM_HASH_TXT") && !trimmed.contains("EM_ORIGEM_SEM_HASH_TXT=0"))
+                    || trimmed.contains("SEM_VINCULO_NO_MANIFESTO")
+                    || trimmed.contains("DRIVER_SQLITE_INDISPONIVEL")
+                    || trimmed.contains("SCAN_ORIGEM_TRUNCADO")) {
+                cls = "st-warn";
+            } else if (trimmed.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE") || trimmed.contains("CUSTODIADO_AVILLA") || trimmed.contains("EMBUTIDO_NO_HTML_IPED") || trimmed.contains("|CONFERE")) cls = "st-ok";
             h.append("<tr><td><strong>").append(esc(tag)).append("</strong></td><td class=\"").append(cls).append("\"><code>").append(esc(rest)).append("</code></td></tr>");
         }
         h.append("</table>");

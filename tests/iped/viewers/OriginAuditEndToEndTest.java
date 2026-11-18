@@ -58,6 +58,7 @@ public final class OriginAuditEndToEndTest {
                 st.execute("CREATE TABLE message (_id INTEGER PRIMARY KEY, chat_row_id INTEGER, timestamp INTEGER, text_data TEXT)");
                 st.execute("INSERT INTO message (_id, chat_row_id, timestamp, text_data) VALUES (101, 1, 1730720000000, 'Msg auditada')");
             }
+            String dbSha = hex(mdSha.digest(Files.readAllBytes(dbFile)));
             String dbMd5 = md5(Files.readAllBytes(dbFile));
 
             String hashsTxt = "Algorithm : SHA256\r\nHash      : " + pngSha.toUpperCase() + "\r\nPath      : C:\\Av\\Case001\\CopyAll\\dev99\\sdcard\\Android\\media\\com.whatsapp\\WhatsApp\\Media\\WhatsApp Images\\img1.png\r\n\r\n";
@@ -77,16 +78,19 @@ public final class OriginAuditEndToEndTest {
             byte[] expHtmlBytes = ("<html><img src=\"data:image/png;base64," + Base64.getEncoder().encodeToString(inlinePng) + "\"></html>").getBytes(StandardCharsets.UTF_8);
             Files.write(subExp.resolve("chat.html"), expHtmlBytes);
             String htmlMd5 = md5(expHtmlBytes);
+            String htmlSha = hex(mdSha.digest(expHtmlBytes));
 
-            String csv = "\"Nome\";\"MD5\";\"Caminho\"\n\"chat.html\";\"" + htmlMd5 + "\";\"Exportados/chat.html\"\n\"msgstore.db\";\"" + dbMd5 + "\";\"databases/msgstore.db\"\n";
+            String csv = "\"Nome\";\"MD5\";\"SHA256\";\"Caminho\"\n"
+                    + "\"chat.html\";\"" + htmlMd5 + "\";\"" + htmlSha + "\";\"Exportados/chat.html\"\n"
+                    + "\"msgstore.db\";\"" + dbMd5 + "\";\"" + dbSha + "\";\"databases/msgstore.db\"\n";
             Files.write(parentIped.resolve("Lista de Arquivos.csv"), csv.getBytes(StandardCharsets.UTF_8));
 
             // 2. Create two captures under capturesRoot: cap_bound (with origin-binding.json) & cap_legacy (without)
             Path capturesRoot = tmp.resolve("Capturas");
             Path capBound = capturesRoot.resolve("cap_bound-20261116-235900");
             Path capLegacy = capturesRoot.resolve("cap_legacy-20261116-235901");
-            createSyntheticHtmlCapture(capBound, pngBytes, pngSha, inlinePng, inlineSha, htmlMd5, expHtmlBytes.length, origin, parentIped, true);
-            createSyntheticHtmlCapture(capLegacy, pngBytes, pngSha, inlinePng, inlineSha, htmlMd5, expHtmlBytes.length, origin, parentIped, false);
+            createSyntheticHtmlCapture(capBound, pngBytes, pngSha, inlinePng, inlineSha, htmlMd5, htmlSha, expHtmlBytes.length, origin, parentIped, true);
+            createSyntheticHtmlCapture(capLegacy, pngBytes, pngSha, inlinePng, inlineSha, htmlMd5, htmlSha, expHtmlBytes.length, origin, parentIped, false);
 
             // Verify both pass --verify-only and --audit-origin
             invokeVerifier(mainMethod, new String[] { "--verify-only", capturesRoot.toString() });
@@ -96,8 +100,11 @@ public final class OriginAuditEndToEndTest {
             Path auditRpt = capturesRoot.resolve("integridade").resolve("auditoria-origem.txt");
             check(Files.isRegularFile(auditRpt), "auditoria-origem.txt must be written");
             String rptText = new String(Files.readAllBytes(auditRpt), StandardCharsets.UTF_8);
+            check(rptText.contains("N1_CASO_IPED_PAI|HTML_MATCH|1/1|MSGSTORE_MATCH|true"),
+                    "SHA-256 lineage match missing in report:\n" + rptText);
             check(rptText.contains("N2_ANEXOS|CUSTODIADO_AVILLA=1|EMBUTIDO_NO_HTML_IPED=1|EM_ORIGEM_SEM_HASH_TXT=0|NAO_LOCALIZADO=0"),
                     "audit report counts mismatch:\n" + rptText);
+            check(rptText.contains("N3_MENSAGENS_VERIFICADOR|CONFERE|ATIVAS=1"), "verifier N3 check missing:\n" + rptText);
             check(rptText.contains("ORIGEM_MSGSTORE_INTACTA_POS_AUDITORIA|true"), "msgstore.db intact check missing");
             check(rptText.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE"), "audit summary expected CONFERE");
 
@@ -186,6 +193,47 @@ public final class OriginAuditEndToEndTest {
             Object pcMissing = precheck.invoke(null, tmp.resolve("does-not-exist"), null);
             check(!(Boolean) canStart.invoke(pcMissing), "non-existent origin must be invalid");
 
+            // 8. Independent SQLite N3 check must catch a lied CONFERE binding + leave msgstore.db untouched without creating -wal/-shm
+            Path spoofRoot = tmp.resolve("SpoofedN3Captures");
+            Path capSpoof = spoofRoot.resolve("cap_spoof-20261116-235902");
+            createSyntheticHtmlCapture(capSpoof, pngBytes, pngSha, inlinePng, inlineSha, htmlMd5, htmlSha, expHtmlBytes.length, origin, parentIped, true);
+            // Tamper messages.json text and re-sign capture local manifest/integrity while leaving origin-binding.json falsely claiming CONFERE
+            Path spoofMsgsPath = capSpoof.resolve("messages.json");
+            JSONObject spoofWrapper = new JSONObject(new String(Files.readAllBytes(spoofMsgsPath), StandardCharsets.UTF_8));
+            JSONObject spoofMsg = spoofWrapper.getJSONArray("messages").getJSONObject(0);
+            spoofMsg.put("text", "Msg auditada 2026-11-16 10:00:00 texto forjado");
+            spoofMsg.put("messageHash", messageHash(spoofMsg));
+            Files.write(spoofMsgsPath, spoofWrapper.toString(2).getBytes(StandardCharsets.UTF_8));
+            Path spoofManifestPath = capSpoof.resolve("manifest.json");
+            JSONObject spoofManifest = new JSONObject(new String(Files.readAllBytes(spoofManifestPath), StandardCharsets.UTF_8));
+            spoofManifest.getJSONArray("messageHashes").getJSONObject(0).put("messageHash", spoofMsg.getString("messageHash"));
+            spoofManifest.put("captureRootHash", htmlCaptureRootHash(
+                    spoofWrapper.getJSONArray("messages"),
+                    spoofManifest.getString("htmlSha256"),
+                    spoofManifest.getString("conversationKey"),
+                    spoofManifest.getString("sourceFingerprint"),
+                    spoofManifest.getJSONObject("sourceMetadata")));
+            Files.write(spoofManifestPath, spoofManifest.toString(2).getBytes(StandardCharsets.UTF_8));
+            Files.write(capSpoof.resolve("integridade.json"),
+                    CaptureIntegrity.integrityRecord(capSpoof, null, "capture_created", HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION)
+                            .toString(2).getBytes(StandardCharsets.UTF_8));
+
+            boolean n3SpoofRejected = false;
+            try {
+                invokeVerifier(mainMethod, new String[] { "--audit-origin", spoofRoot.toString(),
+                        "--origin", origin.toString(), "--parent-iped", parentIped.toString(), "--subcase", subcase.toString() });
+            } catch (Exception expected) {
+                n3SpoofRejected = true;
+            }
+            check(n3SpoofRejected, "independent N3 verifier check must reject spoofed message text even when binding claims CONFERE");
+            String spoofRpt = new String(Files.readAllBytes(spoofRoot.resolve("integridade").resolve("auditoria-origem.txt")), StandardCharsets.UTF_8);
+            check(spoofRpt.contains("N3_MENSAGENS_VERIFICADOR|COM_DIVERGENCIAS|ATIVAS=0|RECUPERADAS=0|DIVERGENTES=1"),
+                    "expected verifier N3 divergence in report:\n" + spoofRpt);
+            check(spoofRpt.contains("RESUMO_AUDITORIA_ORIGEM|ATENCAO") && spoofRpt.contains("divergenciasN3="),
+                    "audit summary must fail on N3 divergence:\n" + spoofRpt);
+            check(!Files.exists(tarDbDir.resolve("msgstore.db-wal")) && !Files.exists(tarDbDir.resolve("msgstore.db-shm")),
+                    "verifier SQLite inspection must copy to temp and never create -wal/-shm in origin");
+
             System.out.println("OriginAuditEndToEndTest: PASS");
         } finally {
             deleteTree(tmp);
@@ -194,7 +242,7 @@ public final class OriginAuditEndToEndTest {
 
     private static void createSyntheticHtmlCapture(
             Path capDir, byte[] pngBytes, String pngSha, byte[] inlinePng, String inlineSha,
-            String srcHtmlMd5, long srcHtmlSize, Path originDir, Path parentIpedDir, boolean withOriginBinding) throws Exception {
+            String srcHtmlMd5, String srcHtmlSha, long srcHtmlSize, Path originDir, Path parentIpedDir, boolean withOriginBinding) throws Exception {
         Files.createDirectories(capDir.resolve("attachments"));
         String relPng = "attachments/" + pngSha + ".png";
         String relInline = "attachments/" + inlineSha + ".png";
@@ -204,7 +252,7 @@ public final class OriginAuditEndToEndTest {
         String conversationKey = CaptureIntegrity.sha256Text("conv");
         String sourceFingerprint = hex(MessageDigest.getInstance("SHA-256").digest("source".getBytes(StandardCharsets.UTF_8)));
         JSONObject sourceMeta = new JSONObject().put("name", "chat.html").put("size", srcHtmlSize)
-                .put("type", "text/html").put("itemHash", srcHtmlMd5).put("deleted", false);
+                .put("type", "text/html").put("itemHash", srcHtmlMd5).put("itemSha256", srcHtmlSha).put("deleted", false);
 
         JSONObject att1 = new JSONObject().put("path", relPng).put("mime", "image/png").put("size", pngBytes.length).put("sha256", pngSha);
         JSONObject att2 = new JSONObject().put("path", relInline).put("mime", "image/png").put("size", inlinePng.length).put("sha256", inlineSha);
@@ -294,6 +342,10 @@ public final class OriginAuditEndToEndTest {
         appendField(sb, src.optString("type", ""));
         appendField(sb, src.optString("itemHash", ""));
         appendField(sb, Boolean.toString(src.optBoolean("deleted", false)));
+        String itemSha = src.optString("itemSha256", "");
+        if (!itemSha.isEmpty()) {
+            appendField(sb, itemSha);
+        }
         appendField(sb, "4.3.1");
         appendField(sb, HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION);
         appendField(sb, "101");

@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.8 (Estável / `main`) / Verificador 1.5.6
+
+- **Tag**: [v2.8.8](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.8) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.8-verificador-1.5.6.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.8/instalador-chat-captura-IPED-2.8.8-verificador-1.5.6.zip) (`94.555.161` bytes | SHA-256: `54392E19B3E31B6CF502199E82409BE26D9F7F909D8B3FEA269855971B7309C1`)
+- [integridade-verifier-1.5.6.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.8/integridade-verifier-1.5.6.exe) (`77.665.370` bytes | SHA-256: `5EF6B9AC2C6795A49A18C37029586B318FD09C3B71DA53486CF23722C9AAC917`)
+- [integridade-verifier-1.5.6.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.8/integridade-verifier-1.5.6.jar) (`210.223` bytes | SHA-256: `A027A301AFFCF1D0A2310F6E1A495359AB36E08F3AA35147B19786C183CDA62A`)
+- [iped-viewers-impl-4.3.1-2.8.8.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.8/iped-viewers-impl-4.3.1-2.8.8.jar) (`1.559.486` bytes | SHA-256: `5B1E86E59C0D5EF8A441566EF4CA580F8D77C0417492C1CFC7CF1C150F43DAB9`)
+
+### Resumo
+- Auditoria de seguranca e solidez forense N3: match canonico NFC + SHA-256 (sem substring/curinga/bypass apos data ISO), rechecagem SQLite independente em copia temporaria (sem mutacao -wal/-shm na origem), exigencia de SHA-256 (MD5 somente informativo), fail-closed sem Hashs.txt/ancoras e limites nos walks.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.6**.
+
+---
 ## v2.8.7 (Estável / `main`) / Verificador 1.5.5
 
 - **Tag**: [v2.8.7](https://github.com/iagobusca/chat-captura-IPED/releases/tag/v2.8.7) (Corte automatizado via `build-reproducible.ps1`)

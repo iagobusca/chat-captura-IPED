@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.7"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.8"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -3386,7 +3386,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink){/* unsupported attachment skipped, continue capture */}" //$NON-NLS-1$
                 + "clone.querySelectorAll('script,template,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
                 + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
-                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),time=(src.querySelector('.time,.timestamp,[data-time]')||{}).textContent||src.getAttribute('data-time')||'',sender=(src.querySelector('.sender,.from,.author')||{}).textContent||'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){if(seenMedia[x])return n;seenMedia[x]=1;return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
+                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),timeEl=src.querySelector('.time,.timestamp,[data-time]'),time=(timeEl?(timeEl.innerText||timeEl.textContent||''):'')||src.getAttribute('data-time')||'',senderEl=src.querySelector('.sender,.from,.author,.name,.name_call'),sender=senderEl?(senderEl.innerText||senderEl.textContent||''):'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){if(seenMedia[x])return n;seenMedia[x]=1;return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
                 + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
         Object raw = executeScriptAndWait(script);
         if (!(raw instanceof String)) throw new IOException("Falha ao extrair mensagens do DOM do IPED."); //$NON-NLS-1$
@@ -3588,6 +3588,9 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 .put("name", safe(sourceMetadata.name)).put("size", sourceMetadata.size) //$NON-NLS-1$ //$NON-NLS-2$
                 .put("type", safe(sourceMetadata.type)).put("itemHash", safe(sourceMetadata.hash)) //$NON-NLS-1$ //$NON-NLS-2$
                 .put("deleted", sourceMetadata.deleted); //$NON-NLS-1$
+        if (sourceMetadata.sha256 != null && !sourceMetadata.sha256.isBlank()) {
+            publicSourceMetadata.put("itemSha256", sourceMetadata.sha256.toLowerCase(Locale.ROOT)); //$NON-NLS-1$
+        }
         String annotationsSha256 = annotations.isBlank() ? "" : CaptureIntegrity.sha256Text(annotations); //$NON-NLS-1$
         JSONArray publicMessageHashes = new JSONArray();
         for (int i = 0; i < records.length(); i++) {
@@ -5001,6 +5004,10 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         appendHtmlMessageField(canonical, sourceMetadata == null ? "" : sourceMetadata.optString("type")); //$NON-NLS-1$
         appendHtmlMessageField(canonical, sourceMetadata == null ? "" : sourceMetadata.optString("itemHash")); //$NON-NLS-1$
         appendHtmlMessageField(canonical, sourceMetadata == null ? "" : Boolean.toString(sourceMetadata.optBoolean("deleted", false))); //$NON-NLS-1$
+        String itemSha256 = sourceMetadata == null ? "" : sourceMetadata.optString("itemSha256", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        if (!itemSha256.isEmpty()) {
+            appendHtmlMessageField(canonical, itemSha256);
+        }
         appendHtmlMessageField(canonical, ipedVersion);
         appendHtmlMessageField(canonical, pluginVersion);
         appendHtmlMessageField(canonical, startAnchor);
@@ -7118,9 +7125,30 @@ out.println("{"); //$NON-NLS-1$
         metadata.path = item.getPath();
         metadata.text = readItemText(item);
         Metadata tikaMetadata = item.getMetadata();
+        metadata.sha256 = resolveItemSha256(item, metadata.hash, tikaMetadata);
         metadata.title = firstMetadataValue(tikaMetadata, "common:dc:title", "dc:title", "title"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         metadata.metadataText = buildTikaMetadataText(tikaMetadata, metadata);
         return metadata;
+    }
+
+    private String resolveItemSha256(IItem item, String itemHash, Metadata tikaMetadata) {
+        if (itemHash != null && itemHash.trim().matches("(?i)[0-9a-f]{64}")) { //$NON-NLS-1$
+            return itemHash.trim().toLowerCase(Locale.ROOT);
+        }
+        String fromMeta = firstMetadataValue(tikaMetadata, "hash:sha-256", "sha-256", "hash:sha256", "sha256"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        if (fromMeta != null && fromMeta.trim().matches("(?i)[0-9a-f]{64}")) { //$NON-NLS-1$
+            return fromMeta.trim().toLowerCase(Locale.ROOT);
+        }
+        if (item != null && (item.getLength() == null || item.getLength() <= CaptureIntegrity.MAX_HTML_CAPTURE_BYTES)) {
+            try (InputStream stream = item.getBufferedInputStream()) {
+                if (stream != null) {
+                    return CaptureIntegrity.sha256(stream, CaptureIntegrity.MAX_HTML_CAPTURE_BYTES);
+                }
+            } catch (Exception ignored) {
+                LOGGER.debug("Nao foi possivel calcular SHA-256 do item fonte {}", safe(item.getName())); //$NON-NLS-1$
+            }
+        }
+        return ""; //$NON-NLS-1$
     }
 
     private String firstMetadataValue(Metadata metadata, String... names) {
@@ -9632,6 +9660,7 @@ String invalidReason;
         String modificationDate;
         String accessDate;
         String hash;
+        String sha256;
         String path;
         String text;
         String title;

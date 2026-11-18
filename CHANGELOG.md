@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.8] - 2026-11-18
+
+### Corte Automatizado (Estável / `main`)
+- Auditoria de seguranca e solidez forense N3: match canonico NFC + SHA-256 (sem substring/curinga/bypass apos data ISO), rechecagem SQLite independente em copia temporaria (sem mutacao -wal/-shm na origem), exigencia de SHA-256 (MD5 somente informativo), fail-closed sem Hashs.txt/ancoras e limites nos walks.
+- Verificador **1.5.6** (`210.223` bytes JAR `A027A301...` | `77.665.370` bytes EXE `5EF6B9AC...`) e Plugin **2.8.8** (`1.559.486` bytes `5B1E86E5...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.8-verificador-1.5.6.zip` (`94.555.161` bytes `54392E19...`).
 ## [2.8.7] - 2026-11-17
 
 ### Corte Automatizado (Estável / `main`)

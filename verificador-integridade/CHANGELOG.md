@@ -4,6 +4,10 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.6] - 2026-11-18
+
+### Corte Automatizado (v2.8.8)
+- Auditoria de seguranca e solidez forense N3: match canonico NFC + SHA-256 (sem substring/curinga/bypass apos data ISO), rechecagem SQLite independente em copia temporaria (sem mutacao -wal/-shm na origem), exigencia de SHA-256 (MD5 somente informativo), fail-closed sem Hashs.txt/ancoras e limites nos walks. (`build-reproducible.ps1`; JAR `A027A301...` / EXE `5EF6B9AC...`).
 ## [1.5.5] - 2026-11-17
 
 ### Corte Automatizado (v2.8.7)
