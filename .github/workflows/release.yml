@@ -196,8 +196,8 @@ jobs:
 
             $vhtPath = 'tests\iped\viewers\VerifierIntegrityHashTest.java'
             $vhtText = [IO.File]::ReadAllText($vhtPath)
-            $vhtText = [regex]::Replace($vhtText, 'EXPECTED_JAR_14[0-9]+\s*=\s*"[^"]+"', "EXPECTED_JAR_145 = `"$vJarSha`"")
-            $vhtText = [regex]::Replace($vhtText, 'EXPECTED_EXE_14[0-9]+\s*=\s*"[^"]+"', "EXPECTED_EXE_145 = `"$vExeSha`"")
+            $vhtText = [regex]::Replace($vhtText, '(EXPECTED_JAR_1[0-9]+\s*=\s*")[^"]+"', "`${1}$vJarSha`"")
+            $vhtText = [regex]::Replace($vhtText, '(EXPECTED_EXE_1[0-9]+\s*=\s*")[^"]+"', "`${1}$vExeSha`"")
             [IO.File]::WriteAllText($vhtPath, $vhtText, [Text.UTF8Encoding]::new($false))
           }
 
@@ -297,7 +297,7 @@ jobs:
           # 1) Teste de integracao e seguranca do Verificador (JDK 8)
           $jdk8Classes = Join-Path $repo 'tmp\ci-verifier-tests'
           New-Item -ItemType Directory -Force -Path $jdk8Classes | Out-Null
-          $jdk8Deps = Join-Path $repo 'verificador-integridade\dependencies\*'
+          $jdk8Deps = "$(Join-Path $repo 'verificador-integridade\dependencies\*');$(Join-Path $repo 'verificador-integridade\integridade-verifier.jar')"
           & $javac8 -encoding UTF-8 -cp $jdk8Deps -d $jdk8Classes `
             verificador-integridade\src\IntegrityVerifier.java `
             verificador-integridade\tests\SecurityRegressionTest.java `

@@ -10,8 +10,6 @@ import javax.swing.ImageIcon;
 import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.lang.reflect.Method;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -40,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.7";
+    private static final String VERIFIER_VERSION = "1.5.8";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -3283,15 +3281,14 @@ public final class IntegrityVerifier {
                     Path messagesFile = resolve(c.dir, "messages.json");
                     if (messagesFile != null && Files.isRegularFile(messagesFile, LinkOption.NOFOLLOW_LINKS)) {
                         if (!sqliteDriverChecked) {
-                            sqliteDriverAvailable = isSqliteDriverAvailable(parentIpedDir, subcaseDir, capturesRoot, originDir);
+                            sqliteDriverAvailable = isSqliteDriverAvailable();
                             sqliteDriverChecked = true;
                         }
                         if (sqliteDriverAvailable && n3TempDb == null) {
                             n3TempDir = Files.createTempDirectory("verifier-n3-");
                             n3TempDb = copyOriginSqliteToTempDir(dbPath, n3TempDir);
                         }
-                        independentN3 = runIndependentN3VerificationIfPossible(n3TempDb, messagesFile, sqliteDriverAvailable,
-                                parentIpedDir, subcaseDir, capturesRoot, originDir);
+                        independentN3 = runIndependentN3VerificationIfPossible(n3TempDb, messagesFile, sqliteDriverAvailable);
                     }
                 }
                 boolean revalidatedN3Ok = independentN3 != null
@@ -3399,72 +3396,13 @@ public final class IntegrityVerifier {
         return -1;
     }
 
-    private static volatile Object cachedSqliteDriverInstance;
-
-    private static boolean isSqliteDriverAvailable(Path... searchRoots) {
+    private static boolean isSqliteDriverAvailable() {
         try {
             Class.forName("org.sqlite.JDBC");
             return true;
         } catch (ClassNotFoundException e) {
-            return resolveDynamicSqliteDriver(searchRoots) != null;
+            return false;
         }
-    }
-
-    private static Object resolveDynamicSqliteDriver(Path... searchRoots) {
-        Object existing = cachedSqliteDriverInstance;
-        if (existing != null) return existing;
-        List<Path> candidateDirs = new ArrayList<>();
-        if (searchRoots != null) {
-            for (Path r : searchRoots) {
-                if (r == null) continue;
-                Path cur = r.toAbsolutePath().normalize();
-                for (int depth = 0; depth < 4 && cur != null; depth++) {
-                    candidateDirs.add(cur.resolve("lib"));
-                    candidateDirs.add(cur.resolve("iped").resolve("lib"));
-                    candidateDirs.add(cur);
-                    cur = cur.getParent();
-                }
-            }
-        }
-        String ipedHome = System.getenv("IPED_HOME");
-        if (ipedHome != null && !ipedHome.trim().isEmpty()) {
-            candidateDirs.add(Paths.get(ipedHome.trim()).resolve("lib"));
-        }
-        candidateDirs.add(Paths.get("C:\\Avilla-Forensics-Free\\IPED-4.3.1_and_java_plugins\\iped-4.3.1\\lib"));
-        for (Path dir : candidateDirs) {
-            try {
-                if (dir == null || !Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(dir)) continue;
-                try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "sqlite-jdbc*.jar")) {
-                    for (Path jar : ds) {
-                        if (!Files.isRegularFile(jar, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(jar)) continue;
-                        URLClassLoader loader = new URLClassLoader(new URL[] { jar.toUri().toURL() }, IntegrityVerifier.class.getClassLoader());
-                        Class<?> drvCls = Class.forName("org.sqlite.JDBC", true, loader);
-                        Object drv = drvCls.getDeclaredConstructor().newInstance();
-                        cachedSqliteDriverInstance = drv;
-                        return drv;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        return null;
-    }
-
-    private static AutoCloseable openSqliteConnection(Path tempDbPath, Path... searchRoots) throws Exception {
-        String url = "jdbc:sqlite:" + tempDbPath.toAbsolutePath();
-        try {
-            Class.forName("org.sqlite.JDBC");
-            Class<?> dmCls = Class.forName("java.sql.DriverManager");
-            Method getConn = dmCls.getMethod("getConnection", String.class);
-            AutoCloseable con = (AutoCloseable) getConn.invoke(null, url);
-            if (con != null) return con;
-        } catch (ClassNotFoundException ignored) {}
-        Object drv = resolveDynamicSqliteDriver(searchRoots);
-        if (drv != null) {
-            Method connect = drv.getClass().getMethod("connect", String.class, Properties.class);
-            AutoCloseable con = (AutoCloseable) connect.invoke(drv, url, new Properties());
-            if (con != null) return con;
-        }
-        throw new ClassNotFoundException("org.sqlite.JDBC");
     }
 
     private static Path copyOriginSqliteToTempDir(Path originDbPath, Path tempDir) throws IOException {
@@ -3539,7 +3477,7 @@ public final class IntegrityVerifier {
     }
 
     private static IndependentN3Outcome runIndependentN3VerificationIfPossible(Path tempDbPath, Path messagesJsonFile,
-            boolean sqliteDriverAvailable, Path... searchRoots) {
+            boolean sqliteDriverAvailable) {
         try {
             if (!sqliteDriverAvailable || tempDbPath == null) {
                 return new IndependentN3Outcome("DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING", 0, 0, 0, "");
@@ -3577,7 +3515,10 @@ public final class IntegrityVerifier {
             if (positiveIds.isEmpty()) return new IndependentN3Outcome("SEM_MENSAGENS_TABELA_ATIVA", 0, nonPos, 0, "");
             int matched = 0, diverged = 0, absent = nonPos;
 
-            AutoCloseable con = openSqliteConnection(tempDbPath, searchRoots);
+            Class.forName("org.sqlite.JDBC");
+            Class<?> dmCls = Class.forName("java.sql.DriverManager");
+            Method getConn = dmCls.getMethod("getConnection", String.class);
+            AutoCloseable con = (AutoCloseable) getConn.invoke(null, "jdbc:sqlite:" + tempDbPath.toAbsolutePath());
             try {
                 boolean hasMsg = checkSqliteTable(con, "message");
                 boolean hasMsgs = !hasMsg && checkSqliteTable(con, "messages");
@@ -4229,6 +4170,12 @@ public final class IntegrityVerifier {
 
         JPanel formGrid = new JPanel();
         formGrid.setLayout(new BoxLayout(formGrid, BoxLayout.Y_AXIS));
+        JLabel trustChainLabel = plainLabel("Cadeia de confiança: confira o SHA-256 deste verificador (EXE/JAR) contra o GitHub / CHECKSUMS.md ANTES de executar (driver SQLite embutido).");
+        trustChainLabel.setForeground(new java.awt.Color(90, 50, 0));
+        trustChainLabel.setFont(trustChainLabel.getFont().deriveFont(java.awt.Font.BOLD));
+        JPanel trustWrap = new JPanel(new java.awt.BorderLayout());
+        trustWrap.setBorder(BorderFactory.createEmptyBorder(0, 2, 6, 2));
+        trustWrap.add(trustChainLabel, java.awt.BorderLayout.CENTER);
         JPanel r1 = new JPanel(new java.awt.BorderLayout(6, 4));
         r1.add(plainLabel("Pasta de origem:"), java.awt.BorderLayout.NORTH);
         r1.add(originRow, java.awt.BorderLayout.CENTER);
@@ -4242,6 +4189,7 @@ public final class IntegrityVerifier {
         statusWrap.setBorder(BorderFactory.createEmptyBorder(4, 2, 4, 2));
         statusWrap.add(statusLabel, java.awt.BorderLayout.CENTER);
 
+        formGrid.add(trustWrap);
         formGrid.add(r1);
         formGrid.add(Box.createVerticalStrut(6));
         formGrid.add(r2);

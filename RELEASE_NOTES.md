@@ -7,6 +7,22 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.10 (Estável / `main`) / Verificador 1.5.8
+
+- **Tag**: [v2.8.10](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.10) (Corte automatizado via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.10-verificador-1.5.8.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.10/instalador-chat-captura-IPED-2.8.10-verificador-1.5.8.zip) (`120.287.085` bytes | SHA-256: `724B413C2BCC8DD68ECD748A0946AA06F39A532843FA2574B08CD77197CB1DD0`)
+- [integridade-verifier-1.5.8.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.10/integridade-verifier-1.5.8.exe) (`90.580.058` bytes | SHA-256: `7E26F0ABFE20CEA7277B76E5781DE262A1525DA59EF17C211FC062398D118CC0`)
+- [integridade-verifier-1.5.8.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.10/integridade-verifier-1.5.8.jar) (`13.052.436` bytes | SHA-256: `07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E`)
+- [iped-viewers-impl-4.3.1-2.8.10.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.10/iped-viewers-impl-4.3.1-2.8.10.jar) (`1.563.730` bytes | SHA-256: `659182076A67B1F8FA7B00D3317E9E0B1141FB7EE3E253144D63F3EAD387AD60`)
+
+### Resumo
+- Seguranca V-05r (v2.8.10 / Verificador 1.5.8): driver oficial sqlite-jdbc-3.41.2.2.jar (SHA-256 pinado 0CDAB410947E04B6743DF99CF1543267DDD107357D6F76948D145BE590FD497D) embutido diretamente no fat-JAR e no runtime EXE do Verificador de Integridade; removida toda busca externa de driver (resolveDynamicSqliteDriver/URLClassLoader/candidateDirs/path de dev) eliminando risco de carregamento de JAR nao confiavel a partir da pasta de captura/evidencia; preservado fallback fail-closed DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING e documentada a cadeia de confianca na tela de Auditoria de Origem, README e GUIA_DE_USO.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.8**.
+
+---
 ## v2.8.9 (Estável / `main`) / Verificador 1.5.7
 
 - **Tag**: [v2.8.9](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.9) (Corte automatizado via `build-reproducible.ps1`)

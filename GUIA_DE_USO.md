@@ -1,6 +1,6 @@
-# Guia de Uso — Chat Captura IPED (v2.8.9) e Verificador de Integridade (v1.5.7)
+# Guia de Uso — Chat Captura IPED (v2.8.10) e Verificador de Integridade (v1.5.8)
 
-Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.5.7**.
+Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.5.8**.
 
 > **Documentos técnicos complementares:** consulte [README.md](README.md), [doc.md](doc.md), [CHECKSUMS.md](CHECKSUMS.md) e [verificador-integridade/README.md](verificador-integridade/README.md).
 >
@@ -11,7 +11,7 @@ Este guia explica passo a passo como instalar, configurar, capturar trechos de c
 ## 1. Pré-requisitos e Instalação
 
 - **IPED 4.3.1** com **Java 11** (o plugin `iped-viewers-impl-4.3.1.jar` substitui o viewer padrão mantendo o tema do IPED).
-- **Verificador de Integridade (`1.5.7`)**:
+- **Verificador de Integridade (`1.5.8`)**:
   - `integridade-verifier.exe` (Windows x64 autocontido, não exige instalação extra); ou
   - `integridade-verifier.jar` (requer **Java 8 / 1.8 ou superior**).
 
@@ -158,11 +158,13 @@ Use o modo **Integridade Público** quando receber uma pasta de capturas de terc
    - **2. Histórico de capturas completo (historico-capturas.txt):** cole o texto completo ou o formato público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS`) e clique em **Comparar histórico completo**.
 4. Quando o conteúdo confere integralmente, uma mensagem verde é exibida (*"CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado."*). Clique em **Continuar para o resumo** para visualizar e exportar o relatório final.
 
-### 4.4. Auditoria de Origem Avilla / Caso IPED (`Verificador 1.5.6`)
+### 4.4. Auditoria de Origem Avilla / Caso IPED (`Verificador 1.5.8`)
 
-Use o modo **Auditoria de origem...** (disponível na tela inicial do **Verificador `1.5.6`** ao lado de **Integridade Local** e **Integridade Público**) para confrontar as capturas extraídas diretamente com a extração original Avilla (`Hashs.txt` UTF-16LE, `Hashs.avilla`, `report.pdf`, `msgstore.db`) e, opcionalmente, com o caso IPED pai (`Lista de Arquivos.csv` e `Exportados`):
+Use o modo **Auditoria de origem...** (disponível na tela inicial do **Verificador `1.5.8`** ao lado de **Integridade Local** e **Integridade Público**) para confrontar as capturas extraídas diretamente com a extração original Avilla (`Hashs.txt` UTF-16LE, `Hashs.avilla`, `report.pdf`, `msgstore.db`) e, opcionalmente, com o caso IPED pai (`Lista de Arquivos.csv` e `Exportados`):
 
-![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.7](imagens_doc/edit/Auditoria_origem.gif)
+> **Importante — Cadeia de confiança:** Antes de executar o `integridade-verifier.exe` (ou `.jar`) presente na pasta de captura, o auditor **DEVE conferir o hash SHA-256 do binário do verificador** contra o valor oficial publicado no GitHub / [CHECKSUMS.md](CHECKSUMS.md). Como o driver SQLite oficial (`sqlite-jdbc-3.41.2.2.jar`) está embutido diretamente no binário verificado e o verificador jamais carrega JARs externos de pastas de evidência, a verificação do hash do verificador autentica toda a execução por transitividade.
+
+![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.8](imagens_doc/edit/Auditoria_origem.gif)
 
 1. Na tela inicial do `integridade-verifier.exe` (ou `.jar`), clique em **Auditoria de origem...**.
 2. Informe a **Pasta de origem** (contendo os arquivos Avilla obrigatórios) e, se desejar correlação completa com o caso original, a **Pasta do caso (opcional)**.

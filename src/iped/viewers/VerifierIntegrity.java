@@ -18,8 +18,8 @@ public final class VerifierIntegrity {
     private static final String JAR_NAME = "integridade-verifier.jar";
     private static final String EXE_NAME = "integridade-verifier.exe";
 
-    private static final Set<String> VALID_JAR_HASHES = Set.of("A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1");
-    private static final Set<String> VALID_EXE_HASHES = Set.of("81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3");
+    private static final Set<String> VALID_JAR_HASHES = Set.of("07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E");
+    private static final Set<String> VALID_EXE_HASHES = Set.of("7E26F0ABFE20CEA7277B76E5781DE262A1525DA59EF17C211FC062398D118CC0");
     private static volatile boolean alertShown = false;
 
     /** Garante o verificador (jar/exe) atualizado na pasta de destino: adiciona se ausente ou substitui se desatualizado. */

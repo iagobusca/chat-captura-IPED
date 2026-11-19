@@ -106,7 +106,7 @@ try {
         $jdk8Classes = Join-Path $RepoRoot 'tmp\ci-verifier-tests'
         Remove-Item -LiteralPath $jdk8Classes -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $jdk8Classes | Out-Null
-        $jdk8Deps = Join-Path $RepoRoot 'verificador-integridade\dependencies\*'
+        $jdk8Deps = "$(Join-Path $RepoRoot 'verificador-integridade\dependencies\*');$VerifierJarPath"
         & $javac8 -encoding UTF-8 -cp $jdk8Deps -d $jdk8Classes `
             verificador-integridade\src\IntegrityVerifier.java `
             verificador-integridade\tests\SecurityRegressionTest.java `

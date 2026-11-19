@@ -6,6 +6,11 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.10] - 2026-11-19
+
+### Corte Automatizado (Estável / `main`)
+- Seguranca V-05r (v2.8.10 / Verificador 1.5.8): driver oficial sqlite-jdbc-3.41.2.2.jar (SHA-256 pinado 0CDAB410947E04B6743DF99CF1543267DDD107357D6F76948D145BE590FD497D) embutido diretamente no fat-JAR e no runtime EXE do Verificador de Integridade; removida toda busca externa de driver (resolveDynamicSqliteDriver/URLClassLoader/candidateDirs/path de dev) eliminando risco de carregamento de JAR nao confiavel a partir da pasta de captura/evidencia; preservado fallback fail-closed DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING e documentada a cadeia de confianca na tela de Auditoria de Origem, README e GUIA_DE_USO.
+- Verificador **1.5.8** (`13.052.436` bytes JAR `07EFAB49...` | `90.580.058` bytes EXE `7E26F0AB...`) e Plugin **2.8.10** (`1.563.730` bytes `65918207...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.10-verificador-1.5.8.zip` (`120.287.085` bytes `724B413C...`).
 ## [2.8.9] - 2026-11-18
 
 ### Corte Automatizado (Estável / `main`)

@@ -61,6 +61,8 @@ $FixedZipLocalTuple = @(
 
 $IpedOfficialUrl = 'https://github.com/sepinf-inc/IPED/releases/download/4.3.1/IPED-4.3.1_and_java_plugins.zip'
 $IpedOfficialSha256 = 'E8EE71E7E2E41A770B521BFBAABF0CF0B88ADD5FEBFF27C5A5AD375248CFEF8E'
+$SqliteJdbcOfficialFileName = 'sqlite-jdbc-3.41.2.2.jar'
+$SqliteJdbcOfficialSha256 = '0CDAB410947E04B6743DF99CF1543267DDD107357D6F76948D145BE590FD497D'
 
 $OpenJfxCatalog = @{
     'windows-x64'   = @{ Url = 'https://download2.gluonhq.com/openjfx/21.0.5/openjfx-21.0.5_windows-x64_bin-sdk.zip';   Sha = '237DBAA24AC05557A65540B5E9EBC6FF5BC011BF0F7B06F5637EAC31AC7235D3' }
@@ -404,7 +406,32 @@ function Invoke-SingleReproducibleBuild([string]$WorkRoot, [string]$RunOutDir, [
     $jsonExtract = Join-Path $WorkRoot 'json-extract'
     [IO.Compression.ZipFile]::ExtractToDirectory($jsonJar, $jsonExtract)
     Copy-Item -Path (Join-Path $jsonExtract 'org') -Destination $vClasses -Recurse -Force
+
+    $sqliteJar = Join-Path (Join-Path $Iped 'lib') $SqliteJdbcOfficialFileName
+    if (-not (Test-Path -LiteralPath $sqliteJar -PathType Leaf)) {
+        $altSqlite = Join-Path $RepoRoot "verificador-integridade/dependencies/$SqliteJdbcOfficialFileName"
+        if (Test-Path -LiteralPath $altSqlite -PathType Leaf) { $sqliteJar = $altSqlite }
+    }
+    if (-not (Test-Path -LiteralPath $sqliteJar -PathType Leaf)) {
+        throw "Driver SQLite oficial nao encontrado ($SqliteJdbcOfficialFileName): $sqliteJar"
+    }
+    $actualSqliteSha = (Get-FileHash -LiteralPath $sqliteJar -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($actualSqliteSha -ne $SqliteJdbcOfficialSha256.ToUpperInvariant()) {
+        throw "FALHA DE INTEGRIDADE SHA-256 em $SqliteJdbcOfficialFileName! Esperado=$SqliteJdbcOfficialSha256 Recebido=$actualSqliteSha"
+    }
+    $sqliteExtract = Join-Path $WorkRoot 'sqlite-extract'
+    [IO.Compression.ZipFile]::ExtractToDirectory($sqliteJar, $sqliteExtract)
+    Copy-Item -Path (Join-Path $sqliteExtract 'org') -Destination $vClasses -Recurse -Force
+    if (Test-Path -LiteralPath (Join-Path $sqliteExtract 'sqlite-jdbc.properties') -PathType Leaf) {
+        Copy-Item -LiteralPath (Join-Path $sqliteExtract 'sqlite-jdbc.properties') -Destination $vClasses -Force
+    }
     New-Item -ItemType Directory -Force -Path (Join-Path $vClasses 'META-INF') | Out-Null
+    foreach ($metaSub in @('services', 'maven')) {
+        $srcMeta = Join-Path (Join-Path $sqliteExtract 'META-INF') $metaSub
+        if (Test-Path -LiteralPath $srcMeta) {
+            Copy-Item -Path $srcMeta -Destination (Join-Path $vClasses 'META-INF') -Recurse -Force
+        }
+    }
     $vMf = @(
         'Manifest-Version: 1.0',
         'Created-By: ChatCaptura-Reproducible-Builder',

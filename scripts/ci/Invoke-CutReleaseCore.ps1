@@ -350,6 +350,7 @@ if ($VerifierVersion -ne $prevVerifierVer -or $vJarSha -ne $prevJarHash -or $vEx
     $vhRows = @"
 | $VerifierVersion (release $tagName) | ``integridade-verifier.jar`` | ``$vJarSha`` | Build determin$([char]0x00ED)stico (``build-reproducible.ps1`` ``--release 8``); ``$jarFmt`` bytes; ``SELF_TEST_OK $VerifierVersion`` |
 | $VerifierVersion (release $tagName) | ``integridade-verifier.exe`` | ``$vExeSha`` | Build Windows x64 determin$([char]0x00ED)stico (``.NET 10.0.15``); ``$exeFmt`` bytes; ``SELF_TEST_OK $VerifierVersion`` |
+
 "@
     $vh = Insert-BeforeRegexAnchor -Text $vh -Pattern '^\| [0-9]+\.[0-9]+\.[0-9]+ \(release ' -InsertBlock $vhRows -Label 'versao_hash.md'
 }
@@ -383,6 +384,8 @@ $readme = $readme.Replace("(plugin ``$prevPluginVer``,", "(plugin ``$PluginVersi
 $readme = $readme.Replace("($prevPluginVer / Verificador $prevVerifierVer)", "($PluginVersion / Verificador $VerifierVersion)")
 $readme = $readme.Replace("da s$([char]0x00E9)rie ``$prevVerifierVer``", "da s$([char]0x00E9)rie ``$VerifierVersion``")
 $readme = $readme.Replace("Verificador de Integridade ``$prevVerifierVer``", "Verificador de Integridade ``$VerifierVersion``")
+$readme = $readme.Replace("Verificador de Integridade $prevVerifierVer", "Verificador de Integridade $VerifierVersion")
+$readme = $readme.Replace("(``v$prevPluginVer`` / **Verificador ``$prevVerifierVer``**)", "(``$tagName`` / **Verificador ``$VerifierVersion``**)")
 $readme = $readme.Replace("Verificador ``$prevVerifierVer``", "Verificador ``$VerifierVersion``")
 $readme = $readme.Replace("fat-JAR ``$prevPluginVer``", "fat-JAR ``$PluginVersion``")
 $readme = $readme.Replace("Implementation-Version: $prevPluginVer", "Implementation-Version: $PluginVersion")
@@ -395,7 +398,7 @@ $readme = [regex]::Replace($readme, "(\|\s*``integridade-verifier-$([Regex]::Esc
 Set-RepoText 'README.md' $readme
 
 $guia = Get-RepoText 'GUIA_DE_USO.md'
-$guia = $guia.Replace("(v$prevPluginVer)", "($tagName)").Replace("(v$prevVerifierVer)", "(v$VerifierVersion)").Replace("Verificador de Integridade $prevVerifierVer", "Verificador de Integridade $VerifierVersion").Replace("Verificador de Integridade (``$prevVerifierVer``)", "Verificador de Integridade (``$VerifierVersion``)")
+$guia = $guia.Replace("(v$prevPluginVer)", "($tagName)").Replace("(v$prevVerifierVer)", "(v$VerifierVersion)").Replace("Verificador de Integridade $prevVerifierVer", "Verificador de Integridade $VerifierVersion").Replace("Verificador de Integridade (``$prevVerifierVer``)", "Verificador de Integridade (``$VerifierVersion``)").Replace("Verificador $prevVerifierVer", "Verificador $VerifierVersion").Replace("Verificador ``$prevVerifierVer``", "Verificador ``$VerifierVersion``")
 Set-RepoText 'GUIA_DE_USO.md' $guia
 
 $espec = Get-RepoText 'espec.md'

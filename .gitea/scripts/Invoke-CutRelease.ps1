@@ -84,26 +84,28 @@ try {
         & git config user.name 'GiteaRunner Bot'
         & git config user.email 'gitea-runner@local'
 
-        function Clear-StaleGitIndexLock {
+        function Invoke-GitWithLockRetry {
+            param([string[]]$GitArgs, [string]$Label)
             $lockFile = Join-Path $RepoRoot '.git\index.lock'
-            for ($w = 0; $w -lt 10 -and (Test-Path -LiteralPath $lockFile); $w++) {
-                Start-Sleep -Milliseconds 300
+            for ($attempt = 0; $attempt -lt 10; $attempt++) {
+                if (Test-Path -LiteralPath $lockFile) {
+                    Start-Sleep -Milliseconds 400
+                    Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+                }
+                & git @GitArgs
+                if ($LASTEXITCODE -eq 0) { return }
+                Start-Sleep -Milliseconds 600
+                if (Test-Path -LiteralPath $lockFile) {
+                    Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+                }
             }
-            if (Test-Path -LiteralPath $lockFile) {
-                Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
-            }
+            throw "$Label falhou ($LASTEXITCODE)"
         }
 
         $releaseBranch = "release/$($meta.tag)"
-        Clear-StaleGitIndexLock
-        & git checkout -B $releaseBranch
-        if ($LASTEXITCODE -ne 0) { throw "git checkout -B $releaseBranch falhou" }
-        Clear-StaleGitIndexLock
-        & git add -A
-        if ($LASTEXITCODE -ne 0) { throw 'git add -A falhou' }
-        Clear-StaleGitIndexLock
-        & git commit -m "release($($meta.tag)): corte automatizado plugin $($meta.pluginVersion) / verificador $($meta.verifierVersion)"
-        if ($LASTEXITCODE -ne 0) { throw 'git commit falhou' }
+        Invoke-GitWithLockRetry -GitArgs @('checkout', '-B', $releaseBranch) -Label "git checkout -B $releaseBranch"
+        Invoke-GitWithLockRetry -GitArgs @('add', '-A') -Label 'git add -A'
+        Invoke-GitWithLockRetry -GitArgs @('commit', '-m', "release($($meta.tag)): corte automatizado plugin $($meta.pluginVersion) / verificador $($meta.verifierVersion)") -Label 'git commit'
 
         $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("iago:$Token"))
         $remoteUrl = "$($GiteaBaseUrl.TrimEnd('/'))/$RepoSlug.git"
@@ -112,23 +114,14 @@ try {
         if ($LASTEXITCODE -eq 0) {
             & git merge-base --is-ancestor FETCH_HEAD $releaseBranch
             if ($LASTEXITCODE -eq 0) {
-                Clear-StaleGitIndexLock
-                & git checkout -B $meta.targetBranch FETCH_HEAD
-                if ($LASTEXITCODE -ne 0) { throw "git checkout $($meta.targetBranch) falhou" }
-                Clear-StaleGitIndexLock
-                & git merge --ff-only $releaseBranch
-                if ($LASTEXITCODE -ne 0) { throw "git merge --ff-only $releaseBranch falhou" }
+                Invoke-GitWithLockRetry -GitArgs @('checkout', '-B', $meta.targetBranch, 'FETCH_HEAD') -Label "git checkout $($meta.targetBranch)"
+                Invoke-GitWithLockRetry -GitArgs @('merge', '--ff-only', $releaseBranch) -Label "git merge --ff-only $releaseBranch"
             } else {
-                Clear-StaleGitIndexLock
-                & git checkout -B $meta.targetBranch $releaseBranch
-                if ($LASTEXITCODE -ne 0) { throw "git checkout -B $($meta.targetBranch) falhou" }
-                Clear-StaleGitIndexLock
-                & git merge --no-edit -s ours FETCH_HEAD -m "chore: reconciliar $($meta.targetBranch) antes de $($meta.tag)"
-                if ($LASTEXITCODE -ne 0) { throw "git merge -s ours em $($meta.targetBranch) falhou" }
+                Invoke-GitWithLockRetry -GitArgs @('checkout', '-B', $meta.targetBranch, $releaseBranch) -Label "git checkout -B $($meta.targetBranch)"
+                Invoke-GitWithLockRetry -GitArgs @('merge', '--no-edit', '-s', 'ours', 'FETCH_HEAD', '-m', "chore: reconciliar $($meta.targetBranch) antes de $($meta.tag)") -Label "git merge -s ours em $($meta.targetBranch)"
             }
         } else {
-            Clear-StaleGitIndexLock
-            & git checkout -B $meta.targetBranch
+            Invoke-GitWithLockRetry -GitArgs @('checkout', '-B', $meta.targetBranch) -Label "git checkout -B $($meta.targetBranch)"
         }
 
         & git tag -f -a $meta.tag -m "Release $($meta.tag) ($Channel) - Plugin $($meta.pluginVersion) / Verificador $($meta.verifierVersion)"

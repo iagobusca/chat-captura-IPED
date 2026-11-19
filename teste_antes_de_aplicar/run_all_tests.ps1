@@ -97,7 +97,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $jdk8Classes = Join-Path $repo 'tmp\phase2-verifier-tests'
 if (Test-Path $jdk8Classes) { Remove-Item -Recurse -Force $jdk8Classes }
 New-Item -ItemType Directory -Force -Path $jdk8Classes | Out-Null
-$jdk8Deps = Join-Path $repo 'verificador-integridade\dependencies\*'
+$jdk8Deps = "$(Join-Path $repo 'verificador-integridade\dependencies\*');$(Join-Path $repo 'verificador-integridade\integridade-verifier.jar')"
 & $javac8 -encoding UTF-8 -cp $jdk8Deps -d $jdk8Classes `
     (Join-Path $repo 'verificador-integridade\src\IntegrityVerifier.java') `
     (Join-Path $repo 'verificador-integridade\tests\SecurityRegressionTest.java') `

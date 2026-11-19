@@ -2,8 +2,8 @@
 
 Plugin/customização em Java para o **IPED 4.3.1** que captura intervalos de mensagens de chats no viewer HTML, gerando pacote offline auditável (`html-message-v1`) acompanhado pelo **Verificador de Integridade** criptográfico independente (JAR Java 8+ e executável Windows x64 autocontido).
 
-- **Versão atual do plugin:** `2.8.9` (branch `main`)
-- **Verificador de Integridade:** `1.5.7`
+- **Versão atual do plugin:** `2.8.10` (branch `main`)
+- **Verificador de Integridade:** `1.5.8`
 - **Compatibilidade alvo:** IPED `4.3.1` oficial (Java 11+) | Launcher EXE com runtime `.NET 10.0.15`
 - **Build reproduzível auditável (Windows / Linux / macOS):** [`build-reproducible.ps1`](build-reproducible.ps1)
 - **Licença e Direitos Autorais:** `Copyright (C) 2026 iagobusca` — [GNU General Public License v3.0 (GPLv3)](LICENSE) ([NOTICE](NOTICE))
@@ -16,9 +16,11 @@ Veja abaixo a abertura offline da captura (`index.html` e `whatsapp.html` com mo
 
 ![Demonstração do resultado offline do Chat Captura IPED e auditoria no Verificador de Integridade](imagens_doc/edit/resultado_e_verificador-integridade.gif)
 
-Veja também o fluxo completo da **Auditoria de Origem** (`v2.8.8` / **Verificador `1.5.7`**) conferindo a extração Avilla (`Hashs.txt`, `Hashs.avilla`, `report.pdf`, `msgstore.db`) contra as capturas geradas:
+Veja também o fluxo completo da **Auditoria de Origem** (`v2.8.10` / **Verificador `1.5.8`**) conferindo a extração Avilla (`Hashs.txt`, `Hashs.avilla`, `report.pdf`, `msgstore.db`) contra as capturas geradas:
 
-![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.6](imagens_doc/edit/Auditoria_origem.gif)
+![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.8](imagens_doc/edit/Auditoria_origem.gif)
+
+> **Cadeia de confiança (Auditoria de Origem e Verificação Offline):** Antes de executar o `integridade-verifier.exe` ou `integridade-verifier.jar` distribuído dentro de uma pasta de captura (evidência), o auditor **DEVE conferir o hash SHA-256 do verificador** contra o valor oficial publicado no GitHub / [CHECKSUMS.md](CHECKSUMS.md). O driver SQLite oficial (`sqlite-jdbc-3.41.2.2.jar`, SHA-256 pinado `0CDAB410...`) está embutido diretamente no binário do verificador (nenhum `.jar` externo é buscado ou carregado de pastas de evidência), garantindo confiança por transitividade.
 
 Para instruções ilustradas passo a passo de instalação, captura, notas, censura e auditoria, consulte o guia completo em [GUIA_DE_USO.md](GUIA_DE_USO.md).
 
@@ -33,8 +35,8 @@ Para instruções ilustradas passo a passo de instalação, captura, notas, cens
 Este repositório mantém o código-fonte, os testes automatizados, o compilador determinístico e o pacote instalador para aplicar a extensão do `HtmlLinkViewer` sobre uma instalação oficial do **IPED 4.3.1** sem exigir recompilação do IPED base:
 
 - **Formato padrão `html-message-v1`:** captura determinística por intervalo DOM de mensagens e anexos recuperados diretamente do caso, tema offline preservado, CSP estrita, modal offline seguro (imagem, áudio, vídeo, PDF e documentos) e tolerância a anexos excedentes ou indisponíveis sem abortar a captura.
-- **Verificador de Integridade `1.5.7`:** utilitário independente para auditoria offline (**Integridade Local**), comparação contra referências externas ou histórico público anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS` (**Integridade Público**) e **Auditoria de Origem** (`--audit-origin` / botão **Auditoria de origem...**) confrontando `origin-binding.json` com a pasta Avilla (`Hashs.txt` UTF-16LE, `report.pdf`, `msgstore.db`), caso IPED pai (`Lista de Arquivos.csv`), anexos e mídias embutidas no HTML, com scanner HTML léxico estrito (`scanHtmlElements` / `parseHtmlTagStrict`), proteção `LinkOption.NOFOLLOW_LINKS`, allowlists HTML/MIME simétricas, relatórios em *streaming* transacional sem tetos artificiais e `--self-test`.
-- **Allowlist exclusiva de segurança:** o plugin `2.8.9` (`VerifierIntegrity.java`) e o instalador `instalar_captura_chat_zap.bat` aceitam exclusivamente os binários oficiais da série `1.5.7` (rejeitando versões anteriores), além de aplicar `html.disable=true` em renderizadores Swing e limpeza determinística de WebView/OpenCV/executores em `dispose()`.
+- **Verificador de Integridade `1.5.8`:** utilitário independente para auditoria offline (**Integridade Local**), comparação contra referências externas ou histórico público anonimizado `CAPTURA|*-YYYYMMDD-HHMMSS` (**Integridade Público**) e **Auditoria de Origem** (`--audit-origin` / botão **Auditoria de origem...**) confrontando `origin-binding.json` com a pasta Avilla (`Hashs.txt` UTF-16LE, `report.pdf`, `msgstore.db`), caso IPED pai (`Lista de Arquivos.csv`), anexos e mídias embutidas no HTML, com scanner HTML léxico estrito (`scanHtmlElements` / `parseHtmlTagStrict`), proteção `LinkOption.NOFOLLOW_LINKS`, allowlists HTML/MIME simétricas, relatórios em *streaming* transacional sem tetos artificiais e `--self-test`.
+- **Allowlist exclusiva de segurança:** o plugin `2.8.10` (`VerifierIntegrity.java`) e o instalador `instalar_captura_chat_zap.bat` aceitam exclusivamente os binários oficiais da série `1.5.8` (rejeitando versões anteriores), além de aplicar `html.disable=true` em renderizadores Swing e limpeza determinística de WebView/OpenCV/executores em `dispose()`.
 - **Por que o instalador substitui `iped-viewers-impl-4.3.1.jar`:** no IPED `4.3.1` (`ViewerController.java` e `Bootstrap.java`), os visualizadores interativos são instanciados diretamente no código sem SPI (`ServiceLoader`) para viewers, e `lib/*` antecede `plugins/*` no classpath. O instalador cria backup automático da versão original e injeta apenas o necessário preservando `MultiViewer` e `org/opencv/**`.
 
 ---
@@ -44,27 +46,27 @@ Este repositório mantém o código-fonte, os testes automatizados, o compilador
 > Antes de executar o instalador, confira o hash SHA-256 do ZIP baixado com os valores publicados em [CHECKSUMS.md](CHECKSUMS.md). O instalador `.bat` também valida todos os hashes dos arquivos extraídos antes de copiar para o IPED.
 
 1. Feche completamente o IPED (para liberar os arquivos `.jar` em uso).
-2. Baixe o pacote completo `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` na página de **Releases** e extraia em uma pasta local.
+2. Baixe o pacote completo `instalador-chat-captura-IPED-2.8.10-verificador-1.5.8.zip` na página de **Releases** e extraia em uma pasta local.
 3. Execute `instalar_captura_chat_zap/instalar_captura_chat_zap.bat`.
 4. Reabra o IPED e abra uma conversa do WhatsApp no viewer HTML.
 
 ### O que o instalador faz
 
-1. Confere os SHA-256 do fat-JAR do plugin (`2.8.9`), do Verificador JAR/EXE (`1.5.7`) e valida a integridade das classes e bundles do JAR com `validate-plugin-jar.ps1`.
+1. Confere os SHA-256 do fat-JAR do plugin (`2.8.10`), do Verificador JAR/EXE (`1.5.8`) e valida a integridade das classes e bundles do JAR com `validate-plugin-jar.ps1`.
 2. Cria backups com carimbo de data/hora (`*.bak-YYYYMMDD-HHMMSS`) de `lib\iped-viewers-impl-4.3.1.jar`, `lib\json-20250517.jar`, `opencv_java4120.dll`, bundles de localização e eventuais verificadores existentes.
-3. Substitui `lib\iped-viewers-impl-4.3.1.jar` pelo fat-JAR `2.8.9` (que já embute `org/opencv/**`), atualiza `lib\json-20250517.jar` com os bytes de `org.json` `20260719` mantendo a compatibilidade com o `Class-Path` do IPED (removendo cópias duplicadas em `lib\`) e instala `opencv_java4120.dll`.
-4. Instala o Verificador de Integridade `1.5.7` (`.jar` e `.exe`) em `<IPED>\verificador-integridade\` e sincroniza as traduções de interface via `install-localization.ps1`.
+3. Substitui `lib\iped-viewers-impl-4.3.1.jar` pelo fat-JAR `2.8.10` (que já embute `org/opencv/**`), atualiza `lib\json-20250517.jar` com os bytes de `org.json` `20260719` mantendo a compatibilidade com o `Class-Path` do IPED (removendo cópias duplicadas em `lib\`) e instala `opencv_java4120.dll`.
+4. Instala o Verificador de Integridade `1.5.8` (`.jar` e `.exe`) em `<IPED>\verificador-integridade\` e sincroniza as traduções de interface via `install-localization.ps1`.
 
 ---
 
-## Artefatos e SHA-256 (`v2.8.9` / Verificador `1.5.7`)
+## Artefatos e SHA-256 (`v2.8.10` / Verificador `1.5.8`)
 
 | Artefato | Tamanho (bytes) | SHA-256 | Finalidade |
 | --- | ---: | --- | --- |
-| `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` | `94666123` | `D51EE1211DC95CF9980C299CCB8619C4AF5214AD23F33E3505914E342EC2572B` | Instalador completo (plugin `2.8.9`, OpenCV, dependências, scripts e Verificador `1.5.7`) |
-| `iped-viewers-impl-4.3.1-2.8.9.jar` | `1563735` | `D0E2D7792107C7F434FB46998369EBBFC07D9D593BDFAF3D10D9380050EE6F49` | Fat-JAR do plugin (`Implementation-Version: 2.8.9`; mesmo binário de `iped-viewers-impl-4.3.1.jar`) |
-| `integridade-verifier-1.5.7.jar` | `215152` | `A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1` | Verificador independente Java 8+ (`SELF_TEST_OK 1.5.7`) |
-| `integridade-verifier-1.5.7.exe` | `77771354` | `81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3` | Verificador Windows x64 autocontido com runtime Java + `.NET 10.0.15` |
+| `instalador-chat-captura-IPED-2.8.10-verificador-1.5.8.zip` | `120287085` | `724B413C2BCC8DD68ECD748A0946AA06F39A532843FA2574B08CD77197CB1DD0` | Instalador completo (plugin `2.8.10`, OpenCV, dependências, scripts e Verificador `1.5.8`) |
+| `iped-viewers-impl-4.3.1-2.8.10.jar` | `1563730` | `659182076A67B1F8FA7B00D3317E9E0B1141FB7EE3E253144D63F3EAD387AD60` | Fat-JAR do plugin (`Implementation-Version: 2.8.10`; mesmo binário de `iped-viewers-impl-4.3.1.jar`) |
+| `integridade-verifier-1.5.8.jar` | `13052436` | `07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E` | Verificador independente Java 8+ (`SELF_TEST_OK 1.5.8`) |
+| `integridade-verifier-1.5.8.exe` | `90580058` | `7E26F0ABFE20CEA7277B76E5781DE262A1525DA59EF17C211FC062398D118CC0` | Verificador Windows x64 autocontido com runtime Java + `.NET 10.0.15` |
 
 - Hashes detalhados e histórico: [CHECKSUMS.md](CHECKSUMS.md) | [versao_hash.md](versao_hash.md)
 - Notas de lançamento e histórico de alterações: [RELEASE_NOTES.md](RELEASE_NOTES.md) | [CHANGELOG.md](CHANGELOG.md)
@@ -74,7 +76,7 @@ Este repositório mantém o código-fonte, os testes automatizados, o compilador
 
 ## Compilação Determinística e Auditoria Bit a Bit
 
-Qualquer auditor em **Windows**, **Linux** ou **macOS** pode baixar o código-fonte da tag `v2.8.9` e recompilar os artefatos com os mesmos hashes SHA-256 exatos usando [`build-reproducible.ps1`](build-reproducible.ps1) (PowerShell 7+ / `pwsh` ou Windows PowerShell 5.1):
+Qualquer auditor em **Windows**, **Linux** ou **macOS** pode baixar o código-fonte da tag `v2.8.10` e recompilar os artefatos com os mesmos hashes SHA-256 exatos usando [`build-reproducible.ps1`](build-reproducible.ps1) (PowerShell 7+ / `pwsh` ou Windows PowerShell 5.1):
 
 ```powershell
 pwsh -NoProfile -File ./build-reproducible.ps1 -DownloadDeps -PinTemurin -VerifyReproducibility -RunTests
@@ -92,7 +94,7 @@ pwsh -NoProfile -File ./build-reproducible.ps1 -DownloadDeps -PinTemurin -Verify
 3. **Pesquisa no chat e no HTML offline:** busca textual normalizada (sem acentos/maiúsculas) em todo o chat carregado dentro do IPED e busca por conteúdo nos relatórios offline gerados.
 4. **Censura visual por imagem de referência:** compare miniaturas com uma pasta de referência (similaridade `50%` / `75%` / `90%` e intensidade `20%` / `30%` / `60%` / `90%`). Em `html-message-v1`, a supressão visual de apresentação usa CSS (`filter: blur(...)` + aviso visual), mantendo os bytes originais íntegros em `attachments/` e fora da fórmula de hash público das mensagens.
 5. **Re-Extrair e migração de capturas legadas:** refaça capturas existentes com reconciliação por mensagem (descartando regravação quando nada mudou) ou migre capturas PNG antigas (`version: 1`) de forma transacional para `html-message-v1`, com opção **Limpar registros e criar como nova captura**.
-6. **Auditoria de Origem (opcional na captura) e Verificador `1.5.7`:** ao informar **Origem Avilla (opcional)** e/ou **Caso IPED pai (opcional)** no painel de captura, o plugin vincula `origin-binding.json` (lendo `report.pdf` via PDFBox, `Hashs.txt` UTF-16LE, `Lista de Arquivos.csv` do caso pai, cópia temporária read-only N3 do `msgstore.db` e registro explícito de eventual lacuna pós-`.tar` sem alterar `captureRootHash` nem capturas legadas). Na tela inicial do Verificador (`integridade-verifier.exe` ou `java -jar integridade-verifier.jar`), escolha **Integridade Local**, **Integridade Público** (`historico-capturas.txt` original ou público anonimizado `CAPTURA|*`) ou **Auditoria de origem...** (para selecionar **Pasta de origem**, **Pasta do caso (opcional)**, executar **Validar Auditoria**, ler/copiar o conteúdo e gerar **`Auditoria_relatorio.htm`** em **Exportar Auditoria**; ou via CLI `--audit-origin`, gravando `integridade/auditoria-origem.txt`).
+6. **Auditoria de Origem (opcional na captura) e Verificador `1.5.8`:** ao informar **Origem Avilla (opcional)** e/ou **Caso IPED pai (opcional)** no painel de captura, o plugin vincula `origin-binding.json` (lendo `report.pdf` via PDFBox, `Hashs.txt` UTF-16LE, `Lista de Arquivos.csv` do caso pai, cópia temporária read-only N3 do `msgstore.db` e registro explícito de eventual lacuna pós-`.tar` sem alterar `captureRootHash` nem capturas legadas). Na tela inicial do Verificador (`integridade-verifier.exe` ou `java -jar integridade-verifier.jar`), escolha **Integridade Local**, **Integridade Público** (`historico-capturas.txt` original ou público anonimizado `CAPTURA|*`) ou **Auditoria de origem...** (para selecionar **Pasta de origem**, **Pasta do caso (opcional)**, executar **Validar Auditoria**, ler/copiar o conteúdo e gerar **`Auditoria_relatorio.htm`** em **Exportar Auditoria**; ou via CLI `--audit-origin`, gravando `integridade/auditoria-origem.txt`).
 
 ### Principais arquivos gerados (`html-message-v1`)
 

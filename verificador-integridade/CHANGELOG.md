@@ -4,6 +4,15 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.8] - 2026-11-19
+
+### Corte Automatizado (v2.8.10)
+- Seguranca V-05r (v2.8.10 / Verificador 1.5.8): driver oficial sqlite-jdbc-3.41.2.2.jar (SHA-256 pinado 0CDAB410947E04B6743DF99CF1543267DDD107357D6F76948D145BE590FD497D) embutido diretamente no fat-JAR e no runtime EXE do Verificador de Integridade; removida toda busca externa de driver (resolveDynamicSqliteDriver/URLClassLoader/candidateDirs/path de dev) eliminando risco de carregamento de JAR nao confiavel a partir da pasta de captura/evidencia; preservado fallback fail-closed DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING e documentada a cadeia de confianca na tela de Auditoria de Origem, README e GUIA_DE_USO. (`build-reproducible.ps1`; JAR `07EFAB49...` / EXE `7E26F0AB...`).
+## [1.5.7] - 2026-11-18
+
+### Corte Automatizado (v2.8.9)
+- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> e variador FE0F, remocao balanceada de quoteFrom/quoteTo, span.time com atributos data-* e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL). (`build-reproducible.ps1`; JAR `A9170EFB...` / EXE `81D704B1...`).
+
 ## [1.5.6] - 2026-11-18
 
 ### Corte Automatizado (v2.8.8)

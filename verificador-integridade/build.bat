@@ -14,7 +14,7 @@ if not exist "%OUT%" mkdir "%OUT%"
 if not exist "%JSON_OUT%" mkdir "%JSON_OUT%"
 >"%MANIFEST%" echo Manifest-Version: 1.0
 >>"%MANIFEST%" echo Main-Class: IntegrityVerifier
->>"%MANIFEST%" echo Implementation-Version: 1.5.7
+>>"%MANIFEST%" echo Implementation-Version: 1.5.8
 >>"%MANIFEST%" echo.
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"
@@ -32,4 +32,17 @@ pushd "%JSON_OUT%"
 if errorlevel 1 (popd & exit /b 1)
 popd
 "%JAVA_HOME%\bin\jar.exe" uf "%HERE%integridade-verifier.jar" -C "%JSON_OUT%" org/json
+if errorlevel 1 exit /b 1
+set "SQLITE=%HERE%dependencies\sqlite-jdbc-3.41.2.2.jar"
+if not exist "%SQLITE%" set "SQLITE=%HERE%..\..\..\iped-4.3.1\lib\sqlite-jdbc-3.41.2.2.jar"
+if exist "%SQLITE%" (
+  set "SQLITE_OUT=%HERE%build\sqlite-classes"
+  if exist "%HERE%build\sqlite-classes" rmdir /s /q "%HERE%build\sqlite-classes"
+  mkdir "%HERE%build\sqlite-classes"
+  pushd "%HERE%build\sqlite-classes"
+  "%JAVA_HOME%\bin\jar.exe" xf "%SQLITE%"
+  if errorlevel 1 (popd & exit /b 1)
+  popd
+  "%JAVA_HOME%\bin\jar.exe" uf "%HERE%integridade-verifier.jar" -C "%HERE%build\sqlite-classes" org/sqlite -C "%HERE%build\sqlite-classes" sqlite-jdbc.properties -C "%HERE%build\sqlite-classes" META-INF/services -C "%HERE%build\sqlite-classes" META-INF/maven
+)
 exit /b %ERRORLEVEL%

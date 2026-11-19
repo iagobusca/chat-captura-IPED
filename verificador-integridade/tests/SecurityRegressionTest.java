@@ -54,6 +54,10 @@ public final class SecurityRegressionTest {
             unquotedQuoteHtmlBypassPayloadsAreRejected();
             openFileGuardRejectsJunctionAndMissingFiles(root);
             originAuditN3DivergenceAndFailClosedValidation(root);
+            driverCarregaDoClasspath(root);
+            nenhumaBuscaExternaDeDriver();
+            jarMaliciosoNaCapturaIgnorado(root);
+            buildPinSqliteJdbcHash();
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -2038,6 +2042,207 @@ public final class SecurityRegressionTest {
         String md5Rpt = (String) reportTextField.get(md5Res);
         if ((Boolean) passedField.get(md5Res) || !md5Rpt.contains("NAO_LOCALIZADO=1") || md5Rpt.contains("EMBUTIDO_NO_HTML_IPED=1")) {
             throw new AssertionError("MD5-only CSV/HTML must NOT certify EMBUTIDO_NO_HTML_IPED:\n" + md5Rpt);
+        }
+    }
+
+    private static void driverCarregaDoClasspath(Path root) throws Exception {
+        Class<?> jdbcCls = Class.forName("org.sqlite.JDBC");
+        if (jdbcCls == null) {
+            throw new AssertionError("org.sqlite.JDBC must resolve directly from verifier classpath");
+        }
+        Method isAvail = IntegrityVerifier.class.getDeclaredMethod("isSqliteDriverAvailable");
+        isAvail.setAccessible(true);
+        if (!(Boolean) isAvail.invoke(null)) {
+            throw new AssertionError("isSqliteDriverAvailable() must return true from embedded classpath driver");
+        }
+        Path verifierJar = java.nio.file.Paths.get("verificador-integridade/integridade-verifier.jar");
+        if (!Files.isRegularFile(verifierJar)) {
+            verifierJar = java.nio.file.Paths.get("integridade-verifier.jar");
+        }
+        if (Files.isRegularFile(verifierJar)) {
+            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(verifierJar.toFile())) {
+                if (jf.getJarEntry("org/sqlite/JDBC.class") == null
+                        || jf.getJarEntry("sqlite-jdbc.properties") == null
+                        || jf.getJarEntry("META-INF/services/java.sql.Driver") == null) {
+                    throw new AssertionError("integridade-verifier.jar must embed org/sqlite/JDBC.class, sqlite-jdbc.properties and META-INF/services/java.sql.Driver");
+                }
+            }
+        }
+        Path dbFile = root.resolve("classpath-n3-msgstore.db");
+        Class<?> dmCls = Class.forName("java.sql.DriverManager");
+        Method getConn = dmCls.getMethod("getConnection", String.class);
+        AutoCloseable con = (AutoCloseable) getConn.invoke(null, "jdbc:sqlite:" + dbFile.toAbsolutePath());
+        try {
+            Method createSt = con.getClass().getMethod("createStatement");
+            AutoCloseable st = (AutoCloseable) createSt.invoke(con);
+            try {
+                Method exec = st.getClass().getMethod("execute", String.class);
+                exec.invoke(st, "CREATE TABLE message (_id INTEGER PRIMARY KEY, text_data TEXT, message_type INTEGER)");
+                exec.invoke(st, "INSERT INTO message (_id, text_data, message_type) VALUES (101, 'Mensagem N3 do classpath', 0)");
+            } finally {
+                st.close();
+            }
+        } finally {
+            con.close();
+        }
+        Path msgFile = root.resolve("classpath-n3-messages.json");
+        JSONObject msgWrapper = new JSONObject().put("messages", new JSONArray()
+                .put(new JSONObject().put("domId", "101").put("text", "Mensagem N3 do classpath")));
+        Files.write(msgFile, msgWrapper.toString().getBytes(StandardCharsets.UTF_8));
+        Method runIndN3 = IntegrityVerifier.class.getDeclaredMethod(
+                "runIndependentN3VerificationIfPossible", Path.class, Path.class, boolean.class);
+        runIndN3.setAccessible(true);
+        Object outcome = runIndN3.invoke(null, dbFile, msgFile, Boolean.TRUE);
+        Method toLine = outcome.getClass().getDeclaredMethod("toReportLine");
+        toLine.setAccessible(true);
+        String reportLine = (String) toLine.invoke(outcome);
+        if (!"CONFERE|ATIVAS=1|RECUPERADAS=0|DIVERGENTES=0".equals(reportLine)) {
+            throw new AssertionError("Expected embedded classpath N3 CONFERE, got: " + reportLine);
+        }
+    }
+
+    private static void nenhumaBuscaExternaDeDriver() throws Exception {
+        for (Method m : IntegrityVerifier.class.getDeclaredMethods()) {
+            String name = m.getName();
+            if ("resolveDynamicSqliteDriver".equals(name) || "openSqliteConnection".equals(name)) {
+                throw new AssertionError("External driver loader method must not exist in IntegrityVerifier: " + name);
+            }
+            if ("isSqliteDriverAvailable".equals(name) && m.getParameterTypes().length != 0) {
+                throw new AssertionError("isSqliteDriverAvailable must take 0 parameters (no searchRoots)");
+            }
+            if ("runIndependentN3VerificationIfPossible".equals(name) && m.getParameterTypes().length != 3) {
+                throw new AssertionError("runIndependentN3VerificationIfPossible must take exactly 3 parameters (no searchRoots)");
+            }
+        }
+        for (Field f : IntegrityVerifier.class.getDeclaredFields()) {
+            if ("cachedSqliteDriverInstance".equals(f.getName())) {
+                throw new AssertionError("cachedSqliteDriverInstance field must not exist in IntegrityVerifier");
+            }
+        }
+        Path srcFile = java.nio.file.Paths.get("verificador-integridade/src/IntegrityVerifier.java");
+        if (!Files.isRegularFile(srcFile)) {
+            srcFile = java.nio.file.Paths.get("src/IntegrityVerifier.java");
+        }
+        if (Files.isRegularFile(srcFile)) {
+            String src = new String(Files.readAllBytes(srcFile), StandardCharsets.UTF_8);
+            if (src.contains("URLClassLoader")
+                    || src.contains("resolveDynamicSqliteDriver")
+                    || src.contains("candidateDirs")
+                    || src.contains("sqlite-jdbc*.jar")) {
+                throw new AssertionError("IntegrityVerifier.java must not contain URLClassLoader or external sqlite-jdbc search paths");
+            }
+        }
+    }
+
+    private static void jarMaliciosoNaCapturaIgnorado(Path root) throws Exception {
+        Path origin = Files.createDirectories(root.resolve("EvilJarAudit/Origin"));
+        Path capRoot = Files.createDirectories(root.resolve("EvilJarAudit/Captures"));
+        Path capDir = Files.createDirectories(capRoot.resolve("Chat_EvilJar-20261118-120000"));
+        createValidHtmlMessageCapture(capDir, "Mensagem limpa");
+
+        Path tarDbDir = Files.createDirectories(origin.resolve("sdcard/Android/com.whatsapp.tar/data/user/0/com.whatsapp/databases"));
+        Path dbFile = tarDbDir.resolve("msgstore.db");
+        Class<?> dmCls = Class.forName("java.sql.DriverManager");
+        Method getConn = dmCls.getMethod("getConnection", String.class);
+        AutoCloseable con = (AutoCloseable) getConn.invoke(null, "jdbc:sqlite:" + dbFile.toAbsolutePath());
+        try {
+            Method createSt = con.getClass().getMethod("createStatement");
+            AutoCloseable st = (AutoCloseable) createSt.invoke(con);
+            try {
+                Method exec = st.getClass().getMethod("execute", String.class);
+                exec.invoke(st, "CREATE TABLE message (_id INTEGER PRIMARY KEY, text_data TEXT, message_type INTEGER)");
+                exec.invoke(st, "INSERT INTO message (_id, text_data, message_type) VALUES (101, 'Mensagem limpa', 0)");
+            } finally {
+                st.close();
+            }
+        } finally {
+            con.close();
+        }
+        String dbSha = sha256Bytes(Files.readAllBytes(dbFile));
+        String hashsTxtContent = "Algorithm : SHA256\r\nHash      : " + dbSha.toUpperCase()
+                + "\r\nPath      : C:\\Case\\msgstore.db\r\n\r\n";
+        byte[] utf16 = hashsTxtContent.getBytes(StandardCharsets.UTF_16LE);
+        byte[] hashsBytes = new byte[utf16.length + 2];
+        hashsBytes[0] = (byte) 0xFF;
+        hashsBytes[1] = (byte) 0xFE;
+        System.arraycopy(utf16, 0, hashsBytes, 2, utf16.length);
+        Files.write(origin.resolve("Hashs.txt"), hashsBytes);
+        String hashsSha = sha256Bytes(hashsBytes);
+        byte[] avillaBytes = "avilla-hmac".getBytes(StandardCharsets.UTF_8);
+        Files.write(origin.resolve("Hashs.avilla"), avillaBytes);
+        String avillaSha = sha256Bytes(avillaBytes);
+        byte[] pdfBytes = "%PDF-1.4 stub".getBytes(StandardCharsets.US_ASCII);
+        Files.write(origin.resolve("report.pdf"), pdfBytes);
+        String pdfSha = sha256Bytes(pdfBytes);
+
+        JSONObject binding = new JSONObject()
+                .put("originBindingVersion", 1)
+                .put("status", "CUSTODIA_VERIFICADA")
+                .put("custodyFiles", new JSONArray()
+                        .put(new JSONObject().put("name", "Hashs.txt").put("sha256", hashsSha))
+                        .put(new JSONObject().put("name", "Hashs.avilla").put("sha256", avillaSha))
+                        .put(new JSONObject().put("name", "report.pdf").put("sha256", pdfSha)))
+                .put("sourceDatabase", new JSONObject().put("present", true).put("sha256", dbSha))
+                .put("n3SqliteAudit", new JSONObject()
+                        .put("status", "CONFERE")
+                        .put("matchedActive", 1)
+                        .put("recoveredOrNonTable", 0)
+                        .put("diverged", 0)
+                        .put("prePostCopyOriginSha256Match", true));
+        byte[] bindBytes = binding.toString(2).getBytes(StandardCharsets.UTF_8);
+        Files.write(capDir.resolve("origin-binding.json"), bindBytes);
+        JSONObject man = new JSONObject(new String(Files.readAllBytes(capDir.resolve("manifest.json")), StandardCharsets.UTF_8));
+        man.put("originBindingFile", "origin-binding.json")
+           .put("originBindingSha256", sha256Bytes(bindBytes))
+           .put("originBinding", new JSONObject().put("originBindingVersion", 1).put("status", "CUSTODIA_VERIFICADA"));
+        Files.write(capDir.resolve("manifest.json"), man.toString(2).getBytes(StandardCharsets.UTF_8));
+        Files.write(capDir.resolve("integridade.json"),
+                buildLocalIntegrityRecordForFiles(capDir, new String[]{"whatsapp.html", "messages.json", "origin-binding.json"})
+                        .toString(2).getBytes(StandardCharsets.UTF_8));
+
+        // Plant corrupt/malicious sqlite-jdbc-evil.jar in untrusted evidence directories
+        byte[] evilBytes = "corrupted-or-malicious-jar-payload".getBytes(StandardCharsets.UTF_8);
+        Files.write(capRoot.resolve("sqlite-jdbc-evil.jar"), evilBytes);
+        Files.createDirectories(capRoot.resolve("lib"));
+        Files.write(capRoot.resolve("lib").resolve("sqlite-jdbc-evil.jar"), evilBytes);
+        Files.write(origin.resolve("sqlite-jdbc-evil.jar"), evilBytes);
+        Files.createDirectories(origin.resolve("lib"));
+        Files.write(origin.resolve("lib").resolve("sqlite-jdbc-evil.jar"), evilBytes);
+
+        Method verify = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
+        verify.setAccessible(true);
+        Method runAudit = IntegrityVerifier.class.getDeclaredMethod("runOriginAudit",
+                Path.class, List.class, Path.class, Path.class, Path.class, java.util.function.Consumer.class);
+        runAudit.setAccessible(true);
+        Class<?> oaResCls = Class.forName("IntegrityVerifier$OriginAuditResult");
+        Field passedField = oaResCls.getDeclaredField("passed");
+        passedField.setAccessible(true);
+        Field reportTextField = oaResCls.getDeclaredField("reportText");
+        reportTextField.setAccessible(true);
+
+        List<IntegrityVerifier.Capture> caps = IntegrityVerifier.discover(capRoot);
+        for (IntegrityVerifier.Capture c : caps) verify.invoke(null, c);
+        Object res = runAudit.invoke(null, capRoot, caps, origin, null, null, null);
+        String rpt = (String) reportTextField.get(res);
+        if (!(Boolean) passedField.get(res) || !rpt.contains("N3_MENSAGENS_VERIFICADOR|CONFERE|ATIVAS=1|RECUPERADAS=0|DIVERGENTES=0")) {
+            throw new AssertionError("Audit must ignore sqlite-jdbc-evil.jar in evidence folders and succeed via embedded classpath driver:\n" + rpt);
+        }
+    }
+
+    private static void buildPinSqliteJdbcHash() throws Exception {
+        Path buildScript = java.nio.file.Paths.get("build-reproducible.ps1");
+        if (!Files.isRegularFile(buildScript)) {
+            buildScript = java.nio.file.Paths.get("../build-reproducible.ps1");
+        }
+        if (!Files.isRegularFile(buildScript)) {
+            throw new AssertionError("build-reproducible.ps1 not found");
+        }
+        String content = new String(Files.readAllBytes(buildScript), StandardCharsets.UTF_8);
+        String expectedPinnedSha = "0CDAB410947E04B6743DF99CF1543267DDD107357D6F76948D145BE590FD497D";
+        if (!content.contains(expectedPinnedSha)
+                || !content.contains("SqliteJdbcOfficialSha256")
+                || !content.contains("sqlite-jdbc-3.41.2.2.jar")) {
+            throw new AssertionError("build-reproducible.ps1 must pin and verify SHA-256 of official sqlite-jdbc-3.41.2.2.jar");
         }
     }
 
