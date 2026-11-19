@@ -61,10 +61,10 @@ Este repositório mantém o código-fonte, os testes automatizados, o compilador
 
 | Artefato | Tamanho (bytes) | SHA-256 | Finalidade |
 | --- | ---: | --- | --- |
-| `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` | `94666177` | `378812E32FC4CC94F0586E16A0A51CFA188C00C5DDBE073346F0B07A6A680540` | Instalador completo (plugin `2.8.9`, OpenCV, dependências, scripts e Verificador `1.5.7`) |
-| `iped-viewers-impl-4.3.1-2.8.9.jar` | `1563736` | `29D9FC3EA959AE8537A4CD8BE2AE7D454FB820FD15651798E0D4822AD5CC883F` | Fat-JAR do plugin (`Implementation-Version: 2.8.9`; mesmo binário de `iped-viewers-impl-4.3.1.jar`) |
-| `integridade-verifier-1.5.7.jar` | `215080` | `CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55` | Verificador independente Java 8+ (`SELF_TEST_OK 1.5.7`) |
-| `integridade-verifier-1.5.7.exe` | `77771354` | `52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757` | Verificador Windows x64 autocontido com runtime Java + `.NET 10.0.15` |
+| `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` | `94666123` | `D51EE1211DC95CF9980C299CCB8619C4AF5214AD23F33E3505914E342EC2572B` | Instalador completo (plugin `2.8.9`, OpenCV, dependências, scripts e Verificador `1.5.7`) |
+| `iped-viewers-impl-4.3.1-2.8.9.jar` | `1563735` | `D0E2D7792107C7F434FB46998369EBBFC07D9D593BDFAF3D10D9380050EE6F49` | Fat-JAR do plugin (`Implementation-Version: 2.8.9`; mesmo binário de `iped-viewers-impl-4.3.1.jar`) |
+| `integridade-verifier-1.5.7.jar` | `215152` | `A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1` | Verificador independente Java 8+ (`SELF_TEST_OK 1.5.7`) |
+| `integridade-verifier-1.5.7.exe` | `77771354` | `81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3` | Verificador Windows x64 autocontido com runtime Java + `.NET 10.0.15` |
 
 - Hashes detalhados e histórico: [CHECKSUMS.md](CHECKSUMS.md) | [versao_hash.md](versao_hash.md)
 - Notas de lançamento e histórico de alterações: [RELEASE_NOTES.md](RELEASE_NOTES.md) | [CHANGELOG.md](CHANGELOG.md)

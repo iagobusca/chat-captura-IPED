@@ -9,8 +9,8 @@ Mudanças relevantes do plugin.
 ## [2.8.9] - 2026-11-18
 
 ### Corte Automatizado (Estável / `main`)
-- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from que igualava sender ao texto da bolha, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> para codepoints Unicode, remocao balanceada de citacoes quoteFrom/quoteTo e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL e revalidacao SQLite N3 independente no Verificador standalone com jlink java.sql/java.logging e descoberta dinamica de sqlite-jdbc), preservando todas as garantias fail-closed da v2.8.8.
-- Verificador **1.5.7** (`215.080` bytes JAR `CC528C44...` | `77.771.354` bytes EXE `52D3CC60...`) e Plugin **2.8.9** (`1.563.736` bytes `29D9FC3E...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` (`94.666.177` bytes `378812E3...`).
+- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from que igualava sender ao texto da bolha, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> para codepoints Unicode e ignorando variador FE0F, remocao balanceada de citacoes quoteFrom/quoteTo, span.time com atributos data-* e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL e revalidacao SQLite N3 independente no Verificador standalone com jlink java.sql/java.logging e descoberta dinamica de sqlite-jdbc), preservando todas as garantias fail-closed da v2.8.8.
+- Verificador **1.5.7** (`215.152` bytes JAR `A9170EFB...` | `77.771.354` bytes EXE `81D704B1...`) e Plugin **2.8.9** (`1.563.735` bytes `D0E2D779...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip` (`94.666.123` bytes `D51EE121...`).
 ## [2.8.8] - 2026-11-18
 
 ### Corte Automatizado (Estável / `main`)

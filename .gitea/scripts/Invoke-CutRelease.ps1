@@ -84,11 +84,24 @@ try {
         & git config user.name 'GiteaRunner Bot'
         & git config user.email 'gitea-runner@local'
 
+        function Clear-StaleGitIndexLock {
+            $lockFile = Join-Path $RepoRoot '.git\index.lock'
+            for ($w = 0; $w -lt 10 -and (Test-Path -LiteralPath $lockFile); $w++) {
+                Start-Sleep -Milliseconds 300
+            }
+            if (Test-Path -LiteralPath $lockFile) {
+                Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         $releaseBranch = "release/$($meta.tag)"
+        Clear-StaleGitIndexLock
         & git checkout -B $releaseBranch
         if ($LASTEXITCODE -ne 0) { throw "git checkout -B $releaseBranch falhou" }
+        Clear-StaleGitIndexLock
         & git add -A
         if ($LASTEXITCODE -ne 0) { throw 'git add -A falhou' }
+        Clear-StaleGitIndexLock
         & git commit -m "release($($meta.tag)): corte automatizado plugin $($meta.pluginVersion) / verificador $($meta.verifierVersion)"
         if ($LASTEXITCODE -ne 0) { throw 'git commit falhou' }
 
@@ -99,17 +112,22 @@ try {
         if ($LASTEXITCODE -eq 0) {
             & git merge-base --is-ancestor FETCH_HEAD $releaseBranch
             if ($LASTEXITCODE -eq 0) {
+                Clear-StaleGitIndexLock
                 & git checkout -B $meta.targetBranch FETCH_HEAD
                 if ($LASTEXITCODE -ne 0) { throw "git checkout $($meta.targetBranch) falhou" }
+                Clear-StaleGitIndexLock
                 & git merge --ff-only $releaseBranch
                 if ($LASTEXITCODE -ne 0) { throw "git merge --ff-only $releaseBranch falhou" }
             } else {
+                Clear-StaleGitIndexLock
                 & git checkout -B $meta.targetBranch $releaseBranch
                 if ($LASTEXITCODE -ne 0) { throw "git checkout -B $($meta.targetBranch) falhou" }
+                Clear-StaleGitIndexLock
                 & git merge --no-edit -s ours FETCH_HEAD -m "chore: reconciliar $($meta.targetBranch) antes de $($meta.tag)"
                 if ($LASTEXITCODE -ne 0) { throw "git merge -s ours em $($meta.targetBranch) falhou" }
             }
         } else {
+            Clear-StaleGitIndexLock
             & git checkout -B $meta.targetBranch
         }
 

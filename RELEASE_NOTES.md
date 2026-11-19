@@ -13,13 +13,13 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 - **Branch base**: `main`
 
 ### Downloads
-- [instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip) (`94.666.177` bytes | SHA-256: `378812E32FC4CC94F0586E16A0A51CFA188C00C5DDBE073346F0B07A6A680540`)
-- [integridade-verifier-1.5.7.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/integridade-verifier-1.5.7.exe) (`77.771.354` bytes | SHA-256: `52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757`)
-- [integridade-verifier-1.5.7.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/integridade-verifier-1.5.7.jar) (`215.080` bytes | SHA-256: `CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55`)
-- [iped-viewers-impl-4.3.1-2.8.9.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/iped-viewers-impl-4.3.1-2.8.9.jar) (`1.563.736` bytes | SHA-256: `29D9FC3EA959AE8537A4CD8BE2AE7D454FB820FD15651798E0D4822AD5CC883F`)
+- [instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/instalador-chat-captura-IPED-2.8.9-verificador-1.5.7.zip) (`94.666.123` bytes | SHA-256: `D51EE1211DC95CF9980C299CCB8619C4AF5214AD23F33E3505914E342EC2572B`)
+- [integridade-verifier-1.5.7.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/integridade-verifier-1.5.7.exe) (`77.771.354` bytes | SHA-256: `81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3`)
+- [integridade-verifier-1.5.7.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/integridade-verifier-1.5.7.jar) (`215.152` bytes | SHA-256: `A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1`)
+- [iped-viewers-impl-4.3.1-2.8.9.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.9/iped-viewers-impl-4.3.1-2.8.9.jar) (`1.563.735` bytes | SHA-256: `D0E2D7792107C7F434FB46998369EBBFC07D9D593BDFAF3D10D9380050EE6F49`)
 
 ### Resumo
-- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from que igualava sender ao texto da bolha, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> para codepoints Unicode, remocao balanceada de citacoes quoteFrom/quoteTo e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL e revalidacao SQLite N3 independente no Verificador standalone com jlink java.sql/java.logging e descoberta dinamica de sqlite-jdbc), preservando todas as garantias fail-closed da v2.8.8.
+- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from que igualava sender ao texto da bolha, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> para codepoints Unicode e ignorando variador FE0F, remocao balanceada de citacoes quoteFrom/quoteTo, span.time com atributos data-* e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL e revalidacao SQLite N3 independente no Verificador standalone com jlink java.sql/java.logging e descoberta dinamica de sqlite-jdbc), preservando todas as garantias fail-closed da v2.8.8.
 - Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.7**.
 
 ---

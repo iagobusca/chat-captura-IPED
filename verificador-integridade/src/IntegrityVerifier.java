@@ -3828,11 +3828,15 @@ public final class IntegrityVerifier {
             "\\bclass=\"[^\"]*\\bfwd\\b[^\"]*\"",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SPAN_META_REMOVE_PATTERN = Pattern.compile(
-            "<span\\s+class=\"(?:name|name_call|time|recovered)\">.*?</span>",
+            "<span\\b[^>]*\\bclass=\"(?:name|name_call|time|recovered)\"[^>]*>.*?</span>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern SCRIPT_REMOVE_PATTERN = Pattern.compile(
             "<script\\b[^>]*>.*?</script>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern BLOCK_BREAK_TAG_PATTERN = Pattern.compile(
+            "<(?:br|/div|/p|/li)\\b[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANY_HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
     private static final Pattern DIV_OPEN_CLOSE_TOKEN_PATTERN = Pattern.compile(
             "<div\\b[^>]*>|</div>",
             Pattern.CASE_INSENSITIVE);
@@ -3875,17 +3879,17 @@ public final class IntegrityVerifier {
 
     static String cleanHtmlBubbleToText(String htmlChunk) {
         if (htmlChunk == null || htmlChunk.isEmpty()) return "";
-        String s = decodeIpedEmojiImgs(htmlChunk);
+        String s = SCRIPT_REMOVE_PATTERN.matcher(htmlChunk).replaceAll(" ");
+        s = decodeIpedEmojiImgs(s);
         boolean isForwarded = FWD_IMG_CLASS_PATTERN.matcher(s).find();
         s = removeBalancedDivByClass(s, "(?:quoteFrom|quoteTo|quote|date)");
         s = SPAN_META_REMOVE_PATTERN.matcher(s).replaceAll(" ");
-        s = SCRIPT_REMOVE_PATTERN.matcher(s).replaceAll(" ");
-        s = s.replaceAll("(?i)<br\\s*/?>", " ");
-        s = s.replaceAll("<[^>]+>", " ");
+        s = BLOCK_BREAK_TAG_PATTERN.matcher(s).replaceAll(" ");
+        s = ANY_HTML_TAG_PATTERN.matcher(s).replaceAll(" ");
         s = unescapeBasicHtmlEntities(s);
         s = normalizeWhitespace(s);
         if (isForwarded) {
-            s = s.replaceFirst("^(?:Encaminhada|Forwarded)\\s+", "").trim();
+            s = s.replaceFirst("(?i)^(?:Encaminhada|Forwarded)\\s+", "").trim();
         }
         return s;
     }
@@ -3894,8 +3898,8 @@ public final class IntegrityVerifier {
         if (htmlChunk == null || htmlChunk.isEmpty()) return "";
         String s = removeBalancedDivByClass(htmlChunk, "date");
         s = SCRIPT_REMOVE_PATTERN.matcher(s).replaceAll(" ");
-        s = s.replaceAll("(?i)<br\\s*/?>", " ");
-        s = s.replaceAll("<[^>]+>", " ");
+        s = BLOCK_BREAK_TAG_PATTERN.matcher(s).replaceAll(" ");
+        s = ANY_HTML_TAG_PATTERN.matcher(s).replaceAll(" ");
         s = unescapeBasicHtmlEntities(s);
         return normalizeWhitespace(s);
     }
@@ -3922,7 +3926,7 @@ public final class IntegrityVerifier {
     }
 
     private static String removeBalancedDivByClass(String html, String classRegex) {
-        Pattern startPat = Pattern.compile("<div\\s+class=\"[^\"]*\\b" + classRegex + "\\b[^\"]*\"[^>]*>",
+        Pattern startPat = Pattern.compile("<div\\b[^>]*\\bclass=\"[^\"]*\\b" + classRegex + "\\b[^\"]*\"[^>]*>",
                 Pattern.CASE_INSENSITIVE);
         String current = html;
         int guard = 0;
@@ -3993,8 +3997,7 @@ public final class IntegrityVerifier {
 
     private static String stripWhatsAppFormatting(String text) {
         if (text == null || text.isEmpty()) return "";
-        String s = text.replace("*", "").replace("_", "").replace("~", "").replace("`", "");
-        return normalizeWhitespace(s);
+        return normalizeWhitespace(text.replaceAll("[*_~`\\uFE0F]+", ""));
     }
 
     private static String stripNonAlphanumeric(String text) {
@@ -4002,11 +4005,11 @@ public final class IntegrityVerifier {
         StringBuilder sb = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (Character.isLetterOrDigit(c) || Character.isWhitespace(c)) {
-                sb.append(c);
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(Character.toLowerCase(c));
             }
         }
-        return normalizeWhitespace(sb.toString());
+        return sb.toString();
     }
 
     private static boolean canonicalTextSha256Equals(String canonicalA, String canonicalB) {

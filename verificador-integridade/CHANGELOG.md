@@ -4,10 +4,6 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
-## [1.5.7] - 2026-11-18
-
-### Corte Automatizado (v2.8.9)
-- Auditoria N3 (v2.8.9 / Verificador 1.5.7): corrigidos os 5 falsos positivos de divergenciasN3 em capturas autenticas do IPED (seletor CSS .from em div.incoming.from que igualava sender ao texto da bolha, extracao canonica do HTML da bolha decodificando emojis <img class=eHEX> para codepoints Unicode, remocao balanceada de citacoes quoteFrom/quoteTo e rotulo Encaminhada, suporte a message_type do SQLite para midias/audios/figurinhas/chamadas com text_data NULL e revalidacao SQLite N3 independente no Verificador standalone com jlink java.sql/java.logging e descoberta dinamica de sqlite-jdbc), preservando todas as garantias fail-closed da v2.8.8. (`build-reproducible.ps1`; JAR `CC528C44...` / EXE `52D3CC60...`).
 ## [1.5.6] - 2026-11-18
 
 ### Corte Automatizado (v2.8.8)

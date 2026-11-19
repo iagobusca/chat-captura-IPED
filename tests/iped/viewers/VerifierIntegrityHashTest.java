@@ -7,8 +7,8 @@ import java.nio.file.Path;
 import java.util.Set;
 
 public final class VerifierIntegrityHashTest {
-    private static final String EXPECTED_JAR_157 = "CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55";
-    private static final String EXPECTED_EXE_157 = "52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757";
+    private static final String EXPECTED_JAR_157 = "A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1";
+    private static final String EXPECTED_EXE_157 = "81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3";
 
     private VerifierIntegrityHashTest() { }
 
@@ -32,6 +32,10 @@ public final class VerifierIntegrityHashTest {
                 "current JAR hash must be accepted");
         check((Boolean) isValid.invoke(null, "integridade-verifier.exe", EXPECTED_EXE_157),
                 "current EXE hash must be accepted");
+        check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
+                "CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55"), "previous 1.5.7 JAR hash must be rejected");
+        check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",
+                "52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757"), "previous 1.5.7 EXE hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
                 "A027A301AFFCF1D0A2310F6E1A495359AB36E08F3AA35147B19786C183CDA62A"), "previous 1.5.6 JAR hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",

@@ -15,7 +15,7 @@ O Verificador de Integridade é um aplicativo para Windows e Java que confere ca
 
 O EXE para Windows x64 inclui os runtimes necessários. O JAR requer Java 8 (1.8) ou superior. O verificador grava os relatórios na pasta `integridade` ao lado das capturas.
 
-Hashes dos binários 1.5.7: JAR `CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55`; EXE `52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
+Hashes dos binários 1.5.7: JAR `A9170EFBF4F528AA0FD1FB5665F1E0F40C032023A7B78FE1BA94ACF5D0BEC6E1`; EXE `81D704B1EF8EB2E121B73FF98C583F3595E998D3F00DE72EB51C5AEF4CE3F3B3`. Consulte [`../versao_hash.md`](../versao_hash.md) para o histórico completo.
 
 Na apresentação HTML 2, o verificador mantém o tema local do IPED 4.3.1 e confere o CSS, CSP e script fixo de parada de mídia; também exige `sandbox=""` no preview PDF e bloqueia conteúdo remoto.
 
