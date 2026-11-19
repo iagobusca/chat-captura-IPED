@@ -1,8 +1,8 @@
-# Verificador de Integridade 1.5.6
+# Verificador de Integridade 1.5.7
 
-**Versão:** 1.5.6 | Data: 16/11/2026.
+**Versão:** 1.5.7 | Data: 18/11/2026.
 
-> **Novidades da versão 1.5.6:** empacotamento e compilação determinísticos auditáveis multiplataforma ([`../build-reproducible.ps1`](../build-reproducible.ps1)) com Temurin JDK 21.0.13+9 + OpenJFX 21.0.5 + `.NET 10.0.15` (`-p:Deterministic=true`), mantendo todas as proteções da 1.4.4: scanner HTML léxico determinístico (`scanHtmlElements` / `parseHtmlTagStrict`), `LinkOption.NOFOLLOW_LINKS` e `maxBytes` em `openFile`, remoção de tetos artificiais de relatório, allowlists HTML/MIME simétricas com o plugin, `safeRegularFileSize` sem corrida de symlink e `html.disable` nos componentes Swing.
+> **Novidades da versão 1.5.7:** empacotamento e compilação determinísticos auditáveis multiplataforma ([`../build-reproducible.ps1`](../build-reproducible.ps1)) com Temurin JDK 21.0.13+9 + OpenJFX 21.0.5 + `.NET 10.0.15` (`-p:Deterministic=true`), mantendo todas as proteções da 1.4.4: scanner HTML léxico determinístico (`scanHtmlElements` / `parseHtmlTagStrict`), `LinkOption.NOFOLLOW_LINKS` e `maxBytes` em `openFile`, remoção de tetos artificiais de relatório, allowlists HTML/MIME simétricas com o plugin, `safeRegularFileSize` sem corrida de symlink e `html.disable` nos componentes Swing.
 
 > **Novidades da versão 1.4.2 (F-01 a F-10):** carregamento exclusivo do ícone pelo classpath (`F-09`), `html.disable` em `JLabel`/`JCheckBox` (`F-04`), bloqueio de comentários/PIs/CDATA no HTML renderizado (`F-05`), validação obrigatória de `integridade.json` esquema >= 2 e inventário completo em `html-message-v1` (`F-01`, `F-08`), erro fechado para divergência de `captureRootHash` e histórico no CLI (`F-02`), normalização/rejeição de duplicatas na comparação pública por mensagem (`F-07`), consolidação consistente nos relatórios (`F-03`) e endurecimento do launcher para entradas de 0 bytes e limpeza temporária (`F-06`, `F-10`).
 

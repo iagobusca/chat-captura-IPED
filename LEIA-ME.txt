@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.8.8 - Verificador de Integridade 1.5.6
+Pacote Chat Captura IPED 2.8.9 - Verificador de Integridade 1.5.7
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,21 +7,21 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.5.6 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.5.7 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
-- Verificador 1.5.6:
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
+- Verificador 1.5.7:
   * Compilação e empacotamento determinísticos via build-reproducible.ps1 (Temurin JDK 21 --release 8 para JAR, OpenJFX 21 + .NET 10.0.15 determinístico com payload.zip reprodutível no EXE win-x64).
   * Substitui regexes de varredura HTML por scanner léxico determinístico por máquina de estados (scanHtmlElements / parseHtmlTagStrict), bloqueando bypasses com aspas/apóstrofos isolados em atributos sem aspas;
   * Endurece openFile com LinkOption.NOFOLLOW_LINKS, verificação de arquivo regular e teto de leitura (maxBytes), além de consolidar allowlists HTML/MIME simétricas com o plugin, safeRegularFileSize sem corrida de symlink, html.disable em Swing, MAX_SCAN_ENTRIES e runtime .NET 10.0.15 sem CVEs no EXE.
-- Plugin 2.8.8:
+- Plugin 2.8.9:
   * Fat-JAR OpenCV autocontido compilado deterministicamente (--release 11, Implementation-Version: 2.7.0) via build-reproducible.ps1 com timestamps UTC e ordem de entradas fixos.
   * Defesa em profundidade Swing com html.disable=true antes do cálculo de texto no SearchHitRenderer (ChatCapturePanel) e na fila SavedChatPickerDialog, mitigando possível interpretação HTML/injeção em rótulos de resultados e seletores locais;
   * Limpeza determinística de ciclo de vida WebView/OpenCV/executor em ChatCaptureLinkedWindow (DISPOSE_ON_CLOSE) e HtmlLinkViewer (dispose() e guarda if (disposed) em loadFile), compatibilidade reflexiva com AttachmentSearcher.openItem no IPED 4.3.1 oficial e instalador com sincronização segura de localização e suporte a caminhos com "!";
-  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.5.6 (versões <= 1.4.4 rejeitadas).
+  * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.5.7 (versões <= 1.4.4 rejeitadas).
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Verificador 1.4.3:
   * Remove o limite de tamanho estimado de relatório (enforceReportBudget / 4.194.304 caracteres), o limite de 16 MiB na gravação de relatórios (atomic / atomicBatch) e os tetos cumulativos entre capturas em verifyAllBounded e --verify-only, permitindo verificar pastas com grandes conjuntos de capturas ou chats completos sem falha de orçamento.
 - Plugin 2.6.8:
@@ -29,7 +29,7 @@ Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
   * Tolerância a anexos acima de 8 MiB (ex.: vídeos grandes), ausentes no caso ou que excedam o orçamento acumulado em runHtmlMessageCapture, ignorando apenas o anexo excedente com WARN e preservando a mensagem e a criação da pasta final da captura;
   * Allowlist exclusiva (VerifierIntegrity + instalador) sincronizada com os binários oficiais do Verificador 1.4.3 (versões <= 1.4.2 rejeitadas).
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Verificador 1.4.2 (segurança F-01..F-10):
   * F-01: verifyHistory exige artifacts não vazio, rejeita caminhos duplicados (case-insensitive) e vincula contentRootHash do último evento ao estado atual; capturas html-message-v1 exigem que todo arquivo de conteúdo esperado esteja no inventário de integridade.json;
   * F-02: verifyMessageCapture passa a falhar em modo fail-closed quando captureRootHash diverge; --verify-only valida igualdade estrita de status consistentes locais;
@@ -41,7 +41,7 @@ Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
   * F-04/F-08/F-09: aplica html.disable nos diálogos/labels não-HTML (HtmlLinkViewer, ChatNoteDialog, ChatPreflightDialog, ChatCaptureLinkedWindow), compara migration.json usando CaptureIntegrity.canonicalJson() independente da ordem das chaves e escapa nomes de arquivos e hashes em VerifierIntegrity.showAlertIfNeeded;
   * Incrementa versão para 2.6.7-beta e atualiza allowlist exclusiva (VerifierIntegrity + instalador) para aceitar somente os binários oficiais do Verificador 1.4.2 (versões <= 1.4.1 rejeitadas).
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Verificador 1.4.1 (segurança e fluxo):
   * Detecta e falha (status + --verify-only) quando capturas legadas não-html-message-v1 contêm arquivos extras não inventariados (checagem fail-closed);
   * Bloqueia diretório raiz que seja junção NTFS ou link simbólico em CLI (--verify-only / --export-history), fluxo GUI e discover();
@@ -52,7 +52,7 @@ Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
   * Adiciona guardas contra null/vazio em AttachmentHandler.open e escaping via js(hash) em HtmlLinkViewer.setSelected;
   * Valida estritamente caminhos relativos de whatsapp-coordinates.json em Java antes de gravar/migrar whatsapp.html, aplica safeRelPath() e rel="noopener noreferrer" no JS, corrige double-escaping em excerptHtml() e adiciona <meta http-equiv="Content-Security-Policy"> em whatsapp.html, index.html e relatorio.htm.
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Verificador 1.4.0 (UI e fluxo):
   * No modo Integridade Local, exibe janela de carregamento sempre no topo com barra de progresso ao clicar em Confirmar;
   * No modo Integridade Público, remove a janela "Selecione as capturas" e executa carregamento único escolhendo todas as pastas antes de abrir direto "Integridade Público" (aceitando apenas os 3 formatos: SHA-256 completo/público e historico-capturas.txt normal ou anonimizado *-YYYYMMDD-HHMMSS);
@@ -61,11 +61,11 @@ Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
   * Corrige o comportamento "sempre no topo" (alwaysOnTop) e execução na Swing EDT para "Selecione as capturas" e todas as mensagens/janelas de erro ou aviso.
 - Plugin 2.6.5-beta: atualiza a versão para 2.6.5-beta e a allowlist exclusiva (VerifierIntegrity + instalador) para aceitar somente os binários oficiais do Verificador 1.4.0 (versões <= 1.3.9 rejeitadas).
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Verificador 1.3.9: decodifica entidades HTML no parser de atributos (parseHtmlAttributes), validando corretamente a política CSP tanto em capturas já migradas pela 2.6.3-beta (que saíram com &#39;) quanto no formato canônico direto, e reforçando a detecção de URLs ofuscadas com entidades;
 - Plugin 2.6.4-beta: emite CAPTURE_CSP literalmente na meta tag de whatsapp.html (sem converter ' em &#39;) e atualiza a allowlist exclusiva para aceitar somente o Verificador 1.3.9 (versões <= 1.3.8 rejeitadas).
 
-Novidades desta versão (2.8.8 / Verificador 1.5.6 — estavel):
+Novidades desta versão (2.8.9 / Verificador 1.5.7 — estavel):
 - Plugin & Verificador (política estrita): versões antigas do Verificador (<= 1.3.7) foram abandonadas; o plugin 2.6.3-beta aceita exclusivamente o Verificador 1.3.8;
 - Plugin/HTML & CSS/SVG: sanitizador estrutural de fragmentos (allowlist de tags/atributos, remoção de <template>/handlers/src externos e preservação de texto literal com tokens), paridade de normalização CSS/SVG com bloqueio de <style>/<animate*>/<set>/<mpath>, escaping estrito em json()/html()/esc() e rollback seguro de migração HTML;
 - Plugin/Relatórios & UI: decodificação limitada antes de alocar imagens nas miniaturas do relatório, remoção de MD5 decisório no matcher de imagens sensíveis, preparo do Re-Extrair fora da Swing EDT, persistência atômica/propagações de erro em notas, paths finais corretos em hashes.txt/CSV e CSS da busca no whatsapp.html;
@@ -117,9 +117,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.5.6:
-JAR A027A301AFFCF1D0A2310F6E1A495359AB36E08F3AA35147B19786C183CDA62A
-EXE 5EF6B9AC2C6795A49A18C37029586B318FD09C3B71DA53486CF23722C9AAC917
+SHA-256 do Verificador 1.5.7:
+JAR CC528C445C408FEC084F04A971C44BC09947AEF1BDE571666BA4B32978707D55
+EXE 52D3CC6079B8AEE8A9F7A105D36FCD82DE48CBCC83DDAB0F0AA9DF5FE83CF757
 
-SHA-256 do plugin 2.8.8:
-JAR 5B1E86E59C0D5EF8A441566EF4CA580F8D77C0417492C1CFC7CF1C150F43DAB9
+SHA-256 do plugin 2.8.9:
+JAR 29D9FC3EA959AE8537A4CD8BE2AE7D454FB820FD15651798E0D4822AD5CC883F

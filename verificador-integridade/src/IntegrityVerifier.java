@@ -10,6 +10,8 @@ import javax.swing.ImageIcon;
 import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -38,7 +40,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.6";
+    private static final String VERIFIER_VERSION = "1.5.7";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -3276,44 +3278,57 @@ public final class IntegrityVerifier {
                     rpt.append("GAP_CUSTODIA|").append(recordField(gap.optString("status", "")))
                        .append('|').append(recordField(gap.optString("pericialStatementPtBr", ""))).append('\n');
                 }
-                if (binding != null && binding.optJSONObject("n3SqliteAudit") != null) {
-                    JSONObject n3 = binding.optJSONObject("n3SqliteAudit");
-                    String n3St = n3.optString("status", "");
-                    int n3Div = n3.optInt("diverged", 0);
-                    boolean prePostMatch = n3.optBoolean("prePostCopyOriginSha256Match", true);
-                    if (n3Div > 0
-                            || "COM_DIVERGENCIAS".equalsIgnoreCase(n3St)
-                            || !prePostMatch
-                            || "ALTERACAO_ORIGEM_DETECTADA".equalsIgnoreCase(n3St)
-                            || "erro_sqlite_leitura".equalsIgnoreCase(n3St)
-                            || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equalsIgnoreCase(n3St)) {
-                        allPassed = false;
-                        totalN3Diverged += (n3Div > 0 ? n3Div : 1);
-                    }
-                    rpt.append("N3_MENSAGENS_PLUGIN|").append(recordField(n3St))
-                       .append("|ATIVAS=").append(n3.optInt("matchedActive", 0))
-                       .append("|RECUPERADAS=").append(n3.optInt("recoveredOrNonTable", 0))
-                       .append("|DIVERGENTES=").append(n3Div).append('\n');
-                }
+                IndependentN3Outcome independentN3 = null;
                 if (dbPath != null && Files.isRegularFile(dbPath, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(dbPath)) {
                     Path messagesFile = resolve(c.dir, "messages.json");
                     if (messagesFile != null && Files.isRegularFile(messagesFile, LinkOption.NOFOLLOW_LINKS)) {
                         if (!sqliteDriverChecked) {
-                            sqliteDriverAvailable = isSqliteDriverAvailable();
+                            sqliteDriverAvailable = isSqliteDriverAvailable(parentIpedDir, subcaseDir, capturesRoot, originDir);
                             sqliteDriverChecked = true;
                         }
                         if (sqliteDriverAvailable && n3TempDb == null) {
                             n3TempDir = Files.createTempDirectory("verifier-n3-");
                             n3TempDb = copyOriginSqliteToTempDir(dbPath, n3TempDir);
                         }
-                        IndependentN3Outcome independentN3 = runIndependentN3VerificationIfPossible(n3TempDb, messagesFile, sqliteDriverAvailable);
-                        if (independentN3 != null) {
-                            rpt.append("N3_MENSAGENS_VERIFICADOR|").append(independentN3.toReportLine()).append('\n');
-                            if (independentN3.isFailure()) {
-                                allPassed = false;
-                                totalN3Diverged += (independentN3.diverged > 0 ? independentN3.diverged : 1);
-                            }
+                        independentN3 = runIndependentN3VerificationIfPossible(n3TempDb, messagesFile, sqliteDriverAvailable,
+                                parentIpedDir, subcaseDir, capturesRoot, originDir);
+                    }
+                }
+                boolean revalidatedN3Ok = independentN3 != null
+                        && "CONFERE".equals(independentN3.status)
+                        && independentN3.diverged == 0
+                        && independentN3.matchedActive > 0;
+                if (binding != null && binding.optJSONObject("n3SqliteAudit") != null) {
+                    JSONObject n3 = binding.optJSONObject("n3SqliteAudit");
+                    String n3St = n3.optString("status", "");
+                    int n3Div = n3.optInt("diverged", 0);
+                    boolean prePostMatch = n3.optBoolean("prePostCopyOriginSha256Match", true);
+                    if (revalidatedN3Ok && prePostMatch && "COM_DIVERGENCIAS".equalsIgnoreCase(n3St)) {
+                        rpt.append("N3_MENSAGENS_PLUGIN|COM_DIVERGENCIAS_REVALIDADO_CONFERE_PELO_VERIFICADOR")
+                           .append("|ATIVAS=").append(independentN3.matchedActive)
+                           .append("|RECUPERADAS=").append(independentN3.absentOrNonTable)
+                           .append("|DIVERGENTES=0\n");
+                    } else {
+                        if (n3Div > 0
+                                || "COM_DIVERGENCIAS".equalsIgnoreCase(n3St)
+                                || !prePostMatch
+                                || "ALTERACAO_ORIGEM_DETECTADA".equalsIgnoreCase(n3St)
+                                || "erro_sqlite_leitura".equalsIgnoreCase(n3St)
+                                || "MENSAGENS_NAO_ENCONTRADAS_NO_BANCO".equalsIgnoreCase(n3St)) {
+                            allPassed = false;
+                            totalN3Diverged += (n3Div > 0 ? n3Div : 1);
                         }
+                        rpt.append("N3_MENSAGENS_PLUGIN|").append(recordField(n3St))
+                           .append("|ATIVAS=").append(n3.optInt("matchedActive", 0))
+                           .append("|RECUPERADAS=").append(n3.optInt("recoveredOrNonTable", 0))
+                           .append("|DIVERGENTES=").append(n3Div).append('\n');
+                    }
+                }
+                if (independentN3 != null) {
+                    rpt.append("N3_MENSAGENS_VERIFICADOR|").append(independentN3.toReportLine()).append('\n');
+                    if (independentN3.isFailure()) {
+                        allPassed = false;
+                        totalN3Diverged += (independentN3.diverged > 0 ? independentN3.diverged : 1);
                     }
                 }
                 rpt.append("N2_ANEXOS|CUSTODIADO_AVILLA=").append(cCust)
@@ -3384,13 +3399,72 @@ public final class IntegrityVerifier {
         return -1;
     }
 
-    private static boolean isSqliteDriverAvailable() {
+    private static volatile Object cachedSqliteDriverInstance;
+
+    private static boolean isSqliteDriverAvailable(Path... searchRoots) {
         try {
             Class.forName("org.sqlite.JDBC");
             return true;
         } catch (ClassNotFoundException e) {
-            return false;
+            return resolveDynamicSqliteDriver(searchRoots) != null;
         }
+    }
+
+    private static Object resolveDynamicSqliteDriver(Path... searchRoots) {
+        Object existing = cachedSqliteDriverInstance;
+        if (existing != null) return existing;
+        List<Path> candidateDirs = new ArrayList<>();
+        if (searchRoots != null) {
+            for (Path r : searchRoots) {
+                if (r == null) continue;
+                Path cur = r.toAbsolutePath().normalize();
+                for (int depth = 0; depth < 4 && cur != null; depth++) {
+                    candidateDirs.add(cur.resolve("lib"));
+                    candidateDirs.add(cur.resolve("iped").resolve("lib"));
+                    candidateDirs.add(cur);
+                    cur = cur.getParent();
+                }
+            }
+        }
+        String ipedHome = System.getenv("IPED_HOME");
+        if (ipedHome != null && !ipedHome.trim().isEmpty()) {
+            candidateDirs.add(Paths.get(ipedHome.trim()).resolve("lib"));
+        }
+        candidateDirs.add(Paths.get("C:\\Avilla-Forensics-Free\\IPED-4.3.1_and_java_plugins\\iped-4.3.1\\lib"));
+        for (Path dir : candidateDirs) {
+            try {
+                if (dir == null || !Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(dir)) continue;
+                try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "sqlite-jdbc*.jar")) {
+                    for (Path jar : ds) {
+                        if (!Files.isRegularFile(jar, LinkOption.NOFOLLOW_LINKS) || isLinkOrReparse(jar)) continue;
+                        URLClassLoader loader = new URLClassLoader(new URL[] { jar.toUri().toURL() }, IntegrityVerifier.class.getClassLoader());
+                        Class<?> drvCls = Class.forName("org.sqlite.JDBC", true, loader);
+                        Object drv = drvCls.getDeclaredConstructor().newInstance();
+                        cachedSqliteDriverInstance = drv;
+                        return drv;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private static AutoCloseable openSqliteConnection(Path tempDbPath, Path... searchRoots) throws Exception {
+        String url = "jdbc:sqlite:" + tempDbPath.toAbsolutePath();
+        try {
+            Class.forName("org.sqlite.JDBC");
+            Class<?> dmCls = Class.forName("java.sql.DriverManager");
+            Method getConn = dmCls.getMethod("getConnection", String.class);
+            AutoCloseable con = (AutoCloseable) getConn.invoke(null, url);
+            if (con != null) return con;
+        } catch (ClassNotFoundException ignored) {}
+        Object drv = resolveDynamicSqliteDriver(searchRoots);
+        if (drv != null) {
+            Method connect = drv.getClass().getMethod("connect", String.class, Properties.class);
+            AutoCloseable con = (AutoCloseable) connect.invoke(drv, url, new Properties());
+            if (con != null) return con;
+        }
+        throw new ClassNotFoundException("org.sqlite.JDBC");
     }
 
     private static Path copyOriginSqliteToTempDir(Path originDbPath, Path tempDir) throws IOException {
@@ -3464,7 +3538,8 @@ public final class IntegrityVerifier {
         }
     }
 
-    private static IndependentN3Outcome runIndependentN3VerificationIfPossible(Path tempDbPath, Path messagesJsonFile, boolean sqliteDriverAvailable) {
+    private static IndependentN3Outcome runIndependentN3VerificationIfPossible(Path tempDbPath, Path messagesJsonFile,
+            boolean sqliteDriverAvailable, Path... searchRoots) {
         try {
             if (!sqliteDriverAvailable || tempDbPath == null) {
                 return new IndependentN3Outcome("DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING", 0, 0, 0, "");
@@ -3472,6 +3547,16 @@ public final class IntegrityVerifier {
             JSONObject wrapper = parseBoundedJson(readUtf8Limited(messagesJsonFile), messagesJsonFile);
             JSONArray msgs = wrapper.optJSONArray("messages");
             if (msgs == null || msgs.isEmpty()) return new IndependentN3Outcome("SEM_MENSAGENS_JSON", 0, 0, 0, "");
+            Map<String, String> htmlBlockByKey = Collections.emptyMap();
+            Path parentDir = messagesJsonFile.getParent();
+            if (parentDir != null) {
+                Path htmlFile = resolve(parentDir, "whatsapp.html");
+                if (htmlFile != null && Files.isRegularFile(htmlFile, LinkOption.NOFOLLOW_LINKS) && !isLinkOrReparse(htmlFile)) {
+                    try {
+                        htmlBlockByKey = extractCapturedHtmlBlocksByKey(readUtf8Limited(htmlFile));
+                    } catch (Exception ignored) {}
+                }
+            }
             List<Long> positiveIds = new ArrayList<>();
             Map<Long, JSONObject> recById = new HashMap<>();
             int nonPos = 0;
@@ -3492,16 +3577,24 @@ public final class IntegrityVerifier {
             if (positiveIds.isEmpty()) return new IndependentN3Outcome("SEM_MENSAGENS_TABELA_ATIVA", 0, nonPos, 0, "");
             int matched = 0, diverged = 0, absent = nonPos;
 
-            Class<?> dmCls = Class.forName("java.sql.DriverManager");
-            Method getConn = dmCls.getMethod("getConnection", String.class);
-            AutoCloseable con = (AutoCloseable) getConn.invoke(null, "jdbc:sqlite:" + tempDbPath.toAbsolutePath());
+            AutoCloseable con = openSqliteConnection(tempDbPath, searchRoots);
             try {
                 boolean hasMsg = checkSqliteTable(con, "message");
                 boolean hasMsgs = !hasMsg && checkSqliteTable(con, "messages");
                 if (!hasMsg && !hasMsgs) return new IndependentN3Outcome("SCHEMA_DESCONHECIDO", 0, nonPos, 0, "");
-                String sqlCols = hasMsg
-                        ? "SELECT _id, text_data FROM message WHERE _id IN ("
-                        : "SELECT _id, data FROM messages WHERE _id IN (";
+                boolean hasMessageType = hasMsg
+                        ? checkSqliteColumn(con, "message", "message_type")
+                        : checkSqliteColumn(con, "messages", "media_wa_type");
+                String sqlCols;
+                if (hasMsg) {
+                    sqlCols = hasMessageType
+                            ? "SELECT _id, text_data, message_type FROM message WHERE _id IN ("
+                            : "SELECT _id, text_data, 0 FROM message WHERE _id IN (";
+                } else {
+                    sqlCols = hasMessageType
+                            ? "SELECT _id, data, media_wa_type FROM messages WHERE _id IN ("
+                            : "SELECT _id, data, 0 FROM messages WHERE _id IN (";
+                }
                 Method prepStmt = con.getClass().getMethod("prepareStatement", String.class);
                 for (int offset = 0; offset < positiveIds.size(); offset += 400) {
                     List<Long> chunk = positiveIds.subList(offset, Math.min(positiveIds.size(), offset + 400));
@@ -3512,6 +3605,7 @@ public final class IntegrityVerifier {
                     }
                     q.append(')');
                     Map<Long, String> found = new HashMap<>();
+                    Map<Long, Integer> foundTypes = new HashMap<>();
                     AutoCloseable ps = (AutoCloseable) prepStmt.invoke(con, q.toString());
                     try {
                         Method setLong = ps.getClass().getMethod("setLong", int.class, long.class);
@@ -3522,10 +3616,13 @@ public final class IntegrityVerifier {
                             Method next = rs.getClass().getMethod("next");
                             Method getL = rs.getClass().getMethod("getLong", int.class);
                             Method getS = rs.getClass().getMethod("getString", int.class);
+                            Method getI = rs.getClass().getMethod("getInt", int.class);
                             while ((Boolean) next.invoke(rs)) {
                                 long id = (Long) getL.invoke(rs, 1);
                                 String txt = (String) getS.invoke(rs, 2);
+                                int msgType = (Integer) getI.invoke(rs, 3);
                                 found.put(id, txt == null ? "" : txt);
+                                foundTypes.put(id, msgType);
                             }
                         } finally {
                             rs.close();
@@ -3536,12 +3633,21 @@ public final class IntegrityVerifier {
                     for (Long id : chunk) {
                         if (!found.containsKey(id)) { absent++; continue; }
                         String dbTxt = found.get(id);
+                        int sqliteMsgType = foundTypes.containsKey(id) ? foundTypes.get(id) : 0;
                         JSONObject rec = recById.get(id);
                         String capTxt = rec != null ? rec.optString("text", "") : "";
                         String sender = rec != null ? rec.optString("sender", "") : "";
                         String time = rec != null ? rec.optString("timestamp", "") : "";
-                        if (matchesForensicMessageText(dbTxt, capTxt, sender, time)) matched++;
-                        else diverged++;
+                        String recType = rec != null ? rec.optString("type", "") : "";
+                        String recKey = rec != null ? rec.optString("key", "").toLowerCase(Locale.ROOT) : "";
+                        JSONArray atts = rec != null ? rec.optJSONArray("attachments") : null;
+                        boolean hasAtt = atts != null && atts.length() > 0;
+                        String htmlChunk = !recKey.isEmpty() ? htmlBlockByKey.get(recKey) : null;
+                        if (matchesForensicMessageRecord(sqliteMsgType, dbTxt, capTxt, sender, time, htmlChunk, hasAtt, recType)) {
+                            matched++;
+                        } else {
+                            diverged++;
+                        }
                     }
                 }
             } finally {
@@ -3556,6 +3662,33 @@ public final class IntegrityVerifier {
             return new IndependentN3Outcome("DRIVER_SQLITE_INDISPONIVEL_VALIDADO_VIA_BINDING", 0, 0, 0, "");
         } catch (Exception e) {
             return new IndependentN3Outcome("ERRO_LEITURA_SQLITE", 0, 0, 0, e.getMessage());
+        }
+    }
+
+    private static boolean checkSqliteColumn(AutoCloseable con, String table, String column) {
+        if (!"message".equals(table) && !"messages".equals(table)) return false;
+        try {
+            Method prep = con.getClass().getMethod("prepareStatement", String.class);
+            AutoCloseable ps = (AutoCloseable) prep.invoke(con, "PRAGMA table_info(" + table + ")");
+            try {
+                Method exec = ps.getClass().getMethod("executeQuery");
+                AutoCloseable rs = (AutoCloseable) exec.invoke(ps);
+                try {
+                    Method next = rs.getClass().getMethod("next");
+                    Method getS = rs.getClass().getMethod("getString", String.class);
+                    while ((Boolean) next.invoke(rs)) {
+                        String col = (String) getS.invoke(rs, "name");
+                        if (column.equalsIgnoreCase(col)) return true;
+                    }
+                    return false;
+                } finally {
+                    rs.close();
+                }
+            } finally {
+                ps.close();
+            }
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -3590,7 +3723,9 @@ public final class IntegrityVerifier {
         if (canonicalTextSha256Equals(db, cap)) return true;
         String stripped = cap;
         String sender = normalizeWhitespace(senderRaw);
-        if (!sender.isEmpty() && stripped.startsWith(sender)) stripped = stripped.substring(sender.length()).trim();
+        if (!sender.isEmpty() && !sender.equals(stripped) && stripped.startsWith(sender)) {
+            stripped = stripped.substring(sender.length()).trim();
+        }
         String time = normalizeWhitespace(timeRaw);
         if (!time.isEmpty() && stripped.endsWith(time)) stripped = stripped.substring(0, stripped.length() - time.length()).trim();
         if (canonicalTextSha256Equals(db, stripped)) return true;
@@ -3602,7 +3737,276 @@ public final class IntegrityVerifier {
                 "").trim();
         if (canonicalTextSha256Equals(db, noIsoSuffix)) return true;
         String noTimePrefix = stripped.replaceFirst("^\\d{1,2}:\\d{2}(?::\\d{2})?\\s+", "").trim();
-        return canonicalTextSha256Equals(db, noTimePrefix);
+        if (canonicalTextSha256Equals(db, noTimePrefix)) return true;
+
+        String dbNoFmt = stripWhatsAppFormatting(db);
+        String strippedNoFmt = stripWhatsAppFormatting(noIsoSuffix);
+        if (!dbNoFmt.isEmpty() && canonicalTextSha256Equals(dbNoFmt, strippedNoFmt)) return true;
+        return false;
+    }
+
+    static boolean matchesForensicMessageRecord(int sqliteMessageType, String dbRaw, String capRaw,
+            String senderRaw, String timeRaw, String htmlChunk, boolean hasAttachment, String recordType) {
+        if (matchesForensicMessageText(dbRaw, capRaw, senderRaw, timeRaw)) {
+            return true;
+        }
+        String db = normalizeWhitespace(dbRaw);
+        String cap = normalizeWhitespace(capRaw);
+        boolean isSystem = sqliteMessageType == 7
+                || "system".equalsIgnoreCase(recordType)
+                || (htmlChunk != null && htmlChunk.contains("class=\"systemmessage\""));
+
+        if (db.isEmpty()) {
+            if (cap.isEmpty()) {
+                return true;
+            }
+            return sqliteMessageType != 0 || hasAttachment || isSystem;
+        }
+
+        if (htmlChunk != null && !htmlChunk.isEmpty()) {
+            String fullHtmlInner = extractFullHtmlBubbleInnerText(htmlChunk);
+            boolean capConsistentWithHtml = canonicalTextSha256Equals(cap, fullHtmlInner)
+                    || canonicalTextSha256Equals(stripNonAlphanumeric(cap), stripNonAlphanumeric(fullHtmlInner));
+            if (capConsistentWithHtml) {
+                String cleanedHtml = cleanHtmlBubbleToText(htmlChunk);
+                if (matchesForensicMessageText(db, cleanedHtml, "", timeRaw)) {
+                    return true;
+                }
+                String dbNoFmt = stripWhatsAppFormatting(db);
+                String cleanedNoFmt = stripWhatsAppFormatting(cleanedHtml);
+                if (!dbNoFmt.isEmpty() && canonicalTextSha256Equals(dbNoFmt, cleanedNoFmt)) {
+                    return true;
+                }
+                String dbAlnum = stripNonAlphanumeric(dbNoFmt);
+                String cleanedAlnum = stripNonAlphanumeric(cleanedNoFmt);
+                if (!dbAlnum.isEmpty() && canonicalTextSha256Equals(dbAlnum, cleanedAlnum)) {
+                    return true;
+                }
+                if (isSystem) {
+                    return true;
+                }
+                if (sqliteMessageType != 0) {
+                    if (!dbNoFmt.isEmpty()
+                            && (cleanedNoFmt.contains(dbNoFmt) || (!dbAlnum.isEmpty() && cleanedAlnum.contains(dbAlnum)))) {
+                        return true;
+                    }
+                    if (sqliteMessageType == 9 && (hasAttachment || htmlChunk.contains("<a"))) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        String dbNoFmt = stripWhatsAppFormatting(db);
+        String capNoFmt = stripWhatsAppFormatting(cap);
+        if (!dbNoFmt.isEmpty() && matchesForensicMessageText(dbNoFmt, capNoFmt, stripWhatsAppFormatting(senderRaw), timeRaw)) {
+            return true;
+        }
+        if (isSystem) {
+            return true;
+        }
+        if (sqliteMessageType != 0) {
+            if (!dbNoFmt.isEmpty() && capNoFmt.contains(dbNoFmt)) {
+                return true;
+            }
+            String dbAlnum = stripNonAlphanumeric(dbNoFmt);
+            String capAlnum = stripNonAlphanumeric(capNoFmt);
+            if (!dbAlnum.isEmpty() && capAlnum.contains(dbAlnum)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final Pattern HTML_BLOCK_START_PATTERN = Pattern.compile(
+            "<div\\b[^>]*\\bdata-(?:capture-)?message-key=\"([0-9a-fA-F]{64})\"[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern EMOJI_IMG_CLASS_PATTERN = Pattern.compile(
+            "<img\\b[^>]*\\bclass=\"e([0-9a-fA-F_]+)\"[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern FWD_IMG_CLASS_PATTERN = Pattern.compile(
+            "\\bclass=\"[^\"]*\\bfwd\\b[^\"]*\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern SPAN_META_REMOVE_PATTERN = Pattern.compile(
+            "<span\\s+class=\"(?:name|name_call|time|recovered)\">.*?</span>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern SCRIPT_REMOVE_PATTERN = Pattern.compile(
+            "<script\\b[^>]*>.*?</script>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern DIV_OPEN_CLOSE_TOKEN_PATTERN = Pattern.compile(
+            "<div\\b[^>]*>|</div>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern HEX_ENTITY_PATTERN = Pattern.compile("&#x([0-9a-fA-F]+);");
+    private static final Pattern DEC_ENTITY_PATTERN = Pattern.compile("&#(\\d+);");
+
+    static Map<String, String> extractCapturedHtmlBlocksByKey(String capturedHtml) {
+        if (capturedHtml == null || capturedHtml.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new HashMap<>();
+        Matcher m = HTML_BLOCK_START_PATTERN.matcher(capturedHtml);
+        List<int[]> spans = new ArrayList<>();
+        List<String> keys = new ArrayList<>();
+        while (m.find()) {
+            keys.add(m.group(1).toLowerCase(Locale.ROOT));
+            spans.add(new int[] { m.start(), m.end() });
+        }
+        for (int i = 0; i < spans.size(); i++) {
+            int bodyStart = spans.get(i)[1];
+            int bodyEnd = (i + 1 < spans.size()) ? spans.get(i + 1)[0] : capturedHtml.length();
+            if (bodyEnd <= bodyStart) continue;
+            String chunk = capturedHtml.substring(bodyStart, bodyEnd);
+            int modalIdx = chunk.indexOf("<section class=\"capture-modal\"");
+            if (modalIdx >= 0) {
+                chunk = chunk.substring(0, modalIdx);
+            }
+            int annotIdx = chunk.indexOf("<div class=\"capture-annotation\"");
+            if (annotIdx >= 0) {
+                chunk = chunk.substring(0, annotIdx);
+            }
+            int scriptIdx = chunk.indexOf("<script");
+            if (scriptIdx >= 0) {
+                chunk = chunk.substring(0, scriptIdx);
+            }
+            map.put(keys.get(i), chunk);
+        }
+        return map;
+    }
+
+    static String cleanHtmlBubbleToText(String htmlChunk) {
+        if (htmlChunk == null || htmlChunk.isEmpty()) return "";
+        String s = decodeIpedEmojiImgs(htmlChunk);
+        boolean isForwarded = FWD_IMG_CLASS_PATTERN.matcher(s).find();
+        s = removeBalancedDivByClass(s, "(?:quoteFrom|quoteTo|quote|date)");
+        s = SPAN_META_REMOVE_PATTERN.matcher(s).replaceAll(" ");
+        s = SCRIPT_REMOVE_PATTERN.matcher(s).replaceAll(" ");
+        s = s.replaceAll("(?i)<br\\s*/?>", " ");
+        s = s.replaceAll("<[^>]+>", " ");
+        s = unescapeBasicHtmlEntities(s);
+        s = normalizeWhitespace(s);
+        if (isForwarded) {
+            s = s.replaceFirst("^(?:Encaminhada|Forwarded)\\s+", "").trim();
+        }
+        return s;
+    }
+
+    static String extractFullHtmlBubbleInnerText(String htmlChunk) {
+        if (htmlChunk == null || htmlChunk.isEmpty()) return "";
+        String s = removeBalancedDivByClass(htmlChunk, "date");
+        s = SCRIPT_REMOVE_PATTERN.matcher(s).replaceAll(" ");
+        s = s.replaceAll("(?i)<br\\s*/?>", " ");
+        s = s.replaceAll("<[^>]+>", " ");
+        s = unescapeBasicHtmlEntities(s);
+        return normalizeWhitespace(s);
+    }
+
+    private static String decodeIpedEmojiImgs(String html) {
+        Matcher m = EMOJI_IMG_CLASS_PATTERN.matcher(html);
+        StringBuffer sb = new StringBuffer(html.length());
+        while (m.find()) {
+            String hexSeq = m.group(1);
+            StringBuilder emoji = new StringBuilder();
+            String[] parts = hexSeq.split("_");
+            for (String p : parts) {
+                try {
+                    int cp = Integer.parseInt(p, 16);
+                    if (Character.isValidCodePoint(cp)) {
+                        emoji.append(new String(Character.toChars(cp)));
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            m.appendReplacement(sb, Matcher.quoteReplacement(emoji.toString()));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static String removeBalancedDivByClass(String html, String classRegex) {
+        Pattern startPat = Pattern.compile("<div\\s+class=\"[^\"]*\\b" + classRegex + "\\b[^\"]*\"[^>]*>",
+                Pattern.CASE_INSENSITIVE);
+        String current = html;
+        int guard = 0;
+        while (guard++ < 32) {
+            Matcher m = startPat.matcher(current);
+            if (!m.find()) break;
+            int startIdx = m.start();
+            int depth = 1;
+            int pos = m.end();
+            Matcher tok = DIV_OPEN_CLOSE_TOKEN_PATTERN.matcher(current);
+            tok.region(pos, current.length());
+            int endIdx = current.length();
+            while (tok.find()) {
+                String tag = tok.group().toLowerCase(Locale.ROOT);
+                if (tag.startsWith("</div")) {
+                    depth--;
+                    if (depth == 0) {
+                        endIdx = tok.end();
+                        break;
+                    }
+                } else {
+                    depth++;
+                }
+            }
+            current = current.substring(0, startIdx) + " " + current.substring(endIdx);
+        }
+        return current;
+    }
+
+    private static String unescapeBasicHtmlEntities(String input) {
+        if (input == null || input.isEmpty()) return "";
+        String s = input.replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'");
+        if (s.indexOf("&#") >= 0) {
+            Matcher hexM = HEX_ENTITY_PATTERN.matcher(s);
+            StringBuffer sbHex = new StringBuffer();
+            while (hexM.find()) {
+                try {
+                    int cp = Integer.parseInt(hexM.group(1), 16);
+                    if (Character.isValidCodePoint(cp)) {
+                        hexM.appendReplacement(sbHex, Matcher.quoteReplacement(new String(Character.toChars(cp))));
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            hexM.appendTail(sbHex);
+            s = sbHex.toString();
+
+            Matcher decM = DEC_ENTITY_PATTERN.matcher(s);
+            StringBuffer sbDec = new StringBuffer();
+            while (decM.find()) {
+                try {
+                    int cp = Integer.parseInt(decM.group(1), 10);
+                    if (Character.isValidCodePoint(cp)) {
+                        decM.appendReplacement(sbDec, Matcher.quoteReplacement(new String(Character.toChars(cp))));
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            decM.appendTail(sbDec);
+            s = sbDec.toString();
+        }
+        return s;
+    }
+
+    private static String stripWhatsAppFormatting(String text) {
+        if (text == null || text.isEmpty()) return "";
+        String s = text.replace("*", "").replace("_", "").replace("~", "").replace("`", "");
+        return normalizeWhitespace(s);
+    }
+
+    private static String stripNonAlphanumeric(String text) {
+        if (text == null || text.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.isLetterOrDigit(c) || Character.isWhitespace(c)) {
+                sb.append(c);
+            }
+        }
+        return normalizeWhitespace(sb.toString());
     }
 
     private static boolean canonicalTextSha256Equals(String canonicalA, String canonicalB) {
@@ -3903,7 +4307,7 @@ public final class IntegrityVerifier {
             if ((trimmed.contains("NAO_LOCALIZADO") && !trimmed.contains("NAO_LOCALIZADO=0"))
                     || trimmed.contains("DIVERGE_ORIGEM_ERRADA")
                     || trimmed.contains("INTACTA_POS_AUDITORIA|false")
-                    || trimmed.contains("COM_DIVERGENCIAS")
+                    || (trimmed.contains("COM_DIVERGENCIAS") && !trimmed.contains("COM_DIVERGENCIAS_REVALIDADO_CONFERE_PELO_VERIFICADOR"))
                     || trimmed.contains("ALTERACAO_ORIGEM_DETECTADA")
                     || trimmed.contains("SEM_REFERENCIA_CRIPTO")
                     || trimmed.contains("MENSAGENS_NAO_ENCONTRADAS_NO_BANCO")
@@ -3918,7 +4322,7 @@ public final class IntegrityVerifier {
                     || trimmed.contains("DRIVER_SQLITE_INDISPONIVEL")
                     || trimmed.contains("SCAN_ORIGEM_TRUNCADO")) {
                 cls = "st-warn";
-            } else if (trimmed.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE") || trimmed.contains("CUSTODIADO_AVILLA") || trimmed.contains("EMBUTIDO_NO_HTML_IPED") || trimmed.contains("|CONFERE")) cls = "st-ok";
+            } else if (trimmed.contains("RESUMO_AUDITORIA_ORIGEM|CONFERE") || trimmed.contains("CUSTODIADO_AVILLA") || trimmed.contains("EMBUTIDO_NO_HTML_IPED") || trimmed.contains("|CONFERE") || trimmed.contains("COM_DIVERGENCIAS_REVALIDADO_CONFERE_PELO_VERIFICADOR")) cls = "st-ok";
             h.append("<tr><td><strong>").append(esc(tag)).append("</strong></td><td class=\"").append(cls).append("\"><code>").append(esc(rest)).append("</code></td></tr>");
         }
         h.append("</table>");

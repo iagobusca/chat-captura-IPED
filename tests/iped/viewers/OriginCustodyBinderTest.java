@@ -54,6 +54,39 @@ public final class OriginCustodyBinderTest {
                 "Joao Mensagem editada 2026-11-16 10:00:00 -03:00 Editada em 2026-11-16 10:05:00 -03:00",
                 "Joao",
                 ""), "sufixo Editada em com data ISO deve conferir sem liberar texto arbitrario");
+        check(OriginCustodyBinder.matchesForensicMessageText(
+                "Mensagem recebida",
+                "Mensagem recebida 2026-11-16 10:00:00 -03:00",
+                "Mensagem recebida 2026-11-16 10:00:00 -03:00",
+                "2026-11-16 10:00:00 -03:00"),
+                "guard !sender.equals(stripped) nao pode zerar texto quando sender legacy igualava cap");
+
+        String bubbleHtml = "<div class=\"captured-message-block\" data-message-key=\"" + "a".repeat(64) + "\">"
+                + "<div class=\"linha\"><div class=\"buble\"><div class=\"incoming from\">"
+                + "<span class=\"name\">Maria</span><br>"
+                + "<div class=\"quoteFrom\"><div><span class=\"quoteUser\">Joao</span><br>"
+                + "<span class=\"quoteMsg\">Pergunta anterior</span></div></div>"
+                + "<img class=\"fwd\"> Encaminhada <br>"
+                + "Resposta <b>importante</b> com emoji <img class=\"e1f923\"> e <img class=\"e1f44d_1f3ff\">"
+                + "<span class=\"time\">2026-11-16 10:00:00 -03:00</span>"
+                + "</div></div></div></div>";
+        Map<String, String> blocks = OriginCustodyBinder.extractCapturedHtmlBlocksByKey(bubbleHtml);
+        String chunk = blocks.get("a".repeat(64));
+        check(chunk != null, "bloco HTML capturado deve ser extraido por data-message-key");
+        String capInner = "Maria Joao Pergunta anterior Encaminhada Resposta importante com emoji e 2026-11-16 10:00:00 -03:00";
+        String dbText = "Resposta *importante* com emoji \uD83E\uDD23 e \uD83D\uDC4D\uD83C\uDFFF";
+        check(OriginCustodyBinder.matchesForensicMessageRecord(
+                0, dbText, capInner, capInner, "2026-11-16 10:00:00 -03:00", chunk, false, "text"),
+                "bolha HTML com quoteFrom, fwd, negrito e img emoji eHEX deve conferir com text_data do SQLite");
+        check(!OriginCustodyBinder.matchesForensicMessageRecord(
+                0, "Outro texto adulterado", capInner, capInner, "2026-11-16 10:00:00 -03:00", chunk, false, "text"),
+                "bolha HTML com texto divergente no SQLite deve continuar reprovando");
+        check(OriginCustodyBinder.matchesForensicMessageRecord(
+                2, "", "Maria Mensagem de audio (0:15) 2026-11-16 10:00:00 -03:00", "Maria", "2026-11-16 10:00:00 -03:00", null, false, "text"),
+                "mensagem de midia/audio (message_type=2) com text_data NULL no banco deve conferir");
+        check(!OriginCustodyBinder.matchesForensicMessageRecord(
+                0, "", "Texto forjado sem anexo em message_type=0", "Maria", "2026-11-16 10:00:00 -03:00", null, false, "text"),
+                "mensagem de texto puro (message_type=0) com banco vazio e texto nao-vazio deve reprovar");
     }
 
     private static void runTextMismatchScenario(Path tempRoot) throws Exception {

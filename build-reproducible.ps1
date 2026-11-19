@@ -493,7 +493,7 @@ function Invoke-SingleReproducibleBuild([string]$WorkRoot, [string]$RunOutDir, [
         $jlinkSrcJdk = if ($Jdk11ForJlink) { $Jdk11ForJlink } else { $Jdk }
         $jlink = Join-Path (Join-Path $jlinkSrcJdk 'bin') (Get-JavaExeName 'jlink')
         $jpackage = Join-Path (Join-Path $Jdk 'bin') (Get-JavaExeName 'jpackage')
-        & $jlink --module-path (Join-Path $jlinkSrcJdk 'jmods') --add-modules java.base,java.datatransfer,java.desktop,java.xml --strip-debug --no-header-files --no-man-pages --output $runtimeDir | Out-Host
+        & $jlink --module-path (Join-Path $jlinkSrcJdk 'jmods') --add-modules java.base,java.datatransfer,java.desktop,java.xml,java.logging,java.sql --strip-debug --no-header-files --no-man-pages --output $runtimeDir | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "jlink falhou ($LASTEXITCODE)" }
         & $jpackage --type app-image --name integridade-verifier --input $jlinkInput --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $runtimeDir --dest $appImgDest --app-version $verifierVer | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "jpackage falhou ($LASTEXITCODE)" }

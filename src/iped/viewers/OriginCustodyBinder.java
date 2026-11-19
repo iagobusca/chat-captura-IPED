@@ -101,6 +101,26 @@ final class OriginCustodyBinder {
             Set<String> inlineMediaSha256,
             Map<String, String> capturedAttachmentPathBySha,
             String captureOutputFolderName) throws IOException {
+        return buildOriginBinding(
+                originRoot,
+                parentIpedRoot,
+                sourceMetadata,
+                capturedRecords,
+                inlineMediaSha256,
+                capturedAttachmentPathBySha,
+                captureOutputFolderName,
+                null);
+    }
+
+    static OriginBindingResult buildOriginBinding(
+            Path originRoot,
+            Path parentIpedRoot,
+            JSONObject sourceMetadata,
+            JSONArray capturedRecords,
+            Set<String> inlineMediaSha256,
+            Map<String, String> capturedAttachmentPathBySha,
+            String captureOutputFolderName,
+            String capturedHtml) throws IOException {
         if (originRoot == null) {
             throw new IOException("Pasta de origem custodiada nao informada.");
         }
@@ -129,7 +149,7 @@ final class OriginCustodyBinder {
         AttachmentTraceSummary attSummary = classifyAttachments(
                 normOrigin, hashsIndex, capturedRecords, allInlineBlobs, capturedAttachmentPathBySha);
 
-        JSONObject n3Audit = runReadOnlyN3SqliteAudit(dbFiles, capturedRecords);
+        JSONObject n3Audit = runReadOnlyN3SqliteAudit(dbFiles, capturedRecords, capturedHtml);
         JSONObject gapInfo = buildTimelineGap(pdfInfo, hashsIndex, dbFiles, complementInfo, ipedLineage, attSummary, custodyFiles);
 
         JSONObject captureAct = new JSONObject()
@@ -1184,7 +1204,38 @@ final class OriginCustodyBinder {
         return out;
     }
 
-    private static JSONObject runReadOnlyN3SqliteAudit(OriginDbFiles dbFiles, JSONArray capturedRecords) {
+    private static final Pattern CAPTURE_KEY_DIV_PATTERN = Pattern.compile(
+            "<div\\b[^>]*\\bdata-(?:capture-)?message-key=\"([0-9a-fA-F]{64})\"[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern EMOJI_IMG_PATTERN = Pattern.compile(
+            "<img\\b[^>]*\\bclass=\"e([0-9a-fA-F_]+)\"[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern FWD_IMG_CLASS_PATTERN = Pattern.compile(
+            "\\bclass=\"[^\"]*\\bfwd\\b[^\"]*\"",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANY_DIV_TAG_PATTERN = Pattern.compile(
+            "<(/?)div\\b[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern META_SPAN_PATTERN = Pattern.compile(
+            "<span\\b[^>]*\\bclass=\"(?:name|name_call|time|recovered)\"[^>]*>.*?</span>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern SCRIPT_BLOCK_PATTERN = Pattern.compile(
+            "<script\\b[^>]*>.*?</script>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern BLOCK_BREAK_TAG_PATTERN = Pattern.compile(
+            "<(?:br|/div|/p|/li)\\b[^>]*>",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANY_HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
+    private static final Pattern FORWARDED_PREFIX_PATTERN = Pattern.compile(
+            "^(?:Encaminhada|Forwarded)\\s+",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NUMERIC_ENTITY_DEC_PATTERN = Pattern.compile("&#(\\d{1,7});");
+    private static final Pattern NUMERIC_ENTITY_HEX_PATTERN = Pattern.compile("&#[xX]([0-9a-fA-F]{1,6});");
+
+    private static JSONObject runReadOnlyN3SqliteAudit(
+            OriginDbFiles dbFiles,
+            JSONArray capturedRecords,
+            String capturedHtml) {
         JSONObject out = new JSONObject()
                 .put("status", "NAO_EXECUTADO")
                 .put("prePostCopyOriginSha256Match", false)
@@ -1210,6 +1261,8 @@ final class OriginCustodyBinder {
             if (dbFiles.shmPath != null) {
                 Files.copy(dbFiles.shmPath, tempDir.resolve("msgstore.db-shm"), StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS);
             }
+
+            Map<String, String> htmlBlockByKey = extractCapturedHtmlBlocksByKey(capturedHtml);
 
             List<Long> positiveIds = new ArrayList<>();
             Map<Long, JSONObject> expectedRecordById = new HashMap<>();
@@ -1243,9 +1296,19 @@ final class OriginCustodyBinder {
                 boolean hasLegacyMessages = !hasMessageTable && sqliteTableExists(con, "messages");
                 schemaUsed = hasMessageTable ? "message" : (hasLegacyMessages ? "messages" : "desconhecido");
                 if (hasMessageTable || hasLegacyMessages) {
-                    String sqlCols = hasMessageTable
-                            ? "SELECT _id, chat_row_id, text_data FROM message WHERE _id IN ("
-                            : "SELECT _id, key_remote_jid, data FROM messages WHERE _id IN (";
+                    boolean hasMsgTypeCol = hasMessageTable
+                            ? sqliteColumnExists(con, "message", "message_type")
+                            : sqliteColumnExists(con, "messages", "media_wa_type");
+                    String sqlCols;
+                    if (hasMessageTable) {
+                        sqlCols = hasMsgTypeCol
+                                ? "SELECT _id, chat_row_id, text_data, message_type FROM message WHERE _id IN ("
+                                : "SELECT _id, chat_row_id, text_data, 0 FROM message WHERE _id IN (";
+                    } else {
+                        sqlCols = hasMsgTypeCol
+                                ? "SELECT _id, key_remote_jid, data, media_wa_type FROM messages WHERE _id IN ("
+                                : "SELECT _id, key_remote_jid, data, 0 FROM messages WHERE _id IN (";
+                    }
                     for (int offset = 0; offset < positiveIds.size(); offset += 400) {
                         List<Long> chunk = positiveIds.subList(offset, Math.min(positiveIds.size(), offset + 400));
                         StringBuilder q = new StringBuilder(sqlCols);
@@ -1255,6 +1318,7 @@ final class OriginCustodyBinder {
                         }
                         q.append(')');
                         Map<Long, String> foundTexts = new HashMap<>();
+                        Map<Long, Integer> foundTypes = new HashMap<>();
                         try (PreparedStatement ps = con.prepareStatement(q.toString())) {
                             for (int k = 0; k < chunk.size(); k++) {
                                 ps.setLong(k + 1, chunk.get(k));
@@ -1264,7 +1328,13 @@ final class OriginCustodyBinder {
                                     long id = rs.getLong(1);
                                     if (hasMessageTable) seenChatIds.add(rs.getLong(2));
                                     String txt = rs.getString(3);
+                                    int mtype = 0;
+                                    try {
+                                        mtype = rs.getInt(4);
+                                    } catch (Exception ignored) {
+                                    }
                                     foundTexts.put(id, txt == null ? "" : txt);
+                                    foundTypes.put(id, mtype);
                                 }
                             }
                         }
@@ -1274,11 +1344,17 @@ final class OriginCustodyBinder {
                                 continue;
                             }
                             String dbTxt = foundTexts.get(id);
+                            int sqliteMsgType = foundTypes.getOrDefault(id, 0);
                             JSONObject rec = expectedRecordById.get(id);
                             String capTxt = rec != null ? rec.optString("text", "") : "";
                             String sender = rec != null ? rec.optString("sender", "") : "";
                             String time = rec != null ? rec.optString("timestamp", "") : "";
-                            if (matchesForensicMessageText(dbTxt, capTxt, sender, time)) {
+                            String key = rec != null ? rec.optString("key", "").toLowerCase(Locale.ROOT) : "";
+                            String recType = rec != null ? rec.optString("type", "") : "";
+                            JSONArray atts = rec != null ? rec.optJSONArray("attachments") : null;
+                            boolean hasAtt = atts != null && atts.length() > 0;
+                            String htmlChunk = (!key.isEmpty() && htmlBlockByKey != null) ? htmlBlockByKey.getOrDefault(key, "") : "";
+                            if (matchesForensicMessageRecord(sqliteMsgType, dbTxt, capTxt, sender, time, htmlChunk, hasAtt, recType)) {
                                 matched++;
                             } else {
                                 diverged++;
@@ -1341,6 +1417,262 @@ final class OriginCustodyBinder {
         }
     }
 
+    private static boolean sqliteColumnExists(Connection con, String table, String column) {
+        if (!"message".equals(table) && !"messages".equals(table)) {
+            return false;
+        }
+        try (PreparedStatement ps = con.prepareStatement("PRAGMA table_info(" + table + ")");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String colName = rs.getString(2);
+                if (column.equalsIgnoreCase(colName)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    static Map<String, String> extractCapturedHtmlBlocksByKey(String rawHtml) {
+        if (rawHtml == null || rawHtml.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new HashMap<>();
+        List<String> keys = new ArrayList<>();
+        List<Integer> bodyStarts = new ArrayList<>();
+        List<Integer> tagStarts = new ArrayList<>();
+        Matcher m = CAPTURE_KEY_DIV_PATTERN.matcher(rawHtml);
+        while (m.find()) {
+            keys.add(m.group(1).toLowerCase(Locale.ROOT));
+            tagStarts.add(m.start());
+            bodyStarts.add(m.end());
+        }
+        for (int i = 0; i < keys.size(); i++) {
+            int start = bodyStarts.get(i);
+            int end = (i + 1 < tagStarts.size()) ? tagStarts.get(i + 1) : rawHtml.length();
+            if (end <= start) continue;
+            String chunk = rawHtml.substring(start, end);
+            int modalIdx = chunk.indexOf("<section class=\"capture-modal\"");
+            if (modalIdx >= 0) {
+                chunk = chunk.substring(0, modalIdx);
+            }
+            int annotIdx = chunk.indexOf("<div class=\"capture-annotation\"");
+            if (annotIdx >= 0) {
+                chunk = chunk.substring(0, annotIdx);
+            }
+            int scriptIdx = chunk.indexOf("<script");
+            if (scriptIdx >= 0) {
+                chunk = chunk.substring(0, scriptIdx);
+            }
+            map.put(keys.get(i), chunk);
+        }
+        return map;
+    }
+
+    static String cleanHtmlBubbleToText(String htmlChunk) {
+        if (htmlChunk == null || htmlChunk.isEmpty()) {
+            return "";
+        }
+        String h = SCRIPT_BLOCK_PATTERN.matcher(htmlChunk).replaceAll(" ");
+        h = decodeIpedEmojiImgs(h);
+        boolean hasFwd = FWD_IMG_CLASS_PATTERN.matcher(h).find();
+        h = removeBalancedDivByClass(h, "(?:quoteFrom|quoteTo|quote|date)");
+        h = META_SPAN_PATTERN.matcher(h).replaceAll(" ");
+        h = BLOCK_BREAK_TAG_PATTERN.matcher(h).replaceAll(" ");
+        h = ANY_HTML_TAG_PATTERN.matcher(h).replaceAll(" ");
+        String res = normalizeWhitespace(unescapeBasicHtmlEntities(h));
+        if (hasFwd) {
+            res = FORWARDED_PREFIX_PATTERN.matcher(res).replaceFirst("").trim();
+        }
+        return res;
+    }
+
+    private static String extractFullHtmlBubbleInnerText(String htmlChunk) {
+        if (htmlChunk == null || htmlChunk.isEmpty()) {
+            return "";
+        }
+        String h = removeBalancedDivByClass(htmlChunk, "date");
+        h = SCRIPT_BLOCK_PATTERN.matcher(h).replaceAll(" ");
+        h = BLOCK_BREAK_TAG_PATTERN.matcher(h).replaceAll(" ");
+        h = ANY_HTML_TAG_PATTERN.matcher(h).replaceAll(" ");
+        return normalizeWhitespace(unescapeBasicHtmlEntities(h));
+    }
+
+    private static String decodeIpedEmojiImgs(String html) {
+        Matcher m = EMOJI_IMG_PATTERN.matcher(html);
+        StringBuffer sb = new StringBuffer();
+        while (m.find()) {
+            String rawCodes = m.group(1);
+            String[] parts = rawCodes.split("_");
+            StringBuilder emoji = new StringBuilder();
+            for (String p : parts) {
+                if (p == null || p.isEmpty()) continue;
+                try {
+                    int cp = Integer.parseInt(p, 16);
+                    if (Character.isValidCodePoint(cp)) {
+                        emoji.append(new String(Character.toChars(cp)));
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            m.appendReplacement(sb, Matcher.quoteReplacement(emoji.toString()));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static String removeBalancedDivByClass(String html, String classRegex) {
+        Pattern openPat = Pattern.compile(
+                "<div\\b[^>]*\\bclass=\"[^\"]*\\b" + classRegex + "\\b[^\"]*\"[^>]*>",
+                Pattern.CASE_INSENSITIVE);
+        String cur = html;
+        int guard = 0;
+        while (guard++ < 32) {
+            Matcher openM = openPat.matcher(cur);
+            if (!openM.find()) {
+                break;
+            }
+            int start = openM.start();
+            int pos = openM.end();
+            int depth = 1;
+            int removeEnd = -1;
+            Matcher divM = ANY_DIV_TAG_PATTERN.matcher(cur);
+            divM.region(pos, cur.length());
+            while (divM.find()) {
+                if ("/".equals(divM.group(1))) {
+                    depth--;
+                } else {
+                    depth++;
+                }
+                if (depth == 0) {
+                    removeEnd = divM.end();
+                    break;
+                }
+            }
+            if (removeEnd < 0) {
+                break;
+            }
+            cur = cur.substring(0, start) + " " + cur.substring(removeEnd);
+        }
+        return cur;
+    }
+
+    private static String unescapeBasicHtmlEntities(String text) {
+        if (text == null || text.isEmpty() || text.indexOf('&') < 0) {
+            return text == null ? "" : text;
+        }
+        String s = text.replace("&nbsp;", "\u00A0")
+                .replace("&apos;", "'")
+                .replace("&#39;", "'")
+                .replace("&#039;", "'")
+                .replace("&quot;", "\"")
+                .replace("&gt;", ">")
+                .replace("&lt;", "<");
+        if (s.contains("&#")) {
+            Matcher decM = NUMERIC_ENTITY_DEC_PATTERN.matcher(s);
+            StringBuffer sbDec = new StringBuffer();
+            while (decM.find()) {
+                try {
+                    int cp = Integer.parseInt(decM.group(1), 10);
+                    if (Character.isValidCodePoint(cp)) {
+                        decM.appendReplacement(sbDec, Matcher.quoteReplacement(new String(Character.toChars(cp))));
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            decM.appendTail(sbDec);
+            s = sbDec.toString();
+
+            Matcher hexM = NUMERIC_ENTITY_HEX_PATTERN.matcher(s);
+            StringBuffer sbHex = new StringBuffer();
+            while (hexM.find()) {
+                try {
+                    int cp = Integer.parseInt(hexM.group(1), 16);
+                    if (Character.isValidCodePoint(cp)) {
+                        hexM.appendReplacement(sbHex, Matcher.quoteReplacement(new String(Character.toChars(cp))));
+                    }
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            hexM.appendTail(sbHex);
+            s = sbHex.toString();
+        }
+        return s.replace("&amp;", "&");
+    }
+
+    static boolean matchesForensicMessageRecord(
+            int sqliteMessageType,
+            String dbRaw,
+            String capRaw,
+            String senderRaw,
+            String timeRaw,
+            String htmlChunk,
+            boolean hasAttachments,
+            String recordType) {
+        if (matchesForensicMessageText(dbRaw, capRaw, senderRaw, timeRaw)) {
+            return true;
+        }
+        String db = normalizeWhitespace(dbRaw);
+        String cap = normalizeWhitespace(capRaw);
+        boolean isSystem = sqliteMessageType == 7
+                || "system".equalsIgnoreCase(recordType)
+                || (htmlChunk != null && htmlChunk.contains("class=\"systemmessage\""));
+
+        if (db.isEmpty()) {
+            if (cap.isEmpty()) {
+                return true;
+            }
+            return sqliteMessageType != 0 || hasAttachments || isSystem;
+        }
+
+        if (htmlChunk != null && !htmlChunk.isEmpty()) {
+            String fullBubbleText = extractFullHtmlBubbleInnerText(htmlChunk);
+            boolean capConsistentWithHtml = cap.equals(fullBubbleText)
+                    || stripNonAlphanumeric(cap).equals(stripNonAlphanumeric(fullBubbleText));
+            if (capConsistentWithHtml) {
+                String cleanedHtml = cleanHtmlBubbleToText(htmlChunk);
+                if (matchesForensicMessageText(db, cleanedHtml, "", timeRaw)) {
+                    return true;
+                }
+                String dbNoFmt = stripWhatsAppFormatting(db);
+                String clNoFmt = stripWhatsAppFormatting(cleanedHtml);
+                if (!dbNoFmt.isEmpty() && canonicalTextSha256Equals(dbNoFmt, clNoFmt)) {
+                    return true;
+                }
+                String dbAlnum = stripNonAlphanumeric(dbNoFmt);
+                String clAlnum = stripNonAlphanumeric(clNoFmt);
+                if (!dbAlnum.isEmpty() && canonicalTextSha256Equals(dbAlnum, clAlnum)) {
+                    return true;
+                }
+                if (isSystem) {
+                    return true;
+                }
+                if (sqliteMessageType != 0) {
+                    if (!dbNoFmt.isEmpty() && (clNoFmt.contains(dbNoFmt) || (!dbAlnum.isEmpty() && clAlnum.contains(dbAlnum)))) {
+                        return true;
+                    }
+                    if (sqliteMessageType == 9 && (hasAttachments || htmlChunk.contains("<a"))) {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            String dbNoFmt = stripWhatsAppFormatting(db);
+            String capNoFmt = stripWhatsAppFormatting(cap);
+            if (!dbNoFmt.isEmpty() && matchesForensicMessageText(dbNoFmt, capNoFmt, stripWhatsAppFormatting(senderRaw), timeRaw)) {
+                return true;
+            }
+            if (isSystem) {
+                return true;
+            }
+            if (sqliteMessageType != 0 && !dbNoFmt.isEmpty() && capNoFmt.contains(dbNoFmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static boolean matchesForensicMessageText(String dbRaw, String capRaw, String senderRaw, String timeRaw) {
         String db = normalizeWhitespace(dbRaw);
         String cap = normalizeWhitespace(capRaw);
@@ -1355,11 +1687,11 @@ final class OriginCustodyBinder {
         }
         String stripped = cap;
         String sender = normalizeWhitespace(senderRaw);
-        if (!sender.isEmpty() && stripped.startsWith(sender)) {
+        if (!sender.isEmpty() && !sender.equals(stripped) && stripped.startsWith(sender)) {
             stripped = stripped.substring(sender.length()).trim();
         }
         String time = normalizeWhitespace(timeRaw);
-        if (!time.isEmpty() && stripped.endsWith(time)) {
+        if (!time.isEmpty() && !time.equals(stripped) && stripped.endsWith(time)) {
             stripped = stripped.substring(0, stripped.length() - time.length()).trim();
         }
         if (canonicalTextSha256Equals(db, stripped)) {
@@ -1378,6 +1710,27 @@ final class OriginCustodyBinder {
         }
         String noTimePrefix = stripped.replaceFirst("^\\d{1,2}:\\d{2}(?::\\d{2})?\\s+", "").trim();
         return canonicalTextSha256Equals(db, noTimePrefix);
+    }
+
+    private static String stripWhatsAppFormatting(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return normalizeWhitespace(value.replaceAll("[*_~`\\uFE0F]+", ""));
+    }
+
+    private static String stripNonAlphanumeric(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(Character.toLowerCase(c));
+            }
+        }
+        return sb.toString();
     }
 
     private static boolean canonicalTextSha256Equals(String canonicalA, String canonicalB) {

@@ -1832,6 +1832,35 @@ public final class SecurityRegressionTest {
         if (!IntegrityVerifier.matchesForensicMessageText("Caf\u00E9", "Cafe\u0301", "", "")) {
             throw new AssertionError("NFC canonical equivalence must match");
         }
+        String sampleKey = repeat('b', 64);
+        String sampleHtml = "<div class=\"captured-message-block\" data-message-key=\"" + sampleKey + "\">"
+                + "<div class=\"linha\"><div class=\"buble\"><div class=\"incoming from\">"
+                + "<span class=\"name\">Maria</span><br>"
+                + "<div class=\"quoteFrom\"><div><span class=\"quoteUser\">Joao</span><br>"
+                + "<span class=\"quoteMsg\">Citacao</span></div></div>"
+                + "<img class=\"fwd\"> Encaminhada <br>"
+                + "Texto <b>formatado</b> <img class=\"e1f923\">"
+                + "<span class=\"time\">2026-11-16 10:00:00 -03:00</span>"
+                + "</div></div></div></div>";
+        Map<String, String> htmlMap = IntegrityVerifier.extractCapturedHtmlBlocksByKey(sampleHtml);
+        String sampleChunk = htmlMap.get(sampleKey);
+        String sampleCap = "Maria Joao Citacao Encaminhada Texto formatado 2026-11-16 10:00:00 -03:00";
+        if (!IntegrityVerifier.matchesForensicMessageRecord(
+                0, "Texto *formatado* \uD83E\uDD23", sampleCap, sampleCap, "2026-11-16 10:00:00 -03:00", sampleChunk, false, "text")) {
+            throw new AssertionError("HTML bubble with quoteFrom, fwd, formatting and eHEX emoji must match SQLite text_data");
+        }
+        if (IntegrityVerifier.matchesForensicMessageRecord(
+                0, "Texto diferente", sampleCap, sampleCap, "2026-11-16 10:00:00 -03:00", sampleChunk, false, "text")) {
+            throw new AssertionError("Mismatched SQLite text_data must fail matchesForensicMessageRecord");
+        }
+        if (!IntegrityVerifier.matchesForensicMessageRecord(
+                2, "", "Maria Audio (0:12) 2026-11-16 10:00:00 -03:00", "Maria", "2026-11-16 10:00:00 -03:00", null, false, "text")) {
+            throw new AssertionError("Media message_type=2 with empty SQLite text_data must match");
+        }
+        if (IntegrityVerifier.matchesForensicMessageRecord(
+                0, "", "Texto forjado em message_type=0", "Maria", "2026-11-16 10:00:00 -03:00", null, false, "text")) {
+            throw new AssertionError("Plain text message_type=0 with empty SQLite text_data and non-empty capture must fail");
+        }
 
         Method verify = IntegrityVerifier.class.getDeclaredMethod("verify", IntegrityVerifier.Capture.class);
         verify.setAccessible(true);

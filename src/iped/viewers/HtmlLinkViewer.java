@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.8"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.9"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -3386,7 +3386,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 + "if(resourceError)return JSON.stringify({error:resourceError,id:src.id});var unsupportedLink=[].slice.call(clone.querySelectorAll('a')).some(function(x){var h=x.getAttribute('href')||'',click=x.getAttribute('onclick')||'';return /\\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|mp3|mp4|opus|ogg|wav)(?:$|[?#])/i.test(h)&&!x.hasAttribute('data-capture-link-token')||/javascript:open(?:Audio|Video|File)/i.test(h)});if(unsupportedLink){/* unsupported attachment skipped, continue capture */}" //$NON-NLS-1$
                 + "clone.querySelectorAll('script,template,form,iframe,object,embed,meta,link,base,style,svg,math,input,button,select,textarea').forEach(function(x){x.remove()});" //$NON-NLS-1$
                 + "[clone].concat([].slice.call(clone.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='srcdoc'||k==='href'||k==='srcset'||k==='poster'||k==='action'||k==='formaction'||k==='xlink:href')n.removeAttribute(at.name);});});" //$NON-NLS-1$
-                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),timeEl=src.querySelector('.time,.timestamp,[data-time]'),time=(timeEl?(timeEl.innerText||timeEl.textContent||''):'')||src.getAttribute('data-time')||'',senderEl=src.querySelector('.sender,.from,.author,.name,.name_call'),sender=senderEl?(senderEl.innerText||senderEl.textContent||''):'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){if(seenMedia[x])return n;seenMedia[x]=1;return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
+                + "var cls=(src.className||'').toString(),txt=(src.innerText||src.textContent||'').replace(/\\s+/g,' ').trim(),timeEl=src.querySelector('.time,.timestamp,[data-time]'),time=(timeEl?(timeEl.innerText||timeEl.textContent||''):'')||src.getAttribute('data-time')||'',senderEl=src.querySelector('span.name,span.name_call,.sender,.author,span.from'),sender=senderEl?(senderEl.innerText||senderEl.textContent||''):'';if(txt.length>" + MAX_HTML_MESSAGE_TEXT_CHARS + ")return JSON.stringify({error:'message_text_limit',id:src.id});payloadBytes+=clone.outerHTML.length+txt.length+resources.length*128+media.reduce(function(n,x){if(seenMedia[x])return n;seenMedia[x]=1;return n+x.length},0);if(payloadBytes>" + MAX_HTML_MESSAGE_CAPTURE_BYTES + ")return JSON.stringify({error:'capture_size_limit',id:src.id});var prev=src.previousElementSibling,separator='';if(prev&&prev.classList.contains('linha')&&(!prev.id||!/^-?\\d+(?:_[0-9a-zA-Z:._-]+)?$/.test(prev.id))){var sep=prev.cloneNode(true);[sep].concat([].slice.call(sep.querySelectorAll('*'))).forEach(function(n){[].slice.call(n.attributes||[]).forEach(function(at){var k=at.name.toLowerCase();if(k.indexOf('on')===0||k==='id'||k==='style'||k==='href'||k==='src'||k==='srcset'||k==='srcdoc')n.removeAttribute(at.name);});});separator=sep.outerHTML;}var direction=/outgoing/i.test(cls)?'outgoing':/incoming/i.test(cls)?'incoming':'unknown',type=/systemmessage/i.test(cls)?'system':(media.length||resources.length)?'attachment':'text';rows.push({domId:src.id,order:i-a,text:txt,classes:cls,timestamp:time.replace(/\\s+/g,' ').trim(),sender:sender.replace(/\\s+/g,' ').trim(),direction:direction,type:type,html:clone.outerHTML,separatorBefore:separator,media:media,resources:resources});}" //$NON-NLS-1$ //$NON-NLS-2$
                 + "return JSON.stringify({rows:rows,resolvedStart:resolvedStart,themeCss:theme.textContent,header:header.outerHTML});})(" + js(captureStartMessageId) + "," + js(captureEndMessageId) + ")"; //$NON-NLS-1$ //$NON-NLS-2$
         Object raw = executeScriptAndWait(script);
         if (!(raw instanceof String)) throw new IOException("Falha ao extrair mensagens do DOM do IPED."); //$NON-NLS-1$
@@ -3632,7 +3632,9 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         if (activeOriginFolder != null) {
             OriginCustodyBinder.OriginBindingResult originResult = OriginCustodyBinder.buildOriginBinding(
                     activeOriginFolder, this.originParentIpedFolder, publicSourceMetadata, records,
-                    inlineMediaSha256, attachmentPathBySha, captureDir.getFileName() == null ? "" : captureDir.getFileName().toString()); //$NON-NLS-1$
+                    inlineMediaSha256, attachmentPathBySha,
+                    captureDir.getFileName() == null ? "" : captureDir.getFileName().toString(),
+                    capturedHtml); //$NON-NLS-1$
             originBindingFilePath = staging.resolve(OriginCustodyBinder.ORIGIN_BINDING_FILE);
             CaptureIntegrity.writeAtomically(outputRoot, originBindingFilePath, originResult.fullBinding.toString(2));
             manifest.put("originBinding", originResult.manifestSummary) //$NON-NLS-1$
@@ -5371,7 +5373,8 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 return true;
             }
             JSONArray oldPublicHashes = oldManifest.optJSONArray("messageHashes"); //$NON-NLS-1$
-            return oldPublicHashes != null && sameMessageHashSequence(oldPublicHashes, candidateMessages);
+            return (oldPublicHashes != null && sameMessageHashSequence(oldPublicHashes, candidateMessages))
+                    || sameLegacySenderMessageSequence(oldWrapper, candidateMessages);
         }
         if (!oldMessagesValidOnDisk) {
             return false;
@@ -5407,6 +5410,38 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             if (!a.optString("domId", "").equals(b.optString("domId", "")) //$NON-NLS-1$ //$NON-NLS-2$
                     || !a.optString("key", "").equalsIgnoreCase(b.optString("key", "")) //$NON-NLS-1$ //$NON-NLS-2$
                     || !a.optString("messageHash", "").equalsIgnoreCase(b.optString("messageHash", ""))) { //$NON-NLS-1$ //$NON-NLS-2$
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameLegacySenderMessageSequence(JSONObject oldWrapper, JSONArray candidateMessages) {
+        if (oldWrapper == null || candidateMessages == null) {
+            return false;
+        }
+        JSONArray existingMessages = oldWrapper.optJSONArray("messages"); //$NON-NLS-1$
+        if (existingMessages == null || existingMessages.length() != candidateMessages.length()) {
+            return false;
+        }
+        for (int i = 0; i < existingMessages.length(); i++) {
+            JSONObject a = existingMessages.optJSONObject(i);
+            JSONObject b = candidateMessages.optJSONObject(i);
+            if (a == null || b == null) return false;
+            if (!a.optString("domId", "").equals(b.optString("domId", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || a.optInt("order", -1) != b.optInt("order", -2) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("timestamp", "").equals(b.optString("timestamp", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("direction", "").equals(b.optString("direction", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("type", "").equals(b.optString("type", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("text", "").equals(b.optString("text", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !a.optString("classes", "").equals(b.optString("classes", "")) //$NON-NLS-1$ //$NON-NLS-2$
+                    || !CaptureIntegrity.canonicalJson(a.optJSONArray("attachments")) //$NON-NLS-1$
+                            .equals(CaptureIntegrity.canonicalJson(b.optJSONArray("attachments")))) { //$NON-NLS-1$
+                return false;
+            }
+            String oldSender = a.optString("sender", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            String newSender = b.optString("sender", ""); //$NON-NLS-1$ //$NON-NLS-2$
+            if (!oldSender.equals(newSender) && !oldSender.equals(a.optString("text", ""))) { //$NON-NLS-1$ //$NON-NLS-2$
                 return false;
             }
         }
