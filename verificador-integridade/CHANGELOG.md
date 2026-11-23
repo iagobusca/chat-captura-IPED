@@ -4,6 +4,12 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.9] - 2026-11-23
+
+### Suporte à pasta `laudo/` e Auditoria Fail-Closed de `report-origem.pdf` (v2.8.11-beta)
+- Ignora a pasta auxiliar `laudo/` durante a descoberta de capturas (`isIgnoredCaptureDirectoryName`), preservando `rootHash` e total retrocompatibilidade com capturas locais e públicas.
+- Valida em modo fail-closed a cópia `laudo/report-origem.pdf` contra o `report.pdf` da pasta de origem durante a Auditoria de Origem (`runOriginAudit`), reprovando qualquer divergência de SHA-256 ou ausência do original. (`build-reproducible.ps1`; JAR `39F076C7...` / EXE `23386DC2...`).
+
 ## [1.5.8] - 2026-11-19
 
 ### Corte Automatizado (v2.8.10)

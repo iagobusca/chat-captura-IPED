@@ -94,6 +94,7 @@ public class ChatCapturePanel extends JPanel {
     private final JButton recapture = new JButton("Re-Extrair"); //$NON-NLS-1$
     private final JButton annotateSaved = new JButton("Anotar chat salvo..."); //$NON-NLS-1$
     private final JButton saveAnnotations = new JButton("Salvar Trecho-Notas"); //$NON-NLS-1$
+    private final JButton custodyReportBtn = new JButton(Messages.getString("ChatCapturePanel.CustodyReportButton")); //$NON-NLS-1$
     private final JCheckBox annotationsToggle = plainCheckBox(Messages.getString("ChatCapturePanel.IncludeAnnotations"), true); //$NON-NLS-1$
     private final JLabel status = plainLabel(Messages.getString("ChatCapturePanel.MarkMessages")); //$NON-NLS-1$
     private final JLabel frames = plainLabel("0"); //$NON-NLS-1$
@@ -213,11 +214,13 @@ public class ChatCapturePanel extends JPanel {
         countersPanel = counters;
 
         JPanel bottom = new JPanel(new BorderLayout(4, 4));
-        JPanel actions = new JPanel(new GridLayout(2, 2, 4, 4));
+        JPanel actions = new JPanel(new GridLayout(3, 2, 4, 4));
         actions.add(startStop);
         actions.add(recapture);
         actions.add(annotateSaved);
         actions.add(saveAnnotations);
+        custodyReportBtn.setToolTipText(Messages.getString("ChatCapturePanel.CustodyReportButtonTip")); //$NON-NLS-1$
+        actions.add(custodyReportBtn);
 
         recaptureBatchProgress.setStringPainted(true);
         recaptureStepProgress.setStringPainted(true);
@@ -277,6 +280,19 @@ public class ChatCapturePanel extends JPanel {
         });
         annotateSaved.addActionListener(e -> viewer.annotateSavedChat());
         saveAnnotations.addActionListener(e -> viewer.saveAnnotations());
+        custodyReportBtn.addActionListener(e -> {
+            File destination = resolveValidOutputFolder(outputFolder.getText());
+            if (destination == null) {
+                if (viewer != null) {
+                    viewer.reportMissingOutputFolder();
+                }
+                return;
+            }
+            if (viewer != null) {
+                saveOriginPreferences();
+                viewer.openCustodyReportDialogFromUi(this, destination, getOriginFolder(), getParentIpedFolder());
+            }
+        });
     }
 
     static String stripSurroundingQuotes(String folderText) {
@@ -578,6 +594,7 @@ public class ChatCapturePanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             startStop.setText(Messages.getString(running ? "ChatCapturePanel.Stop" : "ChatCapturePanel.Start")); //$NON-NLS-1$ //$NON-NLS-2$
             recapture.setEnabled(!running);
+            custodyReportBtn.setEnabled(!running);
             annotationsToggle.setEnabled(!running);
             chooseOriginFolder.setEnabled(!running);
             chooseParentIpedFolder.setEnabled(!running);
@@ -621,6 +638,7 @@ public class ChatCapturePanel extends JPanel {
         linksCell.setVisible(false);
         annotateSaved.setVisible(false);
         saveAnnotations.setVisible(false);
+        custodyReportBtn.setVisible(false);
         // sobram apenas Imagens e Arquivos
         countersPanel.setLayout(new GridLayout(1, 4, 4, 2));
         setAnnotationsEnabled(false);

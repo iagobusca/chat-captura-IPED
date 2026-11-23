@@ -1,6 +1,6 @@
-# Guia de Uso — Chat Captura IPED (v2.8.10) e Verificador de Integridade (v1.5.8)
+# Guia de Uso — Chat Captura IPED (v2.8.11-beta) e Verificador de Integridade (v1.5.9)
 
-Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.5.8**.
+Este guia explica passo a passo como instalar, configurar, capturar trechos de conversas do WhatsApp no **IPED 4.3.1** no formato `html-message-v1`, preencher os **Dados do Laudo e Cadeia de Custódia** (com leitura/complementação do `report.pdf`, geração nativa em PDFBox e log encadeado), aplicar censura visual e anotações, re-extrair/migrar capturas antigas e auditar os arquivos gerados com o **Verificador de Integridade 1.5.9**.
 
 > **Documentos técnicos complementares:** consulte [README.md](README.md), [doc.md](doc.md), [CHECKSUMS.md](CHECKSUMS.md) e [verificador-integridade/README.md](verificador-integridade/README.md).
 >
@@ -11,7 +11,7 @@ Este guia explica passo a passo como instalar, configurar, capturar trechos de c
 ## 1. Pré-requisitos e Instalação
 
 - **IPED 4.3.1** com **Java 11** (o plugin `iped-viewers-impl-4.3.1.jar` substitui o viewer padrão mantendo o tema do IPED).
-- **Verificador de Integridade (`1.5.8`)**:
+- **Verificador de Integridade (`1.5.9`)**:
   - `integridade-verifier.exe` (Windows x64 autocontido, não exige instalação extra); ou
   - `integridade-verifier.jar` (requer **Java 8 / 1.8 ou superior**).
 
@@ -158,21 +158,33 @@ Use o modo **Integridade Público** quando receber uma pasta de capturas de terc
    - **2. Histórico de capturas completo (historico-capturas.txt):** cole o texto completo ou o formato público anonimizado (`CAPTURA|*-YYYYMMDD-HHMMSS`) e clique em **Comparar histórico completo**.
 4. Quando o conteúdo confere integralmente, uma mensagem verde é exibida (*"CONFERE: o texto informado corresponde integralmente ao historico-capturas.txt completo calculado."*). Clique em **Continuar para o resumo** para visualizar e exportar o relatório final.
 
-### 4.4. Auditoria de Origem Avilla / Caso IPED (`Verificador 1.5.8`)
+### 4.4. Auditoria de Origem Avilla / Caso IPED (`Verificador 1.5.9`)
 
-Use o modo **Auditoria de origem...** (disponível na tela inicial do **Verificador `1.5.8`** ao lado de **Integridade Local** e **Integridade Público**) para confrontar as capturas extraídas diretamente com a extração original Avilla (`Hashs.txt` UTF-16LE, `Hashs.avilla`, `report.pdf`, `msgstore.db`) e, opcionalmente, com o caso IPED pai (`Lista de Arquivos.csv` e `Exportados`):
+Use o modo **Auditoria de origem...** (disponível na tela inicial do **Verificador `1.5.9`** ao lado de **Integridade Local** e **Integridade Público**) para confrontar as capturas extraídas diretamente com a extração original Avilla (`Hashs.txt` UTF-16LE, `Hashs.avilla`, `report.pdf`, `msgstore.db`) e, opcionalmente, com o caso IPED pai (`Lista de Arquivos.csv` e `Exportados`):
 
 > **Importante — Cadeia de confiança:** Antes de executar o `integridade-verifier.exe` (ou `.jar`) presente na pasta de captura, o auditor **DEVE conferir o hash SHA-256 do binário do verificador** contra o valor oficial publicado no GitHub / [CHECKSUMS.md](CHECKSUMS.md). Como o driver SQLite oficial (`sqlite-jdbc-3.41.2.2.jar`) está embutido diretamente no binário verificado e o verificador jamais carrega JARs externos de pastas de evidência, a verificação do hash do verificador autentica toda a execução por transitividade.
 
-![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.8](imagens_doc/edit/Auditoria_origem.gif)
+![Demonstração da Auditoria de Origem no Verificador de Integridade 1.5.9](imagens_doc/edit/Auditoria_origem.gif)
 
 1. Na tela inicial do `integridade-verifier.exe` (ou `.jar`), clique em **Auditoria de origem...**.
 2. Informe a **Pasta de origem** (contendo os arquivos Avilla obrigatórios) e, se desejar correlação completa com o caso original, a **Pasta do caso (opcional)**.
 3. Clique em **Validar Auditoria** para visualizar a pré-conferência dos arquivos encontrados (**`VÁLIDA`** / inválidos) antes de iniciar.
 4. Estando tudo certo, clique em **Começar Auditoria** e acompanhe o progresso por etapa (`1/9..9/9`) e tempo decorrido na janela de carregamento.
-5. Ao finalizar com **`VÁLIDO — Tudo íntegro e válido: CONFERE`**, revise/copie o conteúdo diretamente na janela ou clique em **Exportar Auditoria** para salvar **`Auditoria_relatorio.htm`** offline (além do registro em `integridade/auditoria-origem.txt`).
+5. Ao finalizar com **`VÁLIDO — Tudo íntegro e válido: CONFERE`**, revise/copie o conteúdo diretamente na janela ou clique em **Exportar Auditoria** para salvar **`Auditoria_relatorio.htm`** offline (além do registro em `integridade/auditoria-origem.txt`). Quando presente, `laudo/report-origem.pdf` também é verificado em modo fail-closed contra o `report.pdf` de origem.
 
-### 4.5. Uso em linha de comando (CLI)
+### 4.5. Laudo Técnico, Cadeia de Custódia e Log Encadeado (`2.8.11-beta`)
+
+Ao clicar em **Start** ou **Re-Extrair** (logo após o aviso do verificador), o plugin abre a janela **Dados do Laudo e Cadeia de Custódia** pré-preenchida com os dados salvos em `laudo/custodia-caso.json` e com leitura automática do `report.pdf` de origem (quando presente). Os dados também podem ser editados a qualquer momento pelo botão **"Dados do Laudo..."** no painel.
+
+- **Campos registrados:** identificação do dispositivo (fabricante, modelo, IMEI, nº de série, SO, versão do WhatsApp, `Collection Code`), ferramenta e parâmetros do IPED, hashes SHA-256 originais e exportados, passo a passo cronológico com data/hora local + UTC e cadeia de custódia (**Quem coletou**, **Quem analisou**, **Quando**, **Onde** e **Como foi armazenado** com seletor **`[Pasta, Mídia lacrada, Custom]`**).
+- **Saídas geradas na pasta `laudo/`:**
+  - `laudo/report-plugin.pdf` — relatório técnico gerado diretamente via Apache PDFBox 2.0.27 (complementando o `report.pdf` de origem quando existente, ou autônomo quando ausente);
+  - `laudo/report-origem.pdf` — cópia bit-a-bit verificada por SHA-256 do `report.pdf` original (quando presente);
+  - `laudo/report-completo-unificado.pdf` — PDF unificado opcional (`report-origem.pdf` + `report-plugin.pdf`);
+  - `laudo/laudo-tecnico.html` e `laudo/laudo-hashes.txt` — laudo offline imprimível e manifesto SHA-256;
+  - `laudo/registro-capturas.jsonl` e `laudo/registro-capturas.log` — log cronológico encadeado por SHA-256 registrando `START`, `RE-EXTRAIR` (`INALTERADO_OK` com contagens `msg/img/audio/video/doc`) e detecção automática de `ADICIONADO captura` / `DELETADO captura`.
+
+### 4.6. Uso em linha de comando (CLI)
 
 Para automação ou conferência sem interface gráfica:
 

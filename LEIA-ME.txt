@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.8.10 - Verificador de Integridade 1.5.8
+Pacote Chat Captura IPED 2.8.11-beta - Verificador de Integridade 1.5.9
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,22 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.5.8 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.5.9 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.8.10 / Verificador 1.5.8 — estavel):
+Novidades desta versão (2.8.11-beta / Verificador 1.5.9 — beta):
+- Plugin 2.8.11-beta (Laudo Técnico, Cadeia de Custódia, PDFBox e Log Encadeado):
+  * Nova janela modal "Dados do Laudo e Cadeia de Custódia" exibida após o aviso do verificador ao clicar em Start ou Re-Extrair (pré-preenchida com laudo/custodia-caso.json e leitura automática do report.pdf de origem), além do botão dedicado "Dados do Laudo..." no painel;
+  * Campos completos do laudo pericial: identificação do dispositivo (fabricante, modelo, IMEI, número de série, versão do SO, versão do WhatsApp, Collection Code), ferramenta/parâmetros do IPED, hashes SHA-256 dos arquivos originais e exportados, passo a passo cronológico com data/hora local + UTC e cadeia de custódia (quem coletou, quem analisou, quando, onde e armazenamento com seletor [Pasta, Mídia lacrada, Custom]);
+  * Cópia bit-a-bit verificada (SHA-256) do report.pdf de origem para laudo/report-origem.pdf quando presente, absorção dos dados já existentes e complementação automática no relatório do plugin sem exigir report.pdf quando ausente;
+  * Geração nativa de PDF via Apache PDFBox 2.0.27 (laudo/report-plugin.pdf e opção de PDF unificado laudo/report-completo-unificado.pdf), laudo HTML offline com CSP restritiva (laudo/laudo-tecnico.html) e manifesto de hashes (laudo/laudo-hashes.txt);
+  * Log encadeado anti-adulteração (laudo/registro-capturas.jsonl + laudo/registro-capturas.log) registrando cada Start/Re-Extrair com contagem por categoria de mídia (msg, img, audio, video, doc), status INALTERADO_OK quando todos os arquivos permanecem íntegros e detecção automática de ADICIONADO captura / DELETADO captura;
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.5.9.
+- Verificador 1.5.9:
+  * Ignora a pasta auxiliar laudo/ durante a descoberta de capturas (isIgnoredCaptureDirectoryName) sem afetar o rootHash das capturas;
+  * Valida em modo fail-closed a cópia laudo/report-origem.pdf contra o report.pdf original durante a Auditoria de Origem.
+
+Novidades anteriores (2.8.10 / Verificador 1.5.8 — estavel):
 - Verificador 1.5.8:
   * Compilação e empacotamento determinísticos via build-reproducible.ps1 (Temurin JDK 21 --release 8 para JAR, OpenJFX 21 + .NET 10.0.15 determinístico com payload.zip reprodutível no EXE win-x64).
   * Substitui regexes de varredura HTML por scanner léxico determinístico por máquina de estados (scanHtmlElements / parseHtmlTagStrict), bloqueando bypasses com aspas/apóstrofos isolados em atributos sem aspas;
@@ -117,9 +129,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.5.8:
-JAR 07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E
-EXE 7E26F0ABFE20CEA7277B76E5781DE262A1525DA59EF17C211FC062398D118CC0
+SHA-256 do Verificador 1.5.9:
+JAR 39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A
+EXE 23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C
 
-SHA-256 do plugin 2.8.10:
-JAR 659182076A67B1F8FA7B00D3317E9E0B1141FB7EE3E253144D63F3EAD387AD60
+SHA-256 do plugin 2.8.11-beta:
+JAR D65910C084D19DEE0C3413623A49373BEA18E62B76B54A2E587067694689C17D

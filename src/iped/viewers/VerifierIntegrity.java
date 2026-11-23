@@ -18,8 +18,8 @@ public final class VerifierIntegrity {
     private static final String JAR_NAME = "integridade-verifier.jar";
     private static final String EXE_NAME = "integridade-verifier.exe";
 
-    private static final Set<String> VALID_JAR_HASHES = Set.of("07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E");
-    private static final Set<String> VALID_EXE_HASHES = Set.of("7E26F0ABFE20CEA7277B76E5781DE262A1525DA59EF17C211FC062398D118CC0");
+    private static final Set<String> VALID_JAR_HASHES = Set.of("39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A");
+    private static final Set<String> VALID_EXE_HASHES = Set.of("23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C");
     private static volatile boolean alertShown = false;
 
     /** Garante o verificador (jar/exe) atualizado na pasta de destino: adiciona se ausente ou substitui se desatualizado. */
@@ -337,7 +337,7 @@ public final class VerifierIntegrity {
         sb.append("</body></html>");
         final java.awt.Component p = parent;
         final String html = sb.toString();
-        SwingUtilities.invokeLater(() -> {
+        Runnable show = () -> {
             javax.swing.JTextPane pane = new javax.swing.JTextPane();
             pane.setContentType("text/html");
             pane.setText(html);
@@ -355,6 +355,11 @@ public final class VerifierIntegrity {
             });
             JOptionPane.showMessageDialog(p, pane, "Informacao sobre o verificador de integridade",
                     JOptionPane.INFORMATION_MESSAGE);
-        });
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            show.run();
+        } else {
+            SwingUtilities.invokeLater(show);
+        }
     }
 }

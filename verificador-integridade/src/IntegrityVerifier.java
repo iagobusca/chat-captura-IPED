@@ -38,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.8";
+    private static final String VERIFIER_VERSION = "1.5.9";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -1336,6 +1336,7 @@ public final class IntegrityVerifier {
         if (name == null || name.isEmpty()) return true;
         return name.startsWith("_backup_chat_capture_") || name.startsWith("_backup_integridade_")
                 || name.equals("vinculado") || name.equals(".iped-reextract-trash")
+                || name.equalsIgnoreCase("laudo")
                 || name.startsWith(".__capture_staging_") || name.contains(".__old_")
                 || name.contains(".__reextract_tmp_") || name.contains(".__reextract_failed_")
                 || name.contains(".__migration_html_backup");
@@ -3150,6 +3151,22 @@ public final class IntegrityVerifier {
         rpt.append("N0_HASHS_TXT_ENCODING|").append(hashsIdx.encoding).append("|ENTRADAS_SHA256|").append(hashsIdx.count).append("\n");
         rpt.append("N0_HASHS_AVILLA_SHA256|").append(avillaSha.isEmpty() ? "ausente" : avillaSha).append("\n");
         rpt.append("N0_REPORT_PDF_SHA256|").append(pdfSha.isEmpty() ? "ausente" : pdfSha).append("\n");
+        boolean laudoOriginPdfDiverged = false;
+        Path laudoCopiedPdf = resolve(capturesRoot, "laudo/report-origem.pdf");
+        if (laudoCopiedPdf != null && !isLinkOrReparse(laudoCopiedPdf)
+                && Files.isRegularFile(laudoCopiedPdf, LinkOption.NOFOLLOW_LINKS)) {
+            String copiedSha = hash(laudoCopiedPdf);
+            if (!pdfSha.isEmpty()) {
+                boolean pdfCopyOk = copiedSha.equalsIgnoreCase(pdfSha);
+                rpt.append("LAUDO_REPORT_ORIGEM_PDF|").append(pdfCopyOk ? "CONFERE" : "DIVERGE_ORIGEM_ERRADA")
+                   .append("|SHA256=").append(copiedSha).append("\n");
+                if (!pdfCopyOk) {
+                    laudoOriginPdfDiverged = true;
+                }
+            } else {
+                rpt.append("LAUDO_REPORT_ORIGEM_PDF|PRESENTE_SEM_PDF_NA_ORIGEM|SHA256=").append(copiedSha).append("\n");
+            }
+        }
         rpt.append("N1_MSGSTORE_SHA256|").append(dbPre == null ? "ausente" : dbPre.sha256).append("|NO_HASHS_TXT|").append(dbInHashs).append("|BACKUPS_CRYPT_NO_HASHS|").append(hashsIdx.cryptBackups.size()).append("\n");
         if (parentIpedDir != null) {
             rpt.append("N1_CASO_IPED_PAI|HTML_MATCH|").append(matchedParentHtmls.size()).append('/').append(captureHtmlSha256s.size())
@@ -3164,7 +3181,7 @@ public final class IntegrityVerifier {
             rpt.append("SCAN_ORIGEM_TRUNCADO|true|LIMITE_ARQUIVOS=").append(MAX_ORIGIN_WALK_FILES).append('\n');
         }
 
-        boolean allPassed = !hashsIdx.fileSha256.isEmpty();
+        boolean allPassed = !hashsIdx.fileSha256.isEmpty() && !laudoOriginPdfDiverged;
         int totalCust = 0, totalEmb = 0, totalOrigNoHash = 0, totalMissing = 0, capIdx = 0;
         int totalN3Diverged = 0, totalBindingDiverged = 0;
 

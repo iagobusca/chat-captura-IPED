@@ -237,7 +237,106 @@ final class OriginCustodyBinder {
         return null;
     }
 
-    private static final class CustodyReportInfo {
+    static final class OriginReportPreview {
+        boolean reportPdfPresent;
+        Path reportPdfPath;
+        String originFolderName = "";
+        String reportPdfSha256 = "";
+        String reportPdfMd5 = "";
+        String reportPdfParseStatus = "ausente";
+        String collectionCode = "";
+        String extractionTool = "";
+        String startExtraction = "";
+        String endExtraction = "";
+        String manufacturer = "";
+        String model = "";
+        String imei = "";
+        String serialNumber = "";
+        String osVersion = "";
+        String whatsappVersion = "";
+        String examinerOrCollector = "";
+        String declaredHashsTxtSha256 = "";
+        String declaredHashsAvillaSha256 = "";
+        String hashsTxtSha256 = "";
+        String hashsAvillaSha256 = "";
+        String msgstoreRelPath = "";
+        String msgstoreSha256 = "";
+        String waDbSha256 = "";
+        String keySha256 = "";
+    }
+
+    static OriginReportPreview readDeviceAndCustodyPreview(Path originRoot) throws IOException {
+        OriginReportPreview preview = new OriginReportPreview();
+        if (originRoot == null) {
+            return preview;
+        }
+        Path normOrigin = validateSafeDirectory(originRoot, "pasta de origem custodiada");
+        preview.originFolderName = normOrigin.getFileName() == null ? "" : normOrigin.getFileName().toString();
+        Path pdfPath = findCaseInsensitiveFile(normOrigin, "report.pdf");
+        if (pdfPath != null) {
+            preview.reportPdfPath = pdfPath;
+            CustodyReportInfo pdfInfo = readCustodyPdf(pdfPath);
+            preview.reportPdfPresent = pdfInfo.present;
+            preview.reportPdfSha256 = pdfInfo.sha256;
+            preview.reportPdfMd5 = pdfInfo.md5;
+            preview.reportPdfParseStatus = pdfInfo.parseStatus;
+            preview.collectionCode = pdfInfo.collectionCode.isEmpty() ? inferCollectionCodeFromRoot(normOrigin) : pdfInfo.collectionCode;
+            preview.extractionTool = pdfInfo.extractionTool;
+            preview.startExtraction = pdfInfo.startExtraction;
+            preview.endExtraction = pdfInfo.endExtraction;
+            preview.manufacturer = pdfInfo.manufacturer;
+            preview.model = pdfInfo.model;
+            preview.imei = pdfInfo.imei;
+            preview.serialNumber = pdfInfo.serialNumber;
+            preview.osVersion = pdfInfo.osVersion;
+            preview.whatsappVersion = pdfInfo.whatsappVersion;
+            preview.examinerOrCollector = pdfInfo.examinerOrCollector;
+            preview.declaredHashsTxtSha256 = pdfInfo.declaredHashsTxtSha256;
+            preview.declaredHashsAvillaSha256 = pdfInfo.declaredHashsAvillaSha256;
+        } else {
+            preview.collectionCode = inferCollectionCodeFromRoot(normOrigin);
+        }
+        Path hashsTxt = findCaseInsensitiveFile(normOrigin, "Hashs.txt");
+        if (hashsTxt != null && CaptureIntegrity.safeRegularFileSize(hashsTxt) <= MAX_HASHS_TXT_BYTES) {
+            preview.hashsTxtSha256 = CaptureIntegrity.sha256(hashsTxt);
+        }
+        Path hashsAvilla = findCaseInsensitiveFile(normOrigin, "Hashs.avilla");
+        if (hashsAvilla != null && CaptureIntegrity.safeRegularFileSize(hashsAvilla) <= MAX_PDF_BYTES) {
+            preview.hashsAvillaSha256 = CaptureIntegrity.sha256(hashsAvilla);
+        }
+        String[] preferred = new String[] {
+            "sdcard/Android/com.whatsapp.tar/data/user/0/com.whatsapp/databases/msgstore.db",
+            "sdcard/com.whatsapp/databases/msgstore.db",
+            "databases/msgstore.db",
+            "msgstore.db"
+        };
+        for (String rel : preferred) {
+            Path p = normOrigin.resolve(rel.replace('/', File.separatorChar));
+            if (Files.exists(p, LinkOption.NOFOLLOW_LINKS) && !CaptureIntegrity.isLinkOrReparse(p)
+                    && Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) {
+                preview.msgstoreRelPath = rel;
+                preview.msgstoreSha256 = CaptureIntegrity.sha256(p);
+                Path dbDir = p.getParent();
+                if (dbDir != null) {
+                    Path wa = dbDir.resolve("wa.db");
+                    if (Files.isRegularFile(wa, LinkOption.NOFOLLOW_LINKS) && !CaptureIntegrity.isLinkOrReparse(wa)) {
+                        preview.waDbSha256 = CaptureIntegrity.sha256(wa);
+                    }
+                    Path appRoot = dbDir.getParent();
+                    if (appRoot != null) {
+                        Path key = appRoot.resolve("files").resolve("key");
+                        if (Files.isRegularFile(key, LinkOption.NOFOLLOW_LINKS) && !CaptureIntegrity.isLinkOrReparse(key)) {
+                            preview.keySha256 = CaptureIntegrity.sha256(key);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        return preview;
+    }
+
+    static final class CustodyReportInfo {
         boolean present;
         String sha256 = "";
         String md5 = "";
@@ -245,6 +344,14 @@ final class OriginCustodyBinder {
         String collectionCode = "";
         String startExtraction = "";
         String endExtraction = "";
+        String manufacturer = "";
+        String model = "";
+        String imei = "";
+        String serialNumber = "";
+        String osVersion = "";
+        String whatsappVersion = "";
+        String extractionTool = "";
+        String examinerOrCollector = "";
         String declaredHashsTxtMd5 = "";
         String declaredHashsTxtSha256 = "";
         String declaredHashsAvillaMd5 = "";
@@ -348,17 +455,22 @@ final class OriginCustodyBinder {
             return;
         }
         String[] lines = text.split("\\r?\\n");
+        Set<String> imeis = new LinkedHashSet<>();
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
             if (line.isEmpty()) {
                 continue;
             }
             String lower = line.toLowerCase(Locale.ROOT);
+            String ascii = stripDiacriticsLower(line);
+            if (out.extractionTool.isEmpty() && ascii.contains("avilla forensics")) {
+                out.extractionTool = line.length() <= 120 ? line : "Avilla Forensics";
+            }
             if (lower.startsWith("collection code:") && out.collectionCode.isEmpty()) {
                 out.collectionCode = afterColonOrNext(lines, i);
-            } else if (lower.startsWith("start of extraction:") && out.startExtraction.isEmpty()) {
+            } else if ((lower.startsWith("start of extraction:") || ascii.startsWith("inicio da extracao:")) && out.startExtraction.isEmpty()) {
                 out.startExtraction = extractDateOrValue(afterColonOrNext(lines, i));
-            } else if (lower.startsWith("end of extraction:") && out.endExtraction.isEmpty()) {
+            } else if ((lower.startsWith("end of extraction:") || ascii.startsWith("fim da extracao:")) && out.endExtraction.isEmpty()) {
                 out.endExtraction = extractDateOrValue(afterColonOrNext(lines, i));
             } else if (lower.startsWith("hash md5 hashs.txt:") && out.declaredHashsTxtMd5.isEmpty()) {
                 out.declaredHashsTxtMd5 = extractHexToken(lines, i, 32);
@@ -368,8 +480,55 @@ final class OriginCustodyBinder {
                 out.declaredHashsAvillaMd5 = extractHexToken(lines, i, 32);
             } else if (lower.startsWith("hash sha256 hashs.avilla:") && out.declaredHashsAvillaSha256.isEmpty()) {
                 out.declaredHashsAvillaSha256 = extractHexToken(lines, i, 64);
+            } else if (startsWithAny(ascii, "manufacturer:", "brand:", "fabricante:", "marca:") && out.manufacturer.isEmpty()) {
+                out.manufacturer = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "device model:", "product model:", "model:", "modelo:", "modelo do dispositivo:") && out.model.isEmpty()) {
+                out.model = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "imei:", "imei 1:", "imei1:", "imei 2:", "imei2:")) {
+                String val = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                if (!val.isEmpty()) {
+                    imeis.add(val);
+                }
+            } else if (startsWithAny(ascii, "serial number:", "device serial:", "serial:", "numero de serie:", "n de serie:", "no de serie:", "ro.serialno:") && out.serialNumber.isEmpty()) {
+                out.serialNumber = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "android version:", "os version:", "system version:", "versao do so:", "versao do android:", "so:", "sistema operacional:") && out.osVersion.isEmpty()) {
+                out.osVersion = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "whatsapp version:", "versao do whatsapp:", "com.whatsapp version:", "whatsapp:") && out.whatsappVersion.isEmpty()) {
+                out.whatsappVersion = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "extraction tool:", "tool:", "ferramenta:", "software:") && out.extractionTool.isEmpty()) {
+                out.extractionTool = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "examiner:", "collector:", "perito:", "coletado por:", "responsavel:") && out.examinerOrCollector.isEmpty()) {
+                out.examinerOrCollector = cleanExtractedFieldValue(afterColonOrNext(lines, i));
             }
         }
+        if (out.imei.isEmpty() && !imeis.isEmpty()) {
+            out.imei = String.join(" / ", imeis);
+        }
+    }
+
+    private static boolean startsWithAny(String value, String... prefixes) {
+        for (String p : prefixes) {
+            if (value.startsWith(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String stripDiacriticsLower(String input) {
+        String norm = Normalizer.normalize(input == null ? "" : input, Normalizer.Form.NFD);
+        return norm.replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static String cleanExtractedFieldValue(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty() || "-".equals(trimmed) || "n/a".equalsIgnoreCase(trimmed) || "none".equalsIgnoreCase(trimmed)) {
+            return "";
+        }
+        return trimmed.length() <= 256 ? trimmed : trimmed.substring(0, 256);
     }
 
     private static String afterColonOrNext(String[] lines, int index) {

@@ -6,6 +6,16 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.11-beta] - 2026-11-23
+
+### Laudo Técnico, Cadeia de Custódia, PDFBox e Log Encadeado (Beta / `beta`)
+- Nova janela modal `CustodyReportDialog` exibida após o aviso do verificador ao acionar **Start** ou **Re-Extrair** (já pré-preenchida com `laudo/custodia-caso.json` e prévia automática do `report.pdf` de origem), além do botão dedicado **"Dados do Laudo..."** em `ChatCapturePanel`.
+- Cobertura completa dos 7 requisitos do laudo pericial: identificação do dispositivo (fabricante, modelo, IMEI, nº de série, SO, WhatsApp, `Collection Code`), ferramenta e parâmetros do IPED, hashes SHA-256 dos arquivos originais e exportados, passo a passo cronológico com timestamp local + UTC e cadeia de custódia (`Quem coletou`, `Quem analisou`, `Quando`, `Onde` e seletor `Como foi armazenado` `[Pasta, Mídia lacrada, Custom]`).
+- Leitura e complementação inteligente do `report.pdf` original via Apache PDFBox 2.0.27: quando presente, copia bit-a-bit com verificação SHA-256 para `laudo/report-origem.pdf`, absorve metadados existentes e complementa o restante no relatório do plugin; quando ausente, gera apenas o relatório completo do plugin.
+- Geração nativa de PDF (`laudo/report-plugin.pdf` e opcional `laudo/report-completo-unificado.pdf` via `PDFMergerUtility`), laudo HTML offline com CSP estrita (`laudo/laudo-tecnico.html`) e manifesto `laudo/laudo-hashes.txt`, com links integrados em `index.html` e `relatorio.htm`.
+- Log encadeado anti-adulteração (`laudo/registro-capturas.jsonl` + `laudo/registro-capturas.log`) com `previousRecordHash` -> `recordHash`, contagem categorizada (`msg`, `img`, `audio`, `video`, `doc`, `outros`), registro de `INALTERADO_OK` no Re-Extrair e detecção automática de `ADICIONADO captura` / `DELETADO captura`.
+- Verificador **1.5.9** (`13.052.705` bytes JAR `39F076C7...` | `90.580.058` bytes EXE `23386DC2...`) e Plugin **2.8.11-beta** (`1.636.520` bytes `D65910C0...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.11-beta-verificador-1.5.9.zip` (`120.359.149` bytes `4300D7F7...`).
+
 ## [2.8.10] - 2026-11-19
 
 ### Corte Automatizado (Estável / `main`)

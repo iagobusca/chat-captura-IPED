@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.10"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.11-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -186,6 +186,8 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private volatile int sensitiveBlurPercent = 90;
     private volatile Path originAuditFolder;
     private volatile Path originParentIpedFolder;
+    private volatile CustodyCaseRecord activeCustodyRecord;
+    private volatile String lastKnownRootHash = ""; //$NON-NLS-1$
     private volatile SensitiveImageMatcher sensitiveImageMatcher;
 private volatile RecaptureJob activeRecaptureJob;
     private final Set<String> sensitiveBlurHashes = new HashSet<>();
@@ -1365,6 +1367,13 @@ private void clearChatCaptureMarks() {
             } catch (Exception e) {
                 LOGGER.warn("Unable to show verifier integrity alert", e); //$NON-NLS-1$
             }
+            if (!linkedCaptureViewer) {
+                CustodyCaseRecord confirmedRecord = confirmCustodyBeforeAction(alertParent, outputPath, "Start"); //$NON-NLS-1$
+                if (confirmedRecord == null) {
+                    chatCapturePanel.setStatus("ChatCapturePanel.StartCancelled"); //$NON-NLS-1$
+                    return;
+                }
+            }
         }
         annotationStore.bindOutputRoot(outputFolder.toPath());
         // Recurso opcional: so entra no output se o toggle estiver ligado e houver
@@ -1420,6 +1429,147 @@ private void clearChatCaptureMarks() {
             return false;
         }
         return confirmed[0];
+    }
+
+    private CustodyCaseRecord loadOrPrepareCustodyRecord(Path outputRoot) {
+        CustodyCaseRecord record;
+        try {
+            record = CustodyCaseRecord.loadOrCreate(outputRoot);
+        } catch (Exception e) {
+            LOGGER.warn("Unable to load existing custody record at {}", outputRoot, e); //$NON-NLS-1$
+            record = new CustodyCaseRecord();
+        }
+        record.pluginVersion = CHAT_CAPTURE_PLUGIN_VERSION;
+        record.ipedVersion = "4.3.1"; //$NON-NLS-1$
+        if (this.originParentIpedFolder != null && this.originParentIpedFolder.getFileName() != null) {
+            record.parentIpedFolderName = this.originParentIpedFolder.getFileName().toString();
+        }
+        if (this.originAuditFolder != null) {
+            try {
+                OriginCustodyBinder.OriginReportPreview preview = OriginCustodyBinder.readDeviceAndCustodyPreview(this.originAuditFolder);
+                record.mergeFromOriginPreview(preview, false);
+            } catch (Exception e) {
+                LOGGER.warn("Unable to read origin report.pdf preview from {}", this.originAuditFolder, e); //$NON-NLS-1$
+            }
+        }
+        return record;
+    }
+
+    private CustodyCaseRecord confirmCustodyBeforeAction(java.awt.Component alertParent, Path outputRoot,
+            String operationLabel) {
+        final CustodyCaseRecord record = loadOrPrepareCustodyRecord(outputRoot);
+        final boolean[] confirmed = new boolean[1];
+        Runnable show = () -> {
+            java.awt.Window owner = alertParent instanceof java.awt.Window
+                    ? (java.awt.Window) alertParent
+                    : SwingUtilities.getWindowAncestor(alertParent != null ? alertParent : chatCapturePanel);
+            CustodyReportDialog dialog = new CustodyReportDialog(owner, record, this.originAuditFolder,
+                    operationLabel, false);
+            dialog.setVisible(true);
+            confirmed[0] = dialog.isConfirmed();
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            show.run();
+        } else {
+            try {
+                SwingUtilities.invokeAndWait(show);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (Exception e) {
+                LOGGER.warn("Unable to show custody report dialog", e); //$NON-NLS-1$
+                return null;
+            }
+        }
+        if (!confirmed[0]) {
+            return null;
+        }
+        record.addStep(operationLabel, "", "Cadastro/conferencia de custodia confirmada", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                "Coletado por=" + nonBlank(record.collectedBy, "-") //$NON-NLS-1$ //$NON-NLS-2$
+                        + " | Analisado por=" + nonBlank(record.analyzedBy, "-") //$NON-NLS-1$ //$NON-NLS-2$
+                        + " | Armazenamento=" + record.formattedStorageDescription()); //$NON-NLS-1$
+        try {
+            record.save(outputRoot);
+        } catch (IOException e) {
+            LOGGER.warn("Unable to save custody record before {}", operationLabel, e); //$NON-NLS-1$
+        }
+        this.activeCustodyRecord = record;
+        return record;
+    }
+
+    void openCustodyReportDialogFromUi(java.awt.Component alertParent, File outputFolder,
+            File originDir, File parentIpedDir) {
+        if (captureRunning) {
+            return;
+        }
+        final Path outputPath;
+        try {
+            outputPath = toValidatedDirectoryPath(outputFolder, "Pasta destino", false); //$NON-NLS-1$
+            if (outputPath == null) {
+                reportMissingOutputFolder();
+                return;
+            }
+            setOriginAuditSourcesValidated(originDir, parentIpedDir);
+        } catch (IOException e) {
+            showCaptureUiError(alertParent, "Dados do Laudo", e.getMessage()); //$NON-NLS-1$
+            return;
+        }
+        CustodyCaseRecord record = loadOrPrepareCustodyRecord(outputPath);
+        java.awt.Window owner = alertParent instanceof java.awt.Window
+                ? (java.awt.Window) alertParent
+                : SwingUtilities.getWindowAncestor(alertParent != null ? alertParent : chatCapturePanel);
+        CustodyReportDialog dialog = new CustodyReportDialog(owner, record, this.originAuditFolder, "Laudo", true); //$NON-NLS-1$
+        dialog.setVisible(true);
+        if (!dialog.isConfirmed()) {
+            return;
+        }
+        record.addStep("LAUDO", "", "Dados do laudo atualizados manualmente", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                "Analisado por=" + nonBlank(record.analyzedBy, "-") //$NON-NLS-1$ //$NON-NLS-2$
+                        + " | Armazenamento=" + record.formattedStorageDescription()); //$NON-NLS-1$
+        this.activeCustodyRecord = record;
+        Thread genThread = new Thread(() -> {
+            try {
+                CaptureAuditLogManager.reconcileKnownCaptures(outputPath, record, "LAUDO"); //$NON-NLS-1$
+                safeRebuildCaptureRootIndex(outputPath);
+                TechnicalReportGenerator.GenerationResult res = TechnicalReportGenerator.generateAll(
+                        outputPath, record, this.originAuditFolder, this.lastKnownRootHash);
+                safeRebuildCaptureRootIndex(outputPath);
+                String msg = "Laudo tecnico atualizado com sucesso em:\n" //$NON-NLS-1$
+                        + "- HTML: " + res.htmlReport + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                        + (res.pdfGenerated ? "- PDF: " + res.pluginPdf + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                                : "- PDF indisponivel: " + res.pdfError + "\n") //$NON-NLS-1$ //$NON-NLS-2$
+                        + (res.originPdfCopied ? "- report.pdf original copiado (SHA-256 verificado): " + res.originPdfCopy + "\n" : "") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        + (res.unifiedPdf != null ? "- PDF unificado: " + res.unifiedPdf + "\n" : ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        alertParent != null ? alertParent : chatCapturePanel,
+                        ChatCapturePanel.plainMessageComponent(msg),
+                        "Dados do Laudo", JOptionPane.INFORMATION_MESSAGE)); //$NON-NLS-1$
+            } catch (Exception ex) {
+                LOGGER.warn("Unable to generate technical report", ex); //$NON-NLS-1$
+                showCaptureUiError(alertParent, "Dados do Laudo", ex.getMessage() == null ? ex.toString() : ex.getMessage()); //$NON-NLS-1$
+            }
+        }, "IPED-chat-laudo-gen"); //$NON-NLS-1$
+        genThread.setDaemon(true);
+        genThread.start();
+    }
+
+    private void finalizeLaudoAfterStart(Path outputRoot, Path captureDir) {
+        if (linkedCaptureViewer || outputRoot == null || captureDir == null) {
+            return;
+        }
+        try {
+            CustodyCaseRecord record = this.activeCustodyRecord;
+            if (record == null) {
+                record = loadOrPrepareCustodyRecord(outputRoot);
+            }
+            CaptureAuditLogManager.recordStartCapture(outputRoot, record, captureDir);
+            safeRebuildCaptureRootIndex(outputRoot);
+            TechnicalReportGenerator.generateAll(outputRoot, record, this.originAuditFolder, this.lastKnownRootHash);
+            this.activeCustodyRecord = record;
+            safeRebuildCaptureRootIndex(outputRoot);
+        } catch (Exception e) {
+            LOGGER.warn("Unable to update technical report after capture at {}", outputRoot, e); //$NON-NLS-1$
+        }
     }
 
     private void startCaptureBody(File outputFolder, String customFolderName, File sensitiveImagesFolder,
@@ -1505,6 +1655,11 @@ private void clearChatCaptureMarks() {
                     try {
                         if (alertParent != null) {
                             VerifierIntegrity.showAlertIfNeeded(alertParent, outputPath);
+                            CustodyCaseRecord confirmedRecord = confirmCustodyBeforeAction(alertParent, outputPath, "Re-Extrair"); //$NON-NLS-1$
+                            if (confirmedRecord == null) {
+                                chatCapturePanel.setStatus("ChatCapturePanel.StartCancelled"); //$NON-NLS-1$
+                                return;
+                            }
                         }
                         showRecaptureDialog(outputPath.toFile(),
                                 validatedSensitive == null ? null : validatedSensitive.toFile(),
@@ -2057,6 +2212,7 @@ private void clearChatCaptureMarks() {
                     if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Busca cancelada");
                     Path path = iterator.next();
                     if (!CaptureIntegrity.isSafeDirectory(path) || isRecaptureAuxiliaryFolder(path)
+                            || isReportAuxiliaryFolder(path)
                             || isLinkedCaptureFolder(path)
                             || !CaptureIntegrity.isSafeRegularFile(path.resolve("manifest.json"))) continue; //$NON-NLS-1$
                     if (candidates.size() >= MAX_RECAPTURE_CANDIDATES) {
@@ -2126,6 +2282,15 @@ private void clearChatCaptureMarks() {
         String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(java.time.LocalDateTime.now()); //$NON-NLS-1$
         try {
             VerifierIntegrity.installVerifierFiles(outputRoot);
+            CustodyCaseRecord batchRecord = this.activeCustodyRecord;
+            if (batchRecord == null) {
+                batchRecord = loadOrPrepareCustodyRecord(outputRoot);
+            }
+            try {
+                CaptureAuditLogManager.reconcileKnownCaptures(outputRoot, batchRecord, "RE-EXTRAIR"); //$NON-NLS-1$
+            } catch (Exception logInitErr) {
+                LOGGER.warn("Unable to reconcile known captures before re-extract batch", logInitErr); //$NON-NLS-1$
+            }
             for (int i = 0; i < captureIds.size() && !stopCaptureRequested; i++) {
                 RecaptureJob job;
                 try {
@@ -2138,17 +2303,38 @@ private void clearChatCaptureMarks() {
                 } catch (Exception invalid) {
                     failed++;
                     LOGGER.warn("Selected capture became invalid before processing: {}", captureIds.get(i), invalid);
+                    try {
+                        CaptureAuditLogManager.recordRecaptureOutcome(outputRoot, batchRecord, null,
+                                captureIds.get(i), "ERRO", invalid.getMessage(), ""); //$NON-NLS-1$ //$NON-NLS-2$
+                    } catch (Exception ignored) {
+                    }
                     continue;
                 }
                 chatCapturePanel.setStatusText("Re-extraindo " + (i + 1) + "/" + captureIds.size() + ": " + job.folder); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                CustodyCaseRecord.CaptureSnapshot prevSnap = batchRecord.knownCaptures.get(job.folder);
+                String prevHash = prevSnap == null ? "" : prevSnap.folderHash; //$NON-NLS-1$
                 try {
                     resetRecaptureMarksAndPreviewState();
                     boolean captureReplaced = recaptureOne(outputRoot, job, stamp, i + 1, captureIds.size(), annotationsEnabled);
                     success++;
                     if (captureReplaced) replaced++;
+                    try {
+                        CaptureAuditLogManager.recordRecaptureOutcome(outputRoot, batchRecord, job.folderPath,
+                                job.folder,
+                                captureReplaced ? "ATUALIZADO_REPARADO" : "INALTERADO_OK", //$NON-NLS-1$ //$NON-NLS-2$
+                                captureReplaced ? "Captura atualizada/reparada na re-extracao" : "Intervalo e arquivos integros sem alteracao", //$NON-NLS-1$ //$NON-NLS-2$
+                                prevHash);
+                    } catch (Exception logErr) {
+                        LOGGER.warn("Unable to write re-extract audit log for {}", job.folder, logErr); //$NON-NLS-1$
+                    }
                 } catch (Throwable e) {
                     failed++;
                     LOGGER.warn("Unable to re-extract capture {}", job.folder, e); //$NON-NLS-1$
+                    try {
+                        CaptureAuditLogManager.recordRecaptureOutcome(outputRoot, batchRecord, job.folderPath,
+                                job.folder, "ERRO", e.getMessage() == null ? e.toString() : e.getMessage(), prevHash); //$NON-NLS-1$
+                    } catch (Exception ignored) {
+                    }
                 } finally {
                     resetRecaptureMarksAndPreviewState();
                 }
@@ -2157,6 +2343,14 @@ private void clearChatCaptureMarks() {
             cleanupRecaptureAuxiliaryFolders(outputRoot);
             if (resetLegacyRecords && replaced > 0) deleteRootIntegrityReportsIfExists(outputRoot);
             safeRebuildCaptureRootIndex(outputRoot);
+            try {
+                CaptureAuditLogManager.reconcileKnownCaptures(outputRoot, batchRecord, "RE-EXTRAIR"); //$NON-NLS-1$
+                TechnicalReportGenerator.generateAll(outputRoot, batchRecord, this.originAuditFolder, this.lastKnownRootHash);
+                this.activeCustodyRecord = batchRecord;
+                safeRebuildCaptureRootIndex(outputRoot);
+            } catch (Exception reportErr) {
+                LOGGER.warn("Unable to regenerate technical report after re-extract batch", reportErr); //$NON-NLS-1$
+            }
             chatCapturePanel.setStatusText("Re-extração concluída. Sucesso: " + success + " Falhas: " + failed); //$NON-NLS-1$ //$NON-NLS-2$
         } finally {
             setCaptureInteractionEnabled(true);
@@ -3167,9 +3361,13 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
 
     private void runChatCapture(Path outputRoot, String customFolderName) {
         boolean captureCommitted = false;
+        Path committedDir = null;
         try {
             CaptureRunResult result = runChatCaptureInternal(outputRoot, customFolderName, null);
             captureCommitted = result != null && CaptureIntegrity.isSafeDirectory(result.captureDir);
+            if (captureCommitted) {
+                committedDir = result.captureDir;
+            }
             chatCapturePanel.setStatus("completed".equals(result.status) ? "ChatCapturePanel.Completed" : "ChatCapturePanel.Stopped"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         } catch (Exception e) {
             LOGGER.error("Error capturing chat interval", e); //$NON-NLS-1$
@@ -3181,7 +3379,10 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
             captureRunning = false;
             stopCaptureRequested = false;
             chatCapturePanel.setCaptureRunning(false);
-            if (captureCommitted) safeRebuildCaptureRootIndex(outputRoot);
+            if (captureCommitted) {
+                safeRebuildCaptureRootIndex(outputRoot);
+                finalizeLaudoAfterStart(outputRoot, committedDir);
+            }
         }
     }
 
@@ -5801,7 +6002,8 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         try (Stream<Path> children = Files.list(outputRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
             children.filter(CaptureIntegrity::isSafeDirectory)
                     .filter(path -> !path.getFileName().toString().startsWith("_backup_chat_capture_")) //$NON-NLS-1$
-.filter(path -> !isRecaptureAuxiliaryFolder(path))
+                    .filter(path -> !isRecaptureAuxiliaryFolder(path))
+                    .filter(path -> !isReportAuxiliaryFolder(path))
                     .filter(path -> !isLinkedCaptureFolder(path))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase()))
                     .forEach(path -> {
@@ -5817,6 +6019,7 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         }
         sortCaptureRootEntries(captures);
         String rootHash = calculateRootHash(captures);
+        this.lastKnownRootHash = rootHash;
         writeCaptureRootIndexJson(outputRoot.resolve("capturas-index.json"), outputRoot, rootHash, captures); //$NON-NLS-1$
         writeCaptureRootIndexHtml(outputRoot.resolve("index.html"), outputRoot, rootHash, captures); //$NON-NLS-1$
         writeCaptureRootReport(outputRoot.resolve("relatorio.htm"), outputRoot, rootHash, captures); //$NON-NLS-1$
@@ -6003,6 +6206,16 @@ Set<String> hashes = getCaptureBlockHashes(plan);
                 || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("whatsapp.html")) //$NON-NLS-1$
                 || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("relatorio.htm")) //$NON-NLS-1$
                 || CaptureIntegrity.isSafeRegularFile(captureDir.resolve("texto.txt")); //$NON-NLS-1$
+    }
+
+    static boolean isReportAuxiliaryFolder(Path path) {
+        if (path == null || path.getFileName() == null) {
+            return false;
+        }
+        String name = path.getFileName().toString();
+        return CustodyCaseRecord.LAUDO_DIR_NAME.equalsIgnoreCase(name)
+                || "integridade".equalsIgnoreCase(name) //$NON-NLS-1$
+                || "verificador-integridade".equalsIgnoreCase(name); //$NON-NLS-1$
     }
 
     static boolean isRecaptureAuxiliaryFolder(Path path) {
@@ -6560,7 +6773,27 @@ Set<String> hashes = getCaptureBlockHashes(plan);
 out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&Iacute;ndice de Capturas de Chat</h1>"); //$NON-NLS-1$
             out.println("<p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p>"); //$NON-NLS-1$
             out.println("<p><b>Total de capturas:</b> <span id=\"count\">" + captures.size() //$NON-NLS-1$ //$NON-NLS-2$
-                    + "</span> &nbsp; <b>Hash geral:</b> <span class=\"hash\">" + html(rootHash) + "</span></p></div>"); //$NON-NLS-1$
+                    + "</span> &nbsp; <b>Hash geral:</b> <span class=\"hash\">" + html(rootHash) + "</span></p>"); //$NON-NLS-1$
+            Path laudoDir = outputRoot.resolve(CustodyCaseRecord.LAUDO_DIR_NAME);
+            if (CaptureIntegrity.isSafeDirectory(laudoDir)) {
+                StringBuilder laudoLinks = new StringBuilder();
+                if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE))) {
+                    laudoLinks.append("<a class=\"btn\" href=\"laudo/").append(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE).append("\">Laudo T&eacute;cnico (PDF)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_HTML_FILE))) {
+                    laudoLinks.append("<a class=\"btn\" href=\"laudo/").append(CustodyCaseRecord.REPORT_HTML_FILE).append("\">Laudo T&eacute;cnico (HTML)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE))) {
+                    laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE).append("\">report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE))) {
+                    laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE).append("\">PDF Unificado</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (laudoLinks.length() > 0) {
+                    out.println("<p>" + laudoLinks + "</p>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+            }
+            out.println("</div>"); //$NON-NLS-1$
             out.println("<div class=\"hero-side\">" //$NON-NLS-1$
                     + "<input id=\"q\" type=\"search\" placeholder=\"Pesquisar chat, ID, pasta ou data\" aria-label=\"Pesquisar capturas\">" //$NON-NLS-1$
                     + "<label class=\"tgl\"><input type=\"checkbox\" id=\"chrono\" checked> Ordenar por cronologia</label>" //$NON-NLS-1$
@@ -6641,7 +6874,20 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
             out.println("<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'\"><title>Relat&oacute;rio Geral de Capturas</title>"); //$NON-NLS-1$
             out.println("<style>body{font-family:Arial,sans-serif;color:#222;margin:24px}.columnHead{background:#c0c0c0;border:1px solid #777;text-align:left;padding:4px}.clrBkgrnd{background:#e8e8e8}.mono{font-family:Consolas,monospace;font-size:12px;word-break:break-all}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #ccc;padding:6px;vertical-align:top;font-size:13px}th{background:#ddd}.summary{border:1px solid #ccc;padding:12px;background:#fafafa}</style></head><body>"); //$NON-NLS-1$
             out.println("<table><tbody><tr><th class=\"columnHead\" colspan=\"1\" style=\"font-size:16px\">Relat&oacute;rio Geral de Capturas</th></tr><tr><td class=\"clrBkgrnd\"><span style=\"font-weight:bold\">Coment&aacute;rios: </span>&Iacute;ndice pai das capturas existentes na pasta raiz.</td></tr></tbody></table>"); //$NON-NLS-1$
-            out.println("<div class=\"summary\"><p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p><p><b>Quantidade de capturas:</b> " + captures.size() + "</p><p><b>Hash geral da raiz:</b> <span class=\"mono\">" + html(rootHash) + "</span></p><p><a href=\"index.html\">Abrir index.html</a> &nbsp; <a href=\"capturas-index.json\">Abrir capturas-index.json</a></p></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            StringBuilder rootLinks = new StringBuilder("<a href=\"index.html\">Abrir index.html</a> &nbsp; <a href=\"capturas-index.json\">Abrir capturas-index.json</a>"); //$NON-NLS-1$
+            Path laudoDirReport = outputRoot.resolve(CustodyCaseRecord.LAUDO_DIR_NAME);
+            if (CaptureIntegrity.isSafeDirectory(laudoDirReport)) {
+                if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE))) {
+                    rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE).append("\">Abrir Laudo (PDF)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.REPORT_HTML_FILE))) {
+                    rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.REPORT_HTML_FILE).append("\">Abrir Laudo (HTML)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE))) {
+                    rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE).append("\">Abrir report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+            }
+            out.println("<div class=\"summary\"><p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p><p><b>Quantidade de capturas:</b> " + captures.size() + "</p><p><b>Hash geral da raiz:</b> <span class=\"mono\">" + html(rootHash) + "</span></p><p>" + rootLinks + "</p></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             out.println("<table><thead><tr><th>Pasta</th><th>Chat</th><th>Data</th><th>Cronol&oacute;gica tempo</th><th>Status</th><th>Arquivos</th><th>Anexos</th><th>Hash da pasta</th><th>Links</th></tr></thead><tbody>"); //$NON-NLS-1$
             if (captures.isEmpty()) {
                 out.println("<tr><td colspan=\"9\">Nenhuma captura encontrada.</td></tr>"); //$NON-NLS-1$
@@ -7570,7 +7816,9 @@ out.append("{\n"); //$NON-NLS-1$
             return entries;
         }
         try (Stream<Path> children = Files.list(outputRoot).limit(MAX_RECAPTURE_CANDIDATES * 2L)) {
-            List<Path> roots = children.filter(CaptureIntegrity::isSafeDirectory).filter(path -> !isRecaptureAuxiliaryFolder(path))
+            List<Path> roots = children.filter(CaptureIntegrity::isSafeDirectory)
+                    .filter(path -> !isRecaptureAuxiliaryFolder(path))
+                    .filter(path -> !isReportAuxiliaryFolder(path))
                     .sorted().collect(java.util.stream.Collectors.toList());
             for (Path folder : roots) {
                 CaptureRootEntry entry = readCaptureRootEntry(outputRoot, folder);

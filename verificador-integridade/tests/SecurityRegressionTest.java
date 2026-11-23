@@ -58,6 +58,7 @@ public final class SecurityRegressionTest {
             nenhumaBuscaExternaDeDriver();
             jarMaliciosoNaCapturaIgnorado(root);
             buildPinSqliteJdbcHash();
+            laudoFolderIgnoredAndOriginReportPdfCopyValidated(root);
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -2243,6 +2244,21 @@ public final class SecurityRegressionTest {
                 || !content.contains("SqliteJdbcOfficialSha256")
                 || !content.contains("sqlite-jdbc-3.41.2.2.jar")) {
             throw new AssertionError("build-reproducible.ps1 must pin and verify SHA-256 of official sqlite-jdbc-3.41.2.2.jar");
+        }
+    }
+
+    private static void laudoFolderIgnoredAndOriginReportPdfCopyValidated(Path root) throws Exception {
+        Path caseDir = Files.createDirectories(root.resolve("laudo-ignore-case"));
+        Path laudoDir = Files.createDirectories(caseDir.resolve("laudo"));
+        Files.write(laudoDir.resolve("manifest.json"), "{}".getBytes(StandardCharsets.UTF_8));
+        Files.write(laudoDir.resolve("texto.txt"), "doc".getBytes(StandardCharsets.UTF_8));
+        List<IntegrityVerifier.Capture> discovered = IntegrityVerifier.discover(caseDir);
+        if (!discovered.isEmpty()) {
+            throw new AssertionError("discover() must ignore laudo/ folder even with manifest.json/texto.txt, got: " + discovered.size());
+        }
+        if (!IntegrityVerifier.isIgnoredCaptureDirectoryName("laudo")
+                || !IntegrityVerifier.isIgnoredCaptureDirectoryName("LAUDO")) {
+            throw new AssertionError("isIgnoredCaptureDirectoryName must ignore laudo case-insensitively");
         }
     }
 

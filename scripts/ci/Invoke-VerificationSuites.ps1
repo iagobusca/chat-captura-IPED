@@ -165,7 +165,8 @@ try {
             tests\iped\viewers\CaptureIntegrityTest.java `
             tests\iped\viewers\OriginCustodyBinderTest.java `
             tests\iped\viewers\OriginAuditEndToEndTest.java `
-            tests\iped\viewers\SelectiveRecaptureRepairTest.java
+            tests\iped\viewers\SelectiveRecaptureRepairTest.java `
+            tests\iped\viewers\TechnicalReportAndCustodyTest.java
         if ($LASTEXITCODE -ne 0) { throw 'javac phase2-plugin-tests falhou' }
         $p2RtCp = "$p2Classes;$p2CompileCp"
         foreach ($cls in @(
@@ -187,6 +188,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'OriginAuditEndToEndTest falhou' }
         & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp "$vhClasses;$p2RtCp" iped.viewers.SelectiveRecaptureRepairTest
         if ($LASTEXITCODE -ne 0) { throw 'SelectiveRecaptureRepairTest falhou' }
+        & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp "$vhClasses;$p2RtCp" iped.viewers.TechnicalReportAndCustodyTest
+        if ($LASTEXITCODE -ne 0) { throw 'TechnicalReportAndCustodyTest falhou' }
         & $java21 '-Dprism.order=sw' --module-path $JavaFxLib --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp iped.viewers.OpenCvLoaderTest (Join-Path $RepoRoot 'instalar_captura_chat_zap\opencv_java4120.dll')
         if ($LASTEXITCODE -ne 0) { throw 'OpenCvLoaderTest falhou' }
 

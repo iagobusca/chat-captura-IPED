@@ -7,6 +7,26 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.11-beta (Beta / `beta`) / Verificador 1.5.9
+
+- **Tag**: [v2.8.11-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.11-beta) (Compilação determinística via `build-reproducible.ps1`)
+- **Branch base**: `beta` (canal beta — `main` estável preservada intacta)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.11-beta-verificador-1.5.9.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.11-beta/instalador-chat-captura-IPED-2.8.11-beta-verificador-1.5.9.zip) (`120.359.149` bytes | SHA-256: `4300D7F73FED0CAE7FBEDBB11D1C8A5665F584B0B5B9A4FC8BB1126CA35E80FC`)
+- [integridade-verifier-1.5.9.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.11-beta/integridade-verifier-1.5.9.exe) (`90.580.058` bytes | SHA-256: `23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C`)
+- [integridade-verifier-1.5.9.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.11-beta/integridade-verifier-1.5.9.jar) (`13.052.705` bytes | SHA-256: `39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A`)
+- [iped-viewers-impl-4.3.1-2.8.11-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.11-beta/iped-viewers-impl-4.3.1-2.8.11-beta.jar) (`1.636.520` bytes | SHA-256: `D65910C084D19DEE0C3413623A49373BEA18E62B76B54A2E587067694689C17D`)
+
+### Resumo
+- **Laudo Técnico / Cadeia de Custódia (`laudo/`):** nova janela modal pré-preenchida exibida após o aviso do verificador em **Start** e **Re-Extrair** (além do botão **"Dados do Laudo..."** no painel), reunindo identificação do dispositivo (fabricante, modelo, IMEI, nº de série, SO, WhatsApp, `Collection Code`), ferramenta/parâmetros do IPED, hashes SHA-256 dos arquivos originais e exportados, passo a passo cronológico com data/hora local + UTC e cadeia de custódia (`Quem coletou`, `Quem analisou`, `Quando`, `Onde` e seletor `Como foi armazenado` `[Pasta, Mídia lacrada, Custom]`).
+- **Leitura e Complementação do `report.pdf` + PDFBox nativo:** quando existe `report.pdf` na origem, o plugin realiza cópia bit-a-bit verificada (SHA-256) para `laudo/report-origem.pdf`, extrai os metadados já presentes e complementa os campos faltantes no relatório do plugin (`laudo/report-plugin.pdf` gerado diretamente via Apache PDFBox 2.0.27, `laudo/laudo-tecnico.html` offline com CSP restritiva, `laudo/laudo-hashes.txt` e opção de PDF unificado `laudo/report-completo-unificado.pdf`). Quando não há `report.pdf`, gera normalmente o relatório completo do plugin.
+- **Log encadeado de capturas (`laudo/registro-capturas.jsonl` + `.log`):** registro cronológico encadeado por SHA-256 (`previousRecordHash` -> `recordHash`) com contagem categorizada (`msg`, `img`, `audio`, `video`, `doc`, `outros`), status `INALTERADO_OK` no Re-Extrair quando todos os arquivos permanecem íntegros e detecção automática de `ADICIONADO captura` / `DELETADO captura`.
+- **Verificador `1.5.9`:** ignora `laudo/` na descoberta de capturas (preservando `rootHash` e compatibilidade retroativa) e valida `laudo/report-origem.pdf` contra o `report.pdf` de origem em modo fail-closed na Auditoria de Origem.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`), allowlist exclusiva sincronizada para Verificador **1.5.9** e suíte completa `full-local` aprovada (`VERIFICATION_SUITES_COMPLETE=PASS`).
+
+---
+
 ## v2.8.10 (Estável / `main`) / Verificador 1.5.8
 
 - **Tag**: [v2.8.10](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.10) (Corte automatizado via `build-reproducible.ps1`)
