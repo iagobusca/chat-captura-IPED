@@ -1,8 +1,8 @@
-# Verificador de Integridade 1.5.9
+# Verificador de Integridade 1.5.10
 
-**Versão:** 1.5.9 | Data: 23/11/2026.
+**Versão:** 1.5.10 | Data: 23/11/2026.
 
-> **Novidades da versão 1.5.9:** ignora a pasta auxiliar `laudo/` na descoberta de capturas (`isIgnoredCaptureDirectoryName`) preservando `rootHash`, e valida em modo fail-closed a cópia `laudo/report-origem.pdf` contra o `report.pdf` da pasta de origem na Auditoria de Origem; mantém o driver oficial `sqlite-jdbc-3.41.2.2.jar` embutido, empacotamento determinístico auditável multiplataforma ([`../build-reproducible.ps1`](../build-reproducible.ps1)) e todas as proteções de segurança da série anterior.
+> **Novidades da versão 1.5.10:** lê a âncora ASCII `CHATCAPTURA_LOGANCHOR_V1` diretamente dos bytes de `laudo/report-plugin.pdf` (Java 8 puro, sem biblioteca PDFBox) e audita `laudo/Log.txt` (cadeia SHA-256 linha a linha `0..X`, prefixo `0..X`, truncamento, ausência, linhas posteriores e recriação registrada) em Integridade Local, `--verify-only` e Auditoria de Origem; valida em modo fail-closed tanto `laudo/report.pdf` quanto `laudo/report-origem.pdf` (legado) contra o `report.pdf` original; mantém `laudo/` ignorado em `discover()`, driver oficial `sqlite-jdbc-3.41.2.2.jar` embutido e empacotamento determinístico auditável.
 
 > **Novidades da versão 1.4.2 (F-01 a F-10):** carregamento exclusivo do ícone pelo classpath (`F-09`), `html.disable` em `JLabel`/`JCheckBox` (`F-04`), bloqueio de comentários/PIs/CDATA no HTML renderizado (`F-05`), validação obrigatória de `integridade.json` esquema >= 2 e inventário completo em `html-message-v1` (`F-01`, `F-08`), erro fechado para divergência de `captureRootHash` e histórico no CLI (`F-02`), normalização/rejeição de duplicatas na comparação pública por mensagem (`F-07`), consolidação consistente nos relatórios (`F-03`) e endurecimento do launcher para entradas de 0 bytes e limpeza temporária (`F-06`, `F-10`).
 

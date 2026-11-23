@@ -51,13 +51,61 @@ final class PdfReportWriter {
     private static final Color COLOR_LINE = new Color(205, 214, 219);
     private static final Color COLOR_BG_SUBTLE = new Color(243, 246, 248);
 
+    static final String LOG_ANCHOR_INFO_KEY = "ChatCapturaLogAnchor"; //$NON-NLS-1$
+    static final String LOG_ANCHOR_MARKER = "CHATCAPTURA_LOGANCHOR_V1;"; //$NON-NLS-1$
+
     private PdfReportWriter() {
+    }
+
+    static String buildPdfLogAnchorToken(CustodyCaseRecord record, CaptureAuditLogManager.ChainedLogSnapshot logSnap) {
+        if (record == null) {
+            return ""; //$NON-NLS-1$
+        }
+        int lastLine = (logSnap != null && logSnap.chainValid && logSnap.lastLineIndex >= 0)
+                ? logSnap.lastLineIndex : record.logAnchorLastLine;
+        String prefix = (logSnap != null && logSnap.chainValid && !logSnap.prefixSha256.isBlank())
+                ? logSnap.prefixSha256 : record.logAnchorPrefixSha256;
+        String head = (logSnap != null && logSnap.chainValid && !logSnap.headHash.isBlank())
+                ? logSnap.headHash : record.logAnchorHeadHash;
+        String createdUtc = (logSnap != null && !logSnap.createdAtUtc.isBlank())
+                ? logSnap.createdAtUtc : record.logCreatedAtUtc;
+        String status = nonBlank(record.logIntegrityStatus, (logSnap != null ? logSnap.status : "NAO_INICIADO")); //$NON-NLS-1$
+        if (lastLine < 0 || prefix == null || !prefix.matches("(?i)[0-9a-f]{64}") //$NON-NLS-1$
+                || head == null || !head.matches("(?i)[0-9a-f]{64}")) { //$NON-NLS-1$
+            return ""; //$NON-NLS-1$
+        }
+        String safeCreated = sanitizeAnchorAscii(createdUtc.isBlank() ? "unknown" : createdUtc); //$NON-NLS-1$
+        String safeStatus = sanitizeAnchorAscii(status);
+        return LOG_ANCHOR_MARKER
+                + "created=" + safeCreated //$NON-NLS-1$
+                + ";lines=0.." + lastLine //$NON-NLS-1$
+                + ";prefix=" + prefix.toLowerCase(java.util.Locale.ROOT) //$NON-NLS-1$
+                + ";head=" + head.toLowerCase(java.util.Locale.ROOT) //$NON-NLS-1$
+                + ";status=" + safeStatus; //$NON-NLS-1$
+    }
+
+    private static String sanitizeAnchorAscii(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "unknown"; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '-' || c == '_' || c == '.' || c == ':' || c == '+') {
+                sb.append(c);
+            } else {
+                sb.append('_');
+            }
+        }
+        return sb.length() == 0 ? "unknown" : sb.toString(); //$NON-NLS-1$
     }
 
     static byte[] buildPluginReportPdfBytes(
             CustodyCaseRecord record,
             List<CaptureAuditLogManager.AuditLogEntry> auditLog,
             boolean logChainValid,
+            CaptureAuditLogManager.ChainedLogSnapshot chainedLogSnap,
             String outputRootDisplay,
             String rootHash) throws IOException {
         try (PDDocument doc = new PDDocument()) {
@@ -66,6 +114,10 @@ final class PdfReportWriter {
             info.setAuthor(nonBlank(record.analyzedBy, "Chat Captura IPED")); //$NON-NLS-1$
             info.setCreator("Chat Captura IPED " + nonBlank(record.pluginVersion, HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION)); //$NON-NLS-1$
             info.setSubject("Relatorio Tecnico, Cadeia de Custodia, Hashes SHA-256 e Log de Capturas"); //$NON-NLS-1$
+            String anchorToken = buildPdfLogAnchorToken(record, chainedLogSnap);
+            if (!anchorToken.isEmpty()) {
+                info.setCustomMetadataValue(LOG_ANCHOR_INFO_KEY, anchorToken);
+            }
 
             FontSet fonts = loadFonts(doc);
             PdfCanvas canvas = new PdfCanvas(doc, fonts);
@@ -199,14 +251,49 @@ final class PdfReportWriter {
 
             // Log Cronologico Encadeado (posicionado imediatamente ACIMA de Method used)
             canvas.avillaSection("Log Cronol\u00f3gico Encadeado (Chained Chronological Log)"); //$NON-NLS-1$
-            canvas.keyValue("Integridade da cadeia SHA-256", //$NON-NLS-1$
-                    logChainValid ? "CONFERE (" + auditLog.size() + " registro(s) encadeados)" : "ATEN\u00c7\u00c3O: CADEIA DIVERGENTE"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            if (!auditLog.isEmpty()) {
-                CaptureAuditLogManager.AuditLogEntry first = auditLog.get(0);
-                CaptureAuditLogManager.AuditLogEntry last = auditLog.get(auditLog.size() - 1);
-                canvas.keyValue("Primeiro registro (cria\u00e7\u00e3o do log)", nonBlank(first.timestampLocal, "-")); //$NON-NLS-1$ //$NON-NLS-2$
-                canvas.keyValue("Faixa de registros", "1.." + last.sequence + " (total " + auditLog.size() + ")"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                canvas.keyValueMono("Hash encadeado da ponta (linha " + last.sequence + ")", nonBlank(last.recordHash, "-")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            int anchorLastLine = (chainedLogSnap != null && chainedLogSnap.chainValid && chainedLogSnap.lastLineIndex >= 0)
+                    ? chainedLogSnap.lastLineIndex : record.logAnchorLastLine;
+            String anchorPrefix = (chainedLogSnap != null && chainedLogSnap.chainValid && !chainedLogSnap.prefixSha256.isBlank())
+                    ? chainedLogSnap.prefixSha256 : record.logAnchorPrefixSha256;
+            String anchorHead = (chainedLogSnap != null && chainedLogSnap.chainValid && !chainedLogSnap.headHash.isBlank())
+                    ? chainedLogSnap.headHash : record.logAnchorHeadHash;
+            String createdLocal = (chainedLogSnap != null && !chainedLogSnap.createdAtLocal.isBlank())
+                    ? chainedLogSnap.createdAtLocal : record.logCreatedAtLocal;
+            String createdUtc = (chainedLogSnap != null && !chainedLogSnap.createdAtUtc.isBlank())
+                    ? chainedLogSnap.createdAtUtc : record.logCreatedAtUtc;
+            long logBytes = (chainedLogSnap != null && chainedLogSnap.exists)
+                    ? chainedLogSnap.byteLength : record.logFileBytes;
+            String effectiveStatus = nonBlank(record.logIntegrityStatus,
+                    (chainedLogSnap != null ? chainedLogSnap.status : "NAO_INICIADO")); //$NON-NLS-1$
+
+            canvas.keyValue("Arquivo do log cronol\u00f3gico", "laudo/" + CustodyCaseRecord.LOG_TXT_FILE + " (append-only, linha 0 = cria\u00e7\u00e3o)"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            canvas.keyValue("Status de integridade do Log.txt", effectiveStatus); //$NON-NLS-1$
+            canvas.keyValue("Timestamp de cria\u00e7\u00e3o do Log.txt (linha 0)", //$NON-NLS-1$
+                    nonBlank(createdLocal, "-") + (createdUtc.isBlank() ? "" : "  (UTC: " + createdUtc + ")")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            if (anchorLastLine >= 0) {
+                canvas.keyValue("Faixa ancorada neste PDF", //$NON-NLS-1$
+                        "Linha 0 at\u00e9 Linha " + anchorLastLine + " (total " + (anchorLastLine + 1) + " linha(s) | " + logBytes + " bytes)"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                canvas.keyValueMono("SHA-256 do prefixo (Linha 0..Linha " + anchorLastLine + ")", nonBlank(anchorPrefix, "-")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                canvas.keyValueMono("Hash encadeado da ponta (Linha " + anchorLastLine + ")", nonBlank(anchorHead, "-")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            }
+            if (!record.logIncidents.isEmpty()) {
+                canvas.subHeading("ATEN\u00c7\u00c3O \u2014 Ocorr\u00eancias registradas em laudo/Log.txt (aus\u00eancia/adultera\u00e7\u00e3o/recria\u00e7\u00e3o)"); //$NON-NLS-1$
+                for (String inc : record.logIncidents) {
+                    canvas.bulletMonoOrText(inc, true);
+                }
+            }
+            if (chainedLogSnap != null && !chainedLogSnap.lines.isEmpty()) {
+                int maxDisplay = Math.min(chainedLogSnap.lines.size(), 120);
+                for (int i = 0; i < maxDisplay; i++) {
+                    canvas.bulletMonoOrText(chainedLogSnap.lines.get(i), true);
+                }
+                if (chainedLogSnap.lines.size() > maxDisplay) {
+                    canvas.paragraph("... (" + (chainedLogSnap.lines.size() - maxDisplay) //$NON-NLS-1$
+                            + " linha(s) adicionais presentes em laudo/" + CustodyCaseRecord.LOG_TXT_FILE + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+            } else if (!auditLog.isEmpty()) {
+                canvas.keyValue("Cadeia auxiliar (registro-capturas.jsonl)", //$NON-NLS-1$
+                        logChainValid ? "CONFERE (" + auditLog.size() + " registro(s))" : "ATEN\u00c7\u00c3O: CADEIA DIVERGENTE"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
                 for (CaptureAuditLogManager.AuditLogEntry entry : auditLog) {
                     canvas.bulletMonoOrText(entry.toReadableLine(), true);
                 }
@@ -419,11 +506,13 @@ final class PdfReportWriter {
             CustodyCaseRecord record,
             List<CaptureAuditLogManager.AuditLogEntry> auditLog,
             boolean logChainValid,
+            CaptureAuditLogManager.ChainedLogSnapshot chainedLogSnap,
             String rootHash) throws IOException {
         byte[] bytes = buildPluginReportPdfBytes(
                 record,
                 auditLog,
                 logChainValid,
+                chainedLogSnap,
                 outputRoot.toAbsolutePath().normalize().toString(),
                 rootHash);
         CaptureIntegrity.writeBytesAtomically(outputRoot, targetPdf, bytes, MAX_OUTPUT_PDF_BYTES);

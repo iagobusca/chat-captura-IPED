@@ -38,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.9";
+    private static final String VERIFIER_VERSION = "1.5.10";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -456,6 +456,11 @@ public final class IntegrityVerifier {
                     ok &= c.error.isEmpty() && !hasBadItem && isConsistentLocalHistoryStatus(c.historyStatus);
                     if(c.error.contains("interrompida")||c.error.contains("limite global"))break;
                 }
+                LaudoLogAuditResult logAudit = auditLaudoChainedLog(root);
+                if (logAudit.applicable) {
+                    System.out.println("LAUDO_LOG_TXT | " + logAudit.status + " | " + logAudit.detail);
+                    ok &= logAudit.passed;
+                }
                 if(!ok) throw new IOException("Uma ou mais capturas divergiram do registro local.");
                 return;
             }
@@ -711,10 +716,19 @@ public final class IntegrityVerifier {
     private static void showSummaryDialog(Path root,List<Capture> selected,String history,String publicHistory,String historyPublicHash,Path historyFile,int mode) throws Exception {
         final CountDownLatch latch=new CountDownLatch(1);
         final JFrame[] frameRef=new JFrame[1];
+        final LaudoLogAuditResult logAudit = auditLaudoChainedLog(root);
         runOnEdt(()->{
             JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
             panel.add(plainLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada."));
-            panel.add(plainLabel("Capturas verificadas: "+selected.size()));panel.add(Box.createVerticalStrut(10));
+            panel.add(plainLabel("Capturas verificadas: "+selected.size()));
+            if(logAudit!=null&&logAudit.applicable){
+                JLabel logLbl=plainLabel("Log Cronológico (laudo/Log.txt): "+logAudit.status+" — "+logAudit.detail);
+                if(!logAudit.passed)logLbl.setForeground(new java.awt.Color(150,0,0));
+                else if(logAudit.hasWarning)logLbl.setForeground(new java.awt.Color(140,85,0));
+                else logLbl.setForeground(new java.awt.Color(0,110,50));
+                panel.add(logLbl);
+            }
+            panel.add(Box.createVerticalStrut(10));
             panel.add(hashValueRow("SHA-256 do histórico completo público",historyPublicHash,"Hash SHA-256 do histórico completo público copiado."));
             panel.add(Box.createVerticalStrut(8));
             JPanel gridActions=new JPanel(new java.awt.GridLayout(2,2,6,6));
@@ -2372,18 +2386,28 @@ public final class IntegrityVerifier {
         reportScript.append("var cpBtns=document.querySelectorAll('.copy-btn');for(var ci=0;ci<cpBtns.length;ci++){if(cpBtns[ci]&&cpBtns[ci].addEventListener){(function(b){b.addEventListener('click',function(){copyValue(b);});})(cpBtns[ci]);}}");
         final String scriptStr=reportScript.toString();
         final String reportCsp="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-"+sha256Base64(scriptStr)+"'; object-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'";
+        final LaudoLogAuditResult logAudit=auditLaudoChainedLog(root);
         Path reportDir=root.resolve("integridade");createDirectoriesSafe(root,reportDir);
         Map<Path,ReportWriter> outputs=new LinkedHashMap<>();
         outputs.put(root.resolve("integridade.html"),html->{
             html.write("<!doctype html><html lang=\"pt-BR\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"");
             html.write(reportCsp);
-            html.write("\"><title>Integridade das capturas</title><style>body{font:16px Arial;margin:2em;color:#20313a}table{border-collapse:collapse;width:100%;margin-bottom:1em}td,th{border:1px solid #bbb;padding:.5em;text-align:left;overflow-wrap:anywhere}.ok{color:green}.bad,.diverge{color:#8b0000;font-weight:700}.match{color:#006400;font-weight:700}input{padding:.5em;width:min(40em,90%)}code{overflow-wrap:anywhere}</style><h1>Relatório de integridade</h1><p>Verificação e relatório gerados em: ");
+            html.write("\"><title>Integridade das capturas</title><style>body{font:16px Arial;margin:2em;color:#20313a}table{border-collapse:collapse;width:100%;margin-bottom:1em}td,th{border:1px solid #bbb;padding:.5em;text-align:left;overflow-wrap:anywhere}.ok{color:green}.warn{color:#8a5600;font-weight:700}.bad,.diverge{color:#8b0000;font-weight:700}.match{color:#006400;font-weight:700}input{padding:.5em;width:min(40em,90%)}code{overflow-wrap:anywhere}</style><h1>Relatório de integridade</h1><p>Verificação e relatório gerados em: ");
             html.write(esc(time));
             html.write("</p><p>Hash geral Público: <code id=\"publicSummaryHash\">");
             html.write(historyPublicHash);
             html.write("</code> <button class=\"copy-btn\" data-value=\"");
             html.write(historyPublicHash);
-            html.write("\">Copiar hash público</button></p><label>Hash geral Público (ou SHA-256 do histórico completo): <input id=\"publicHash\" placeholder=\"Cole aqui o SHA-256 recebido\"></label> <button id=\"btnCompareHash\">Comparar hash geral</button><p id=\"comparison\">Nenhum hash geral informado.</p>");
+            html.write("\">Copiar hash público</button></p>");
+            if(logAudit!=null&&logAudit.applicable){
+                String cls=!logAudit.passed?"bad":(logAudit.hasWarning?"warn":"ok");
+                html.write("<p><b>Log Cronológico Encadeado (<code>laudo/Log.txt</code> vs <code>laudo/report-plugin.pdf</code>):</b> <span class=\""+cls+"\">");
+                html.write(esc(logAudit.status));
+                html.write("</span> — ");
+                html.write(esc(logAudit.detail));
+                html.write("</p>");
+            }
+            html.write("<label>Hash geral Público (ou SHA-256 do histórico completo): <input id=\"publicHash\" placeholder=\"Cole aqui o SHA-256 recebido\"></label> <button id=\"btnCompareHash\">Comparar hash geral</button><p id=\"comparison\">Nenhum hash geral informado.</p>");
             html.write("<label for=\"historyInput\">Cole o histórico de capturas completo ou público (historico-capturas.txt):</label><br><textarea id=\"historyInput\" rows=\"7\" style=\"width:min(70em,95%)\" placeholder=\"HISTORICO_PUBLICO_V1&#10;SHA256|...&#10;&#10;CAPTURA|... (ou CAPTURA|*-YYYYMMDD-HHMMSS)\"></textarea><br><button id=\"btnCompareHistory\">Comparar histórico em todas as capturas</button> <span id=\"historyResult\"></span><table><tr><th>Captura</th><th>Hash calculado</th><th>Arquivos</th><th>Comparação com histórico</th></tr>");
             for(Capture c:cs){
                 long good=c.items.stream().filter(i->isHealthyVerifierItemState(i.state)).count();
@@ -2405,6 +2429,9 @@ public final class IntegrityVerifier {
         });
         outputs.put(reportDir.resolve("verificacao-integridade.txt"),txt->{
             txt.write("Verificado: ");txt.write(time);txt.write("\nTODAS_AS_CAPTURAS|");txt.write(rootHash);txt.write("\n");
+            if(logAudit!=null&&logAudit.applicable){
+                txt.write("LAUDO_LOG_TXT|");txt.write(recordField(logAudit.status));txt.write("|");txt.write(recordField(logAudit.detail));txt.write("\n");
+            }
             for(Capture c:cs){txt.write(recordField(c.name));txt.write(" | ");txt.write(c.hash);txt.write("\n");}
         });
         outputs.put(reportDir.resolve("verificacao-integridade.json"),json->{
@@ -3172,6 +3199,10 @@ public final class IntegrityVerifier {
                 }
             }
         }
+        LaudoLogAuditResult laudoLogAudit = auditLaudoChainedLog(capturesRoot);
+        if (laudoLogAudit.applicable) {
+            rpt.append("LAUDO_LOG_TXT|").append(laudoLogAudit.status).append('|').append(laudoLogAudit.detail).append('\n');
+        }
         rpt.append("N1_MSGSTORE_SHA256|").append(dbPre == null ? "ausente" : dbPre.sha256).append("|NO_HASHS_TXT|").append(dbInHashs).append("|BACKUPS_CRYPT_NO_HASHS|").append(hashsIdx.cryptBackups.size()).append("\n");
         if (parentIpedDir != null) {
             rpt.append("N1_CASO_IPED_PAI|HTML_MATCH|").append(matchedParentHtmls.size()).append('/').append(captureHtmlSha256s.size())
@@ -3186,7 +3217,7 @@ public final class IntegrityVerifier {
             rpt.append("SCAN_ORIGEM_TRUNCADO|true|LIMITE_ARQUIVOS=").append(MAX_ORIGIN_WALK_FILES).append('\n');
         }
 
-        boolean allPassed = !hashsIdx.fileSha256.isEmpty() && !laudoOriginPdfDiverged;
+        boolean allPassed = !hashsIdx.fileSha256.isEmpty() && !laudoOriginPdfDiverged && laudoLogAudit.passed;
         int totalCust = 0, totalEmb = 0, totalOrigNoHash = 0, totalMissing = 0, capIdx = 0;
         int totalN3Diverged = 0, totalBindingDiverged = 0;
 
@@ -4642,6 +4673,349 @@ public final class IntegrityVerifier {
         clock.start();
         worker.execute();
         dialog.setVisible(true);
+    }
+
+    private static final String LAUDO_LOG_ANCHOR_MARKER = "CHATCAPTURA_LOGANCHOR_V1;";
+    private static final String LAUDO_LOG_ZERO_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
+    private static final long MAX_LAUDO_PDF_ANCHOR_BYTES = 64L * 1024L * 1024L;
+    private static final long MAX_LAUDO_LOG_TXT_BYTES = 16L * 1024L * 1024L;
+    private static final int MAX_LAUDO_LOG_TXT_LINES = 100000;
+
+    static final class PdfLogAnchor {
+        boolean present;
+        boolean duplicatedConflict;
+        String createdUtc = "";
+        int lastLine = -1;
+        String prefixSha256 = "";
+        String headHash = "";
+        String status = "";
+    }
+
+    static final class LaudoLogAuditResult {
+        boolean applicable;
+        boolean passed = true;
+        boolean hasWarning;
+        String status = "NAO_APLICAVEL";
+        String detail = "";
+        String createdAtLocal = "";
+        String createdAtUtc = "";
+        int anchoredLastLine = -1;
+        int actualLastLine = -1;
+        String anchoredPrefixSha256 = "";
+        String anchoredHeadHash = "";
+        String actualPrefixSha256 = "";
+        String actualHeadHash = "";
+        String pdfAnchorStatus = "";
+    }
+
+    static PdfLogAnchor extractPdfLogAnchorWithoutPdfBox(Path pdfPath) throws IOException {
+        PdfLogAnchor anchor = new PdfLogAnchor();
+        if (pdfPath == null || !Files.exists(pdfPath, LinkOption.NOFOLLOW_LINKS)) {
+            return anchor;
+        }
+        if (isLinkOrReparse(pdfPath) || !Files.isRegularFile(pdfPath, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("PDF de laudo invalido (link/juncao): " + pdfPath);
+        }
+        long size = safeRegularFileSize(pdfPath);
+        if (size <= 0 || size > MAX_LAUDO_PDF_ANCHOR_BYTES) {
+            throw new IOException("PDF de laudo vazio ou excede limite de 64 MiB: " + size);
+        }
+        byte[] pdfBytes = new byte[(int) size];
+        try (InputStream in = Files.newInputStream(pdfPath, LinkOption.NOFOLLOW_LINKS)) {
+            int off = 0;
+            while (off < pdfBytes.length) {
+                int r = in.read(pdfBytes, off, pdfBytes.length - off);
+                if (r < 0) break;
+                off += r;
+            }
+        }
+        String latin = new String(pdfBytes, StandardCharsets.ISO_8859_1);
+        Set<String> distinctTokens = new LinkedHashSet<>();
+        int pos = 0;
+        while ((pos = latin.indexOf(LAUDO_LOG_ANCHOR_MARKER, pos)) >= 0) {
+            int end = pos + LAUDO_LOG_ANCHOR_MARKER.length();
+            while (end < latin.length()) {
+                char c = latin.charAt(end);
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                        || c == '_' || c == ';' || c == '=' || c == '.' || c == '+' || c == ':' || c == '-') {
+                    end++;
+                } else {
+                    break;
+                }
+            }
+            String token = latin.substring(pos, end);
+            distinctTokens.add(token);
+            pos = end;
+        }
+        if (distinctTokens.isEmpty()) {
+            return anchor;
+        }
+        if (distinctTokens.size() > 1) {
+            anchor.present = true;
+            anchor.duplicatedConflict = true;
+            return anchor;
+        }
+        String token = distinctTokens.iterator().next();
+        String body = token.substring(LAUDO_LOG_ANCHOR_MARKER.length());
+        String[] kvs = body.split(";");
+        for (String kv : kvs) {
+            int eq = kv.indexOf('=');
+            if (eq <= 0) continue;
+            String k = kv.substring(0, eq).trim();
+            String v = kv.substring(eq + 1).trim();
+            if ("created".equals(k)) {
+                anchor.createdUtc = v;
+            } else if ("lines".equals(k) && v.startsWith("0..")) {
+                try {
+                    anchor.lastLine = Integer.parseInt(v.substring(3));
+                } catch (NumberFormatException ignored) {
+                    anchor.lastLine = -1;
+                }
+            } else if ("prefix".equals(k) && v.matches("(?i)[0-9a-f]{64}")) {
+                anchor.prefixSha256 = v.toLowerCase(Locale.ROOT);
+            } else if ("head".equals(k) && v.matches("(?i)[0-9a-f]{64}")) {
+                anchor.headHash = v.toLowerCase(Locale.ROOT);
+            } else if ("status".equals(k)) {
+                anchor.status = v;
+            }
+        }
+        if (anchor.lastLine >= 0 && anchor.prefixSha256.length() == 64 && anchor.headHash.length() == 64) {
+            anchor.present = true;
+        }
+        return anchor;
+    }
+
+    static LaudoLogAuditResult auditLaudoChainedLog(Path capturesRoot) {
+        LaudoLogAuditResult res = new LaudoLogAuditResult();
+        if (capturesRoot == null) {
+            return res;
+        }
+        try {
+            Path laudoDir = resolve(capturesRoot, "laudo");
+            if (laudoDir == null || !Files.exists(laudoDir, LinkOption.NOFOLLOW_LINKS)) {
+                return res;
+            }
+            if (isLinkOrReparse(laudoDir) || !Files.isDirectory(laudoDir, LinkOption.NOFOLLOW_LINKS)) {
+                res.applicable = true;
+                res.passed = false;
+                res.status = "FALHA_LOG_ADULTERADO";
+                res.detail = "Pasta laudo/ invalida (link simbolico ou juncao nao permitida).";
+                return res;
+            }
+            Path pdfPath = resolve(laudoDir, "report-plugin.pdf");
+            Path logPath = resolve(laudoDir, "Log.txt");
+            boolean pdfExists = pdfPath != null && Files.exists(pdfPath, LinkOption.NOFOLLOW_LINKS);
+            boolean logExists = logPath != null && Files.exists(logPath, LinkOption.NOFOLLOW_LINKS);
+            if (!pdfExists && !logExists) {
+                return res;
+            }
+
+            PdfLogAnchor anchor = pdfExists ? extractPdfLogAnchorWithoutPdfBox(pdfPath) : new PdfLogAnchor();
+            if (anchor.duplicatedConflict) {
+                res.applicable = true;
+                res.passed = false;
+                res.status = "FALHA_ANCORA_PDF_DUPLICADA";
+                res.detail = "Multiplas ancoras CHATCAPTURA_LOGANCHOR_V1 divergentes em laudo/report-plugin.pdf.";
+                return res;
+            }
+            if (anchor.present) {
+                res.anchoredLastLine = anchor.lastLine;
+                res.anchoredPrefixSha256 = anchor.prefixSha256;
+                res.anchoredHeadHash = anchor.headHash;
+                res.pdfAnchorStatus = anchor.status;
+                res.createdAtUtc = anchor.createdUtc;
+            }
+
+            if (!logExists) {
+                if (anchor.present) {
+                    res.applicable = true;
+                    res.passed = false;
+                    res.status = "FALHA_LOG_AUSENTE";
+                    res.detail = "laudo/Log.txt ausente, mas laudo/report-plugin.pdf ancora linhas 0.." + anchor.lastLine + ".";
+                }
+                return res;
+            }
+
+            res.applicable = true;
+            if (isLinkOrReparse(logPath) || !Files.isRegularFile(logPath, LinkOption.NOFOLLOW_LINKS)) {
+                res.passed = false;
+                res.status = "FALHA_LOG_ADULTERADO";
+                res.detail = "laudo/Log.txt invalido (link simbolico ou juncao).";
+                return res;
+            }
+            long logSize = safeRegularFileSize(logPath);
+            if (logSize <= 0 || logSize > MAX_LAUDO_LOG_TXT_BYTES) {
+                res.passed = false;
+                res.status = "FALHA_LOG_ADULTERADO";
+                res.detail = "laudo/Log.txt vazio ou excede limite de 16 MiB (" + logSize + " bytes).";
+                return res;
+            }
+
+            List<String> lines = new ArrayList<>();
+            try (BufferedReader br = Files.newBufferedReader(logPath, StandardCharsets.UTF_8)) {
+                String ln;
+                while ((ln = br.readLine()) != null) {
+                    if (lines.isEmpty() && !ln.isEmpty() && ln.charAt(0) == '\uFEFF') {
+                        ln = ln.substring(1);
+                    }
+                    if (ln.isEmpty()) continue;
+                    lines.add(ln);
+                    if (lines.size() > MAX_LAUDO_LOG_TXT_LINES) {
+                        res.passed = false;
+                        res.status = "FALHA_LOG_ADULTERADO";
+                        res.detail = "laudo/Log.txt excede limite maximo de linhas.";
+                        return res;
+                    }
+                }
+            }
+            if (lines.isEmpty()) {
+                res.passed = false;
+                res.status = "FALHA_LOG_ADULTERADO";
+                res.detail = "laudo/Log.txt nao contem registros validos.";
+                return res;
+            }
+
+            String expectedPrev = LAUDO_LOG_ZERO_HASH;
+            String anchoredLineComputedHash = "";
+            MessageDigest fullPrefixMd = MessageDigest.getInstance(ALG);
+            MessageDigest anchorPrefixMd = anchor.present ? MessageDigest.getInstance(ALG) : null;
+
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                int hashIdx = line.lastIndexOf("|hash=");
+                if (hashIdx <= 0) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Linha " + i + " de laudo/Log.txt sem sufixo |hash= valido.";
+                    return res;
+                }
+                String payload = line.substring(0, hashIdx);
+                String declaredHash = line.substring(hashIdx + 6).trim().toLowerCase(Locale.ROOT);
+                if (!declaredHash.matches("[0-9a-f]{64}")) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Linha " + i + " de laudo/Log.txt com hash SHA-256 invalido.";
+                    return res;
+                }
+                String[] parts = payload.split("\\|", -1);
+                if (parts.length != 8) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Linha " + i + " de laudo/Log.txt com estrutura invalida (" + parts.length + " colunas).";
+                    return res;
+                }
+                int seq;
+                try {
+                    seq = Integer.parseInt(parts[0].trim());
+                } catch (NumberFormatException nfe) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Linha " + i + " de laudo/Log.txt com indice nao numerico.";
+                    return res;
+                }
+                if (seq != i) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Sequencia quebrada em laudo/Log.txt na linha " + i + " (encontrado " + seq + ").";
+                    return res;
+                }
+                if (!parts[7].startsWith("prev=")) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Linha " + i + " de laudo/Log.txt sem campo prev=.";
+                    return res;
+                }
+                String declaredPrev = parts[7].substring(5).trim().toLowerCase(Locale.ROOT);
+                if (!expectedPrev.equals(declaredPrev)) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Cadeia prev quebrada em laudo/Log.txt na linha " + i + ".";
+                    return res;
+                }
+                String computedHash = hashText(payload);
+                if (!computedHash.equalsIgnoreCase(declaredHash)) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "Hash SHA-256 divergente em laudo/Log.txt na linha " + i + ".";
+                    return res;
+                }
+                if (i == 0) {
+                    res.createdAtLocal = parts[1].trim();
+                    res.createdAtUtc = parts[2].trim();
+                }
+                byte[] normLineBytes = (line + "\n").getBytes(StandardCharsets.UTF_8);
+                fullPrefixMd.update(normLineBytes);
+                if (anchorPrefixMd != null && i <= anchor.lastLine) {
+                    anchorPrefixMd.update(normLineBytes);
+                    if (i == anchor.lastLine) {
+                        anchoredLineComputedHash = declaredHash;
+                    }
+                }
+                expectedPrev = declaredHash;
+            }
+
+            res.actualLastLine = lines.size() - 1;
+            res.actualPrefixSha256 = hex(fullPrefixMd.digest());
+            res.actualHeadHash = expectedPrev;
+
+            if (!anchor.present) {
+                res.passed = true;
+                res.hasWarning = true;
+                res.status = "AVISO_PDF_SEM_ANCORA";
+                res.detail = "Cadeia interna de laudo/Log.txt integra (linhas 0.." + res.actualLastLine
+                        + "), mas laudo/report-plugin.pdf nao contem ancora CHATCAPTURA_LOGANCHOR_V1.";
+                return res;
+            }
+
+            if (res.actualLastLine < anchor.lastLine) {
+                res.passed = false;
+                res.status = "FALHA_LOG_TRUNCADO";
+                res.detail = "laudo/Log.txt truncado: PDF ancora linhas 0.." + anchor.lastLine
+                        + ", mas arquivo possui apenas 0.." + res.actualLastLine + ".";
+                return res;
+            }
+
+            String computedAnchorPrefix = hex(anchorPrefixMd.digest());
+            if (!computedAnchorPrefix.equalsIgnoreCase(anchor.prefixSha256)
+                    || !anchoredLineComputedHash.equalsIgnoreCase(anchor.headHash)) {
+                res.passed = false;
+                res.status = "FALHA_PREFIXO_DIVERGENTE";
+                res.detail = "Prefixo 0.." + anchor.lastLine + " de laudo/Log.txt diverge da ancora gravada em laudo/report-plugin.pdf.";
+                return res;
+            }
+
+            if (res.actualLastLine > anchor.lastLine) {
+                int extra = res.actualLastLine - anchor.lastLine;
+                res.passed = true;
+                res.hasWarning = true;
+                res.status = "CONFERE_COM_LINHAS_POSTERIORES";
+                res.detail = "Prefixo 0.." + anchor.lastLine + " confere com report-plugin.pdf; existem " + extra
+                        + " linha(s) posterior(es) valida(s) (0.." + res.actualLastLine + ") ainda nao ancoradas no PDF.";
+                return res;
+            }
+
+            if ("RECRIADO_POR_SOLICITACAO_DO_USUARIO".equalsIgnoreCase(anchor.status)) {
+                res.passed = true;
+                res.hasWarning = true;
+                res.status = "CONFERE_RECRIADO_NO_PDF";
+                res.detail = "Prefixo 0.." + anchor.lastLine + " confere com report-plugin.pdf (AVISO: PDF registra que Log.txt foi recriado por solicitacao do usuario; criado em "
+                        + res.createdAtLocal + ").";
+                return res;
+            }
+
+            res.passed = true;
+            res.hasWarning = false;
+            res.status = "CONFERE";
+            res.detail = "Cadeia e prefixo 0.." + anchor.lastLine + " conferem integralmente com laudo/report-plugin.pdf (criado em "
+                    + res.createdAtLocal + ").";
+            return res;
+        } catch (Exception ex) {
+            res.applicable = true;
+            res.passed = false;
+            res.status = "FALHA_LOG_ADULTERADO";
+            res.detail = "Erro ao auditar laudo/Log.txt: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+            return res;
+        }
     }
 
     private static String esc(String s){if(s==null)return "";return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;");}

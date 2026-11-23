@@ -1,6 +1,6 @@
-# Especificação Única Consolidada (`espec.md`) — Chat Captura IPED (`v2.8.11-beta`) & Verificador de Integridade (`1.5.9`)
+# Especificação Única Consolidada (`espec.md`) — Chat Captura IPED (`v2.8.12-beta`) & Verificador de Integridade (`1.5.10`)
 
-> **Versão de referência:** Plugin `2.8.11-beta` | Verificador de Integridade `1.5.9` | Alvo: IPED `4.3.1` (Java 11) + Verificador JAR (Java 8+) / EXE Windows x64 (`.NET 10.0.15`) | Build determinístico multiplataforma via [`build-reproducible.ps1`](build-reproducible.ps1) e publicação automatizada no Gitea (`GiteaRunner`)  
+> **Versão de referência:** Plugin `2.8.12-beta` | Verificador de Integridade `1.5.10` | Alvo: IPED `4.3.1` (Java 11) + Verificador JAR (Java 8+) / EXE Windows x64 (`.NET 10.0.15`) | Build determinístico multiplataforma via [`build-reproducible.ps1`](build-reproducible.ps1) e publicação automatizada no Gitea (`GiteaRunner`)  
 > **Documento único de especificação:** Este arquivo consolida e substitui todos os documentos anteriores dispersos (`ESPEC_UNICA_CHAT_CAPTURE_IPED.md`, `SPEC_CORRECAO_VULNERABILIDADES_FASE3.md`, `ESPEC_TECNICA_CORRECAO_PLUGIN_VERIFICADOR_INSTALADOR.md`, `ESPEC_TECNICA_CORRECAO_VULNERABILIDADES.md` e `ESPEC_TECNICA_CORRECAO_FASE4.md`).
 
 ---

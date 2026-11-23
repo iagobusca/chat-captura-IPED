@@ -2260,6 +2260,41 @@ public final class SecurityRegressionTest {
                 || !IntegrityVerifier.isIgnoredCaptureDirectoryName("LAUDO")) {
             throw new AssertionError("isIgnoredCaptureDirectoryName must ignore laudo case-insensitively");
         }
+        laudoChainedLogAuditWithoutPdfBox(root);
+    }
+
+    private static void laudoChainedLogAuditWithoutPdfBox(Path root) throws Exception {
+        Path caseDir = Files.createDirectories(root.resolve("laudo-log-audit-case"));
+        Path laudoDir = Files.createDirectories(caseDir.resolve("laudo"));
+        String zero = repeat('0', 64);
+        String p0 = "0|2026-11-23T12:00:00-03:00|2026-11-23T15:00:00Z|CRIADO|-|OK|Log.txt criado|prev=" + zero;
+        String h0 = sha256Utf8(p0);
+        String l0 = p0 + "|hash=" + h0;
+        String p1 = "1|2026-11-23T12:01:00-03:00|2026-11-23T15:01:00Z|START|cap1|OK|msg=1|prev=" + h0;
+        String h1 = sha256Utf8(p1);
+        String l1 = p1 + "|hash=" + h1;
+        String prefix01 = sha256Utf8(l0 + "\n" + l1 + "\n");
+
+        Path logTxt = laudoDir.resolve("Log.txt");
+        Path pdf = laudoDir.resolve("report-plugin.pdf");
+        Files.write(logTxt, (l0 + "\n" + l1 + "\n").getBytes(StandardCharsets.UTF_8));
+        String fakePdf = "%PDF-1.4\n/ChatCapturaLogAnchor (CHATCAPTURA_LOGANCHOR_V1;created=2026-11-23T15:00:00Z;lines=0..1;prefix="
+                + prefix01 + ";head=" + h1 + ";status=CONFERE)\n%%EOF\n";
+        Files.write(pdf, fakePdf.getBytes(StandardCharsets.ISO_8859_1));
+
+        IntegrityVerifier.LaudoLogAuditResult okRes = IntegrityVerifier.auditLaudoChainedLog(caseDir);
+        if (!okRes.applicable || !okRes.passed || !"CONFERE".equals(okRes.status)) {
+            throw new AssertionError("Expected CONFERE, got " + okRes.status + " (" + okRes.detail + ")");
+        }
+
+        // Duplicate conflicting anchors in PDF must fail closed
+        String dupPdf = fakePdf + "/ChatCapturaLogAnchor (CHATCAPTURA_LOGANCHOR_V1;created=2026-11-23T15:00:00Z;lines=0..0;prefix="
+                + repeat('a', 64) + ";head=" + repeat('b', 64) + ";status=CONFERE)\n";
+        Files.write(pdf, dupPdf.getBytes(StandardCharsets.ISO_8859_1));
+        IntegrityVerifier.LaudoLogAuditResult dupRes = IntegrityVerifier.auditLaudoChainedLog(caseDir);
+        if (dupRes.passed || !"FALHA_ANCORA_PDF_DUPLICADA".equals(dupRes.status)) {
+            throw new AssertionError("Expected FALHA_ANCORA_PDF_DUPLICADA, got " + dupRes.status);
+        }
     }
 
     private static Object newCapture(Path folder) throws Exception {

@@ -7,8 +7,8 @@ import java.nio.file.Path;
 import java.util.Set;
 
 public final class VerifierIntegrityHashTest {
-    private static final String EXPECTED_JAR_159 = "39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A";
-    private static final String EXPECTED_EXE_159 = "23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C";
+    private static final String EXPECTED_JAR_1510 = "09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30";
+    private static final String EXPECTED_EXE_1510 = "8C34C3E1E744BE108E5EE0D28010C053FF35166F5E7D119B1AE0E745E79082AC";
 
     private VerifierIntegrityHashTest() { }
 
@@ -17,21 +17,25 @@ public final class VerifierIntegrityHashTest {
         Field validJarField = VerifierIntegrity.class.getDeclaredField("VALID_JAR_HASHES");
         validJarField.setAccessible(true);
         Set<String> validJarHashes = (Set<String>) validJarField.get(null);
-        check(validJarHashes.size() == 1 && validJarHashes.contains(EXPECTED_JAR_159),
+        check(validJarHashes.size() == 1 && validJarHashes.contains(EXPECTED_JAR_1510),
                 "VALID_JAR_HASHES must contain exclusively current hash");
 
         Field validExeField = VerifierIntegrity.class.getDeclaredField("VALID_EXE_HASHES");
         validExeField.setAccessible(true);
         Set<String> validExeHashes = (Set<String>) validExeField.get(null);
-        check(validExeHashes.size() == 1 && validExeHashes.contains(EXPECTED_EXE_159),
+        check(validExeHashes.size() == 1 && validExeHashes.contains(EXPECTED_EXE_1510),
                 "VALID_EXE_HASHES must contain exclusively current hash");
 
         Method isValid = VerifierIntegrity.class.getDeclaredMethod("isValid", String.class, String.class);
         isValid.setAccessible(true);
-        check((Boolean) isValid.invoke(null, "integridade-verifier.jar", EXPECTED_JAR_159),
+        check((Boolean) isValid.invoke(null, "integridade-verifier.jar", EXPECTED_JAR_1510),
                 "current JAR hash must be accepted");
-        check((Boolean) isValid.invoke(null, "integridade-verifier.exe", EXPECTED_EXE_159),
+        check((Boolean) isValid.invoke(null, "integridade-verifier.exe", EXPECTED_EXE_1510),
                 "current EXE hash must be accepted");
+        check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
+                "39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A"), "previous 1.5.9 JAR hash must be rejected");
+        check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",
+                "23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C"), "previous 1.5.9 EXE hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.jar",
                 "07EFAB49FE93DFAD1014C6E7DA50BDEADD5108BDAEF13AE267416BF3ACF41C6E"), "previous 1.5.8 JAR hash must be rejected");
         check(!(Boolean) isValid.invoke(null, "integridade-verifier.exe",

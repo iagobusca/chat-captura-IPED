@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.8.11-beta - Verificador de Integridade 1.5.9
+Pacote Chat Captura IPED 2.8.12-beta - Verificador de Integridade 1.5.10
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,21 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.5.9 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.5.10 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.8.11-beta / Verificador 1.5.9 — beta):
+Novidades desta versão (2.8.12-beta / Verificador 1.5.10 — beta Fases 1+2):
+- Plugin 2.8.12-beta (Fases 1 e 2 — report.pdf intacto, report-plugin.pdf trilíngue e Log.txt encadeado):
+  * Parser por seção do report.pdf Avilla (Evidence Information, System operator identification, Who seized the device, Chain Of Custody, Collection information, 8 hashes e bloco Method used integral) sem vazamento em campos vazios;
+  * Cópia byte a byte sem edição do report.pdf original para laudo/report.pdf (SHA-256 conferido) e novo laudo/report-plugin.pdf padrão Avilla com aviso inicial trilíngue (PT/EN/ES), Log Cronológico Encadeado acima de Method used e metodologia do plugin em 3 idiomas (PT/EN/ES);
+  * Janela do laudo mantendo botão "Recarregar do report.pdf" + novos campos de Cadeia de Custódia e Dados do Relatório HTML (sem Operador/Apreensão);
+  * Novo laudo/Log.txt append-only (linha 0 CRIADO com timestamp de criação e cadeia SHA-256), alerta + opção ao usuário para recriar (marcando no PDF e preservando cópia corrompida) e âncora ASCII CHATCAPTURA_LOGANCHOR_V1 no /Info do report-plugin.pdf;
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.5.10.
+- Verificador 1.5.10:
+  * Lê a âncora CHATCAPTURA_LOGANCHOR_V1 diretamente dos bytes de laudo/report-plugin.pdf (sem biblioteca PDFBox, Java 8 puro) e audita laudo/Log.txt (cadeia linha a linha, prefixo 0..X, truncamento, ausência, linhas posteriores e recriação) em Integridade Local, --verify-only e Auditoria de Origem;
+  * Valida em modo fail-closed tanto laudo/report.pdf quanto laudo/report-origem.pdf (legado) contra o report.pdf original na Auditoria de Origem.
+
+Novidades anteriores (2.8.11-beta / Verificador 1.5.9 — beta):
 - Plugin 2.8.11-beta (Laudo Técnico, Cadeia de Custódia, PDFBox e Log Encadeado):
   * Nova janela modal "Dados do Laudo e Cadeia de Custódia" exibida após o aviso do verificador ao clicar em Start ou Re-Extrair (pré-preenchida com laudo/custodia-caso.json e leitura automática do report.pdf de origem), além do botão dedicado "Dados do Laudo..." no painel;
   * Campos completos do laudo pericial: identificação do dispositivo (fabricante, modelo, IMEI, número de série, versão do SO, versão do WhatsApp, Collection Code), ferramenta/parâmetros do IPED, hashes SHA-256 dos arquivos originais e exportados, passo a passo cronológico com data/hora local + UTC e cadeia de custódia (quem coletou, quem analisou, quando, onde e armazenamento com seletor [Pasta, Mídia lacrada, Custom]);
@@ -129,9 +140,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.5.9:
-JAR 39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A
-EXE 23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C
+SHA-256 do Verificador 1.5.10:
+JAR 09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30
+EXE 8C34C3E1E744BE108E5EE0D28010C053FF35166F5E7D119B1AE0E745E79082AC
 
-SHA-256 do plugin 2.8.11-beta:
-JAR D65910C084D19DEE0C3413623A49373BEA18E62B76B54A2E587067694689C17D
+SHA-256 do plugin 2.8.12-beta:
+JAR 83FED2F39B3268B7744F48D61A74B881FB16B79650BD7495B85EDA90D90904F9

@@ -39,6 +39,7 @@ public final class TechnicalReportAndCustodyTest {
             testWithOriginReportPdfCopiesMergesAndValidatesPdfBoxOutput(tempRoot);
             testRealAvillaReportPdfFormatAndTrilingualPluginPdf(tempRoot);
             testChainedAuditLogStartReextractAddedDeletedAndTamper(tempRoot);
+            testChainedLogTxtPdfAnchorAndVerifierWithoutPdfBox(tempRoot);
             testCustodyDialogSelectorAndSwingHtmlDisable();
             testLaudoDirectoryIgnoredByVerifierDiscover(tempRoot);
             System.out.println("TechnicalReportAndCustodyTest: PASS");
@@ -369,6 +370,118 @@ public final class TechnicalReportAndCustodyTest {
         // Tamper a single entry and verify chain fails closed
         entries.get(1).summary = "ADULTERADO";
         check(!CaptureAuditLogManager.verifyAuditLogChain(entries), "adulteracao na cadeia do log deve reprovar verifyAuditLogChain");
+    }
+
+    private static void testChainedLogTxtPdfAnchorAndVerifierWithoutPdfBox(Path root) throws Exception {
+        Path outDir = Files.createDirectories(root.resolve("case-log-txt-phase2"));
+        Path cap1 = outDir.resolve("Chat_Fase2-20261123-120000");
+        createSampleHtmlCapture(cap1, "Chat Fase 2");
+
+        CustodyCaseRecord rec = CustodyCaseRecord.loadOrCreate(outDir);
+        rec.analyzedBy = "Perito Fase 2";
+        CaptureAuditLogManager.recordStartCapture(outDir, rec, cap1);
+        String prevHash = rec.knownCaptures.get(cap1.getFileName().toString()).folderHash;
+        CaptureAuditLogManager.recordRecaptureOutcome(outDir, rec, cap1, cap1.getFileName().toString(),
+                "INALTERADO_OK", "Todos inalterados", prevHash);
+        TechnicalReportGenerator.GenerationResult res = TechnicalReportGenerator.generateAll(outDir, rec, null, "f".repeat(64));
+
+        Path logTxt = outDir.resolve("laudo/Log.txt");
+        check(Files.isRegularFile(logTxt), "laudo/Log.txt deve ser criado");
+        List<String> lines = Files.readAllLines(logTxt, StandardCharsets.UTF_8);
+        check(lines.size() >= 4, "Log.txt deve conter linha 0 CRIADO + START + ADICIONADO + RE-EXTRAIR, atual=" + lines.size());
+        check(lines.get(0).startsWith("0|") && lines.get(0).contains("|CRIADO|") && lines.get(0).contains("prev=" + CaptureAuditLogManager.ZERO_HASH_64),
+                "Linha 0 deve ser CRIADO com prev=64 zeros: " + lines.get(0));
+
+        // 1. Verify PDFBox wrote the uncompressed ASCII anchor into /Info and IntegrityVerifier parses it WITHOUT PDFBox
+        String rawPdfAscii = new String(Files.readAllBytes(res.pluginPdf), StandardCharsets.ISO_8859_1);
+        check(rawPdfAscii.contains("CHATCAPTURA_LOGANCHOR_V1;"),
+                "PDF gerado via PDFBox deve conter marcador ASCII CHATCAPTURA_LOGANCHOR_V1; no dicionario /Info sem compressao");
+
+        Object audit1 = invokeVerifierAuditLog(outDir);
+        check(getBoolField(audit1, "applicable") && getBoolField(audit1, "passed") && !getBoolField(audit1, "hasWarning"),
+                "Auditoria do Verificador deve passar sem avisos: " + getStringField(audit1, "status") + " - " + getStringField(audit1, "detail"));
+        check("CONFERE".equals(getStringField(audit1, "status")), "Status esperado CONFERE, recebido: " + getStringField(audit1, "status"));
+
+        // 2. Append extra line AFTER PDF generation -> Verifier must report CONFERE_COM_LINHAS_POSTERIORES (warning, still valid prefix)
+        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
+                "INALTERADO_OK", "Evento posterior ao PDF", null);
+        Object auditExtra = invokeVerifierAuditLog(outDir);
+        check(getBoolField(auditExtra, "passed") && getBoolField(auditExtra, "hasWarning")
+                        && "CONFERE_COM_LINHAS_POSTERIORES".equals(getStringField(auditExtra, "status")),
+                "Linha posterior valida deve gerar CONFERE_COM_LINHAS_POSTERIORES: " + getStringField(auditExtra, "status"));
+
+        // 3. Truncate Log.txt below anchored X -> Verifier MUST fail with FALHA_LOG_TRUNCADO
+        List<String> truncated = lines.subList(0, 2);
+        Files.write(logTxt, (String.join("\n", truncated) + "\n").getBytes(StandardCharsets.UTF_8));
+        Object auditTrunc = invokeVerifierAuditLog(outDir);
+        check(!getBoolField(auditTrunc, "passed") && "FALHA_LOG_TRUNCADO".equals(getStringField(auditTrunc, "status")),
+                "Log truncado deve reprovar com FALHA_LOG_TRUNCADO: " + getStringField(auditTrunc, "status"));
+
+        // 4. Delete Log.txt -> Verifier MUST fail with FALHA_LOG_AUSENTE
+        Files.deleteIfExists(logTxt);
+        Object auditMissing = invokeVerifierAuditLog(outDir);
+        check(!getBoolField(auditMissing, "passed") && "FALHA_LOG_AUSENTE".equals(getStringField(auditMissing, "status")),
+                "Log ausente com ancora no PDF deve reprovar com FALHA_LOG_AUSENTE: " + getStringField(auditMissing, "status"));
+
+        // 5. Missing Log.txt + user confirms RECREATE -> recreates Log.txt, marks PDF, Verifier reports CONFERE_RECRIADO_NO_PDF
+        String[] promptedIssue = new String[1];
+        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "START", cap1.getFileName().toString(),
+                "CONCLUIDO_OK", "Apos recriacao", (issueType, details) -> {
+                    promptedIssue[0] = issueType;
+                    return true;
+                });
+        check("AUSENTE".equals(promptedIssue[0]), "Prompt deve ser acionado com AUSENTE");
+        check("RECRIADO_POR_SOLICITACAO_DO_USUARIO".equals(rec.logIntegrityStatus), "Status deve registrar recriacao");
+        check(!rec.logIncidents.isEmpty(), "Incidente de recriacao deve ser persistido");
+        List<String> recreatedLines = Files.readAllLines(logTxt, StandardCharsets.UTF_8);
+        check(recreatedLines.get(0).contains("|CRIADO_RECRIADO|"), "Linha 0 recriada deve marcar CRIADO_RECRIADO");
+        TechnicalReportGenerator.GenerationResult resRecreated = TechnicalReportGenerator.generateAll(outDir, rec, null, "f".repeat(64));
+        String recreatedPdfText = readPdfText(resRecreated.pluginPdf).replaceAll("\\s+", " ");
+        check(recreatedPdfText.contains("RECRIADO_POR_SOLICITACAO_DO_USUARIO"),
+                "PDF deve marcar explicitamente que Log.txt foi recriado por solicitacao do usuario");
+        Object auditRecreated = invokeVerifierAuditLog(outDir);
+        check(getBoolField(auditRecreated, "passed") && getBoolField(auditRecreated, "hasWarning")
+                        && "CONFERE_RECRIADO_NO_PDF".equals(getStringField(auditRecreated, "status")),
+                "Verificador deve reportar CONFERE_RECRIADO_NO_PDF: " + getStringField(auditRecreated, "status"));
+
+        // 6. Tamper a line inside Log.txt -> Verifier MUST fail with FALHA_LOG_ADULTERADO
+        String tamperedContent = Files.readString(logTxt, StandardCharsets.UTF_8).replace("Apos recriacao", "ADULTERADO_X");
+        Files.writeString(logTxt, tamperedContent, StandardCharsets.UTF_8);
+        Object auditTampered = invokeVerifierAuditLog(outDir);
+        check(!getBoolField(auditTampered, "passed") && "FALHA_LOG_ADULTERADO".equals(getStringField(auditTampered, "status")),
+                "Log adulterado deve reprovar com FALHA_LOG_ADULTERADO: " + getStringField(auditTampered, "status"));
+
+        // 7. User chooses NOT to recreate on tamper -> does not overwrite broken Log.txt and marks incident
+        promptedIssue[0] = null;
+        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
+                "INALTERADO_OK", "Nao deve gravar", (issueType, details) -> {
+                    promptedIssue[0] = issueType;
+                    return false;
+                });
+        check("ADULTERADO".equals(promptedIssue[0]), "Prompt deve ser acionado com ADULTERADO");
+        check("ADULTERADO_NAO_RECRIADO".equals(rec.logIntegrityStatus), "Status deve ser ADULTERADO_NAO_RECRIADO");
+        check(Files.readString(logTxt, StandardCharsets.UTF_8).contains("ADULTERADO_X"),
+                "Quando usuario recusa recriacao, Log.txt adulterado nao deve ser sobrescrito");
+    }
+
+    private static Object invokeVerifierAuditLog(Path capturesRoot) throws Exception {
+        Class<?> iv = Class.forName("IntegrityVerifier");
+        java.lang.reflect.Method m = iv.getDeclaredMethod("auditLaudoChainedLog", Path.class);
+        m.setAccessible(true);
+        return m.invoke(null, capturesRoot);
+    }
+
+    private static boolean getBoolField(Object target, String name) throws Exception {
+        java.lang.reflect.Field f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.getBoolean(target);
+    }
+
+    private static String getStringField(Object target, String name) throws Exception {
+        java.lang.reflect.Field f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        Object v = f.get(target);
+        return v == null ? "" : v.toString();
     }
 
     private static void testCustodyDialogSelectorAndSwingHtmlDisable() throws Exception {

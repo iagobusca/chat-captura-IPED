@@ -6,6 +6,13 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.12-beta] - 2026-11-23
+
+### Fases 1 e 2 — `report.pdf` Intacto, `report-plugin.pdf` Trilíngue e `laudo/Log.txt` Encadeado (Beta / `beta`)
+- **Fase 1:** parser por seção do `report.pdf` Avilla sem vazamento em campos vazios, cópia byte a byte sem alteração para `laudo/report.pdf`, novo `laudo/report-plugin.pdf` padrão Avilla com aviso inicial trilíngue PT/EN/ES, `Log Cronológico Encadeado` acima de `Method used`, metodologia do plugin em 3 idiomas (PT/EN/ES) e janela do laudo mantendo "Recarregar do report.pdf" + Cadeia de Custódia e Dados do Relatório HTML (sem Operador/Apreensão).
+- **Fase 2:** novo `laudo/Log.txt` append-only (linha 0 `CRIADO` com timestamp de criação e cadeia SHA-256 `prev`/`hash`), alerta com opção ao usuário para recriar marcando a ocorrência no PDF (e preservando cópia corrompida), âncora ASCII `CHATCAPTURA_LOGANCHOR_V1` no dicionário `/Info` do `report-plugin.pdf` e auditoria completa no Verificador `1.5.10` sem biblioteca PDFBox (Java 8 puro).
+- Verificador **1.5.10** (`13.058.749` bytes JAR `09D7166A...` | `90.585.692` bytes EXE `8C34C3E1...`) e Plugin **2.8.12-beta** (`1.663.380` bytes `83FED2F3...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.12-beta-verificador-1.5.10.zip` (`120.396.835` bytes `3ABB3DAF...`).
+
 ## [2.8.11-beta] - 2026-11-23
 
 ### Laudo Técnico, Cadeia de Custódia, PDFBox e Log Encadeado (Beta / `beta`)

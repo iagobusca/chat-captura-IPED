@@ -39,6 +39,7 @@ final class CustodyCaseRecord {
     static final String REPORT_PLUGIN_PDF_FILE = "report-plugin.pdf"; //$NON-NLS-1$
     static final String REPORT_UNIFIED_PDF_FILE = "report-completo-unificado.pdf"; //$NON-NLS-1$
     static final String REPORT_HTML_FILE = "laudo-tecnico.html"; //$NON-NLS-1$
+    static final String LOG_TXT_FILE = "Log.txt"; //$NON-NLS-1$
     static final String AUDIT_LOG_JSONL_FILE = "registro-capturas.jsonl"; //$NON-NLS-1$
     static final String AUDIT_LOG_TXT_FILE = "registro-capturas.log"; //$NON-NLS-1$
     static final String LAUDO_HASHES_TXT_FILE = "laudo-hashes.txt"; //$NON-NLS-1$
@@ -396,6 +397,16 @@ final class CustodyCaseRecord {
     String originMsgstoreSha256 = ""; //$NON-NLS-1$
     String originWaDbSha256 = ""; //$NON-NLS-1$
     String originKeySha256 = ""; //$NON-NLS-1$
+
+    // --- Chained Log.txt Anchor & Incident History ---
+    String logCreatedAtLocal = ""; //$NON-NLS-1$
+    String logCreatedAtUtc = ""; //$NON-NLS-1$
+    int logAnchorLastLine = -1;
+    String logAnchorPrefixSha256 = ""; //$NON-NLS-1$
+    String logAnchorHeadHash = ""; //$NON-NLS-1$
+    long logFileBytes = 0L;
+    String logIntegrityStatus = "NAO_INICIADO"; //$NON-NLS-1$
+    final List<String> logIncidents = new ArrayList<>();
 
     // --- Metadata & History ---
     String createdAtLocal = ""; //$NON-NLS-1$
@@ -781,6 +792,21 @@ final class CustodyCaseRecord {
             stepsArr.put(step.toJson());
         }
 
+        JSONArray incidentsArr = new JSONArray();
+        for (String inc : logIncidents) {
+            incidentsArr.put(clamp(inc, MAX_LONG_FIELD));
+        }
+        JSONObject logAnchor = new JSONObject()
+                .put("file", LOG_TXT_FILE) //$NON-NLS-1$
+                .put("createdAtLocal", clamp(logCreatedAtLocal, 64)) //$NON-NLS-1$
+                .put("createdAtUtc", clamp(logCreatedAtUtc, 64)) //$NON-NLS-1$
+                .put("lastLineIndex", logAnchorLastLine) //$NON-NLS-1$
+                .put("prefixSha256", clamp(logAnchorPrefixSha256, 128)) //$NON-NLS-1$
+                .put("headHash", clamp(logAnchorHeadHash, 128)) //$NON-NLS-1$
+                .put("byteLength", Math.max(0L, logFileBytes)) //$NON-NLS-1$
+                .put("integrityStatus", clamp(logIntegrityStatus, 128)) //$NON-NLS-1$
+                .put("incidents", incidentsArr); //$NON-NLS-1$
+
         return new JSONObject()
                 .put("schemaVersion", SCHEMA_VERSION) //$NON-NLS-1$
                 .put("createdAtLocal", clamp(createdAtLocal, 64)) //$NON-NLS-1$
@@ -791,6 +817,7 @@ final class CustodyCaseRecord {
                 .put("htmlReportMetadata", htmlReport) //$NON-NLS-1$
                 .put("toolAndParameters", tool) //$NON-NLS-1$
                 .put("originReport", originPdf) //$NON-NLS-1$
+                .put("chronologicalLog", logAnchor) //$NON-NLS-1$
                 .put("knownCaptures", knownObj) //$NON-NLS-1$
                 .put("extractionSteps", stepsArr); //$NON-NLS-1$
     }
@@ -911,6 +938,26 @@ final class CustodyCaseRecord {
             r.originDeclaredHashsAvillaMd5 = clamp(orig.optString("declaredHashsAvillaMd5", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
             r.originDeclaredHashsAvillaSha256 = clamp(orig.optString("declaredHashsAvillaSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
             r.originMethodUsedText = clamp(orig.optString("methodUsedText", ""), MAX_METHOD_TEXT); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+
+        JSONObject logObj = root.optJSONObject("chronologicalLog"); //$NON-NLS-1$
+        if (logObj != null) {
+            r.logCreatedAtLocal = clamp(logObj.optString("createdAtLocal", ""), 64); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logCreatedAtUtc = clamp(logObj.optString("createdAtUtc", ""), 64); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logAnchorLastLine = logObj.optInt("lastLineIndex", -1); //$NON-NLS-1$
+            r.logAnchorPrefixSha256 = clamp(logObj.optString("prefixSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logAnchorHeadHash = clamp(logObj.optString("headHash", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logFileBytes = Math.max(0L, logObj.optLong("byteLength", 0L)); //$NON-NLS-1$
+            r.logIntegrityStatus = clamp(logObj.optString("integrityStatus", "NAO_INICIADO"), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            JSONArray incArr = logObj.optJSONArray("incidents"); //$NON-NLS-1$
+            if (incArr != null) {
+                for (int i = 0; i < incArr.length() && i < 500; i++) {
+                    String s = clamp(incArr.optString(i, ""), MAX_LONG_FIELD); //$NON-NLS-1$
+                    if (!s.isEmpty()) {
+                        r.logIncidents.add(s);
+                    }
+                }
+            }
         }
 
         JSONObject knownObj = root.optJSONObject("knownCaptures"); //$NON-NLS-1$

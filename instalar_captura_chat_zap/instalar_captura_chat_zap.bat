@@ -7,15 +7,15 @@ set "SCRIPT_ROOT=%SCRIPT_DIR:~0,-1%"
 REM O JAR da pasta do instalador e preferido para que o ZIP funcione sozinho.
 set "PLUGIN_JAR=%SCRIPT_DIR%iped-viewers-impl-4.3.1.jar"
 if not exist "%PLUGIN_JAR%" set "PLUGIN_JAR=%SCRIPT_DIR%..\..\chat-captura IPED\instalar_captura_chat_zap\iped-viewers-impl-4.3.1.jar"
-set "EXPECTED_PLUGIN_SHA256=D65910C084D19DEE0C3413623A49373BEA18E62B76B54A2E587067694689C17D"
+set "EXPECTED_PLUGIN_SHA256=83FED2F39B3268B7744F48D61A74B881FB16B79650BD7495B85EDA90D90904F9"
 set "JSON_SOURCE=%SCRIPT_DIR%dependencies\json-20260719.jar"
 set "OPENCV_DLL_SOURCE=%SCRIPT_DIR%opencv_java4120.dll"
 set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%integridade-verifier.jar"
 if not exist "%VERIFIER_JAR_SOURCE%" set "VERIFIER_JAR_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.jar"
-set "EXPECTED_VERIFIER_JAR_SHA256=39F076C777A31BE9831BF0218FE00EF2F3B169B28010E9BD9CE8D40EEA2C187A"
+set "EXPECTED_VERIFIER_JAR_SHA256=09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30"
 set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%integridade-verifier.exe"
 if not exist "%VERIFIER_EXE_SOURCE%" set "VERIFIER_EXE_SOURCE=%SCRIPT_DIR%..\verificador-integridade\integridade-verifier.exe"
-set "EXPECTED_VERIFIER_EXE_SHA256=23386DC247DA905D268527CD58868390FDB33AAC3E89B86A178BA9B1CAEAB55C"
+set "EXPECTED_VERIFIER_EXE_SHA256=8C34C3E1E744BE108E5EE0D28010C053FF35166F5E7D119B1AE0E745E79082AC"
 
 REM Sobe ate a pasta raiz do IPED, procurando o iped.exe.
 set "IPED_ROOT="
@@ -48,8 +48,8 @@ set "VERIFIER_EXE_TARGET=%VERIFIER_TARGET_DIR%\integridade-verifier.exe"
 
 echo.
 echo Instalador do plugin de captura de chat WhatsApp
-echo Versao do plugin: 2.8.11-beta
-echo Verificador de integridade: 1.5.9
+echo Versao do plugin: 2.8.12-beta
+echo Verificador de integridade: 1.5.10
 echo ------------------------------------------------
 echo.
 

@@ -4,6 +4,12 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.10] - 2026-11-23
+
+### Auditoria do Log Cronológico `laudo/Log.txt` sem PDFBox + `laudo/report.pdf` (v2.8.12-beta)
+- Lê a âncora ASCII `CHATCAPTURA_LOGANCHOR_V1` diretamente dos bytes de `laudo/report-plugin.pdf` (Java 8 puro, sem PDFBox) e audita `laudo/Log.txt` (cadeia linha a linha `0..X`, prefixo SHA-256 `0..X`, truncamento, ausência, linhas posteriores e recriação registrada) em Integridade Local, `--verify-only` e Auditoria de Origem.
+- Valida em modo fail-closed tanto `laudo/report.pdf` quanto `laudo/report-origem.pdf` (legado) contra o `report.pdf` original na Auditoria de Origem. (`build-reproducible.ps1`; JAR `09D7166A...` / EXE `8C34C3E1...`).
+
 ## [1.5.9] - 2026-11-23
 
 ### Suporte à pasta `laudo/` e Auditoria Fail-Closed de `report-origem.pdf` (v2.8.11-beta)

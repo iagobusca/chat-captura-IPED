@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.11-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.12-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1527,6 +1527,7 @@ private void clearChatCaptureMarks() {
                 "Analisado por=" + nonBlank(record.analyzedBy, "-") //$NON-NLS-1$ //$NON-NLS-2$
                         + " | Armazenamento=" + record.formattedStorageDescription()); //$NON-NLS-1$
         this.activeCustodyRecord = record;
+        ensureUiLogRecoveryPrompt(alertParent != null ? alertParent : chatCapturePanel);
         Thread genThread = new Thread(() -> {
             try {
                 CaptureAuditLogManager.reconcileKnownCaptures(outputPath, record, "LAUDO"); //$NON-NLS-1$
@@ -1553,11 +1554,46 @@ private void clearChatCaptureMarks() {
         genThread.start();
     }
 
+    private void ensureUiLogRecoveryPrompt(java.awt.Component parent) {
+        final java.awt.Component ownerComp = parent != null ? parent : chatCapturePanel;
+        CaptureAuditLogManager.defaultRecoveryPrompt = (issueType, details) -> {
+            final boolean[] answer = new boolean[] { false };
+            Runnable ask = () -> {
+                String msg = "ATEN\u00c7\u00c3O \u2014 Problema de integridade em laudo/Log.txt (" + issueType + "):\n\n" //$NON-NLS-1$ //$NON-NLS-2$
+                        + details + "\n\n" //$NON-NLS-1$
+                        + "Deseja recriar o arquivo laudo/Log.txt agora?\n" //$NON-NLS-1$
+                        + "A ocorr\u00eancia ser\u00e1 registrada em destaque no laudo/report-plugin.pdf e a captura continuar\u00e1 normalmente."; //$NON-NLS-1$
+                Object[] options = new Object[] { "Sim, recriar Log.txt", "N\u00e3o recriar" }; //$NON-NLS-1$ //$NON-NLS-2$
+                int choice = JOptionPane.showOptionDialog(
+                        ownerComp,
+                        ChatCapturePanel.plainMessageComponent(msg),
+                        "Alerta de Integridade \u2014 laudo/Log.txt", //$NON-NLS-1$
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        options,
+                        options[0]);
+                answer[0] = (choice == 0);
+            };
+            try {
+                if (SwingUtilities.isEventDispatchThread()) {
+                    ask.run();
+                } else {
+                    SwingUtilities.invokeAndWait(ask);
+                }
+            } catch (Exception ignored) {
+                answer[0] = false;
+            }
+            return answer[0];
+        };
+    }
+
     private void finalizeLaudoAfterStart(Path outputRoot, Path captureDir) {
         if (linkedCaptureViewer || outputRoot == null || captureDir == null) {
             return;
         }
         try {
+            ensureUiLogRecoveryPrompt(chatCapturePanel);
             CustodyCaseRecord record = this.activeCustodyRecord;
             if (record == null) {
                 record = loadOrPrepareCustodyRecord(outputRoot);
@@ -2287,6 +2323,7 @@ private void clearChatCaptureMarks() {
                 batchRecord = loadOrPrepareCustodyRecord(outputRoot);
             }
             try {
+                ensureUiLogRecoveryPrompt(chatCapturePanel);
                 CaptureAuditLogManager.reconcileKnownCaptures(outputRoot, batchRecord, "RE-EXTRAIR"); //$NON-NLS-1$
             } catch (Exception logInitErr) {
                 LOGGER.warn("Unable to reconcile known captures before re-extract batch", logInitErr); //$NON-NLS-1$
@@ -2344,6 +2381,7 @@ private void clearChatCaptureMarks() {
             if (resetLegacyRecords && replaced > 0) deleteRootIntegrityReportsIfExists(outputRoot);
             safeRebuildCaptureRootIndex(outputRoot);
             try {
+                ensureUiLogRecoveryPrompt(chatCapturePanel);
                 CaptureAuditLogManager.reconcileKnownCaptures(outputRoot, batchRecord, "RE-EXTRAIR"); //$NON-NLS-1$
                 TechnicalReportGenerator.generateAll(outputRoot, batchRecord, this.originAuditFolder, this.lastKnownRootHash);
                 this.activeCustodyRecord = batchRecord;
@@ -6785,6 +6823,11 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 }
                 if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE))) {
                     laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE).append("\">report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                } else if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE))) {
+                    laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE).append("\">report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.LOG_TXT_FILE))) {
+                    laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.LOG_TXT_FILE).append("\">Log.txt Encadeado</a>"); //$NON-NLS-1$ //$NON-NLS-2$
                 }
                 if (CaptureIntegrity.isSafeRegularFile(laudoDir.resolve(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE))) {
                     laudoLinks.append("<a class=\"btn alt\" href=\"laudo/").append(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE).append("\">PDF Unificado</a>"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -6885,6 +6928,11 @@ out.println("</head><body><section class=\"hero\"><div class=\"hero-main\"><h1>&
                 }
                 if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE))) {
                     rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE).append("\">Abrir report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                } else if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE))) {
+                    rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE).append("\">Abrir report.pdf Original</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (CaptureIntegrity.isSafeRegularFile(laudoDirReport.resolve(CustodyCaseRecord.LOG_TXT_FILE))) {
+                    rootLinks.append(" &nbsp; <a href=\"laudo/").append(CustodyCaseRecord.LOG_TXT_FILE).append("\">Abrir Log.txt</a>"); //$NON-NLS-1$ //$NON-NLS-2$
                 }
             }
             out.println("<div class=\"summary\"><p><b>Pasta raiz:</b> " + html(outputRoot.toAbsolutePath().toString()) + "</p><p><b>Quantidade de capturas:</b> " + captures.size() + "</p><p><b>Hash geral da raiz:</b> <span class=\"mono\">" + html(rootHash) + "</span></p><p>" + rootLinks + "</p></div>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$

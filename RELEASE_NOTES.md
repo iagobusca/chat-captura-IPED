@@ -7,6 +7,24 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.12-beta (Beta / `beta`) / Verificador 1.5.10
+
+- **Tag**: [v2.8.12-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.12-beta) (Compilação determinística via `build-reproducible.ps1` — Fases 1 e 2)
+- **Branch base**: `beta` (canal beta — `main` estável preservada intacta)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.12-beta-verificador-1.5.10.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.12-beta/instalador-chat-captura-IPED-2.8.12-beta-verificador-1.5.10.zip) (`120.396.835` bytes | SHA-256: `3ABB3DAF97E72C02FCC50EA56F326754D2F00EA8E9150D21E4E478F53F1EA90F`)
+- [integridade-verifier-1.5.10.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.12-beta/integridade-verifier-1.5.10.exe) (`90.585.692` bytes | SHA-256: `8C34C3E1E744BE108E5EE0D28010C053FF35166F5E7D119B1AE0E745E79082AC`)
+- [integridade-verifier-1.5.10.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.12-beta/integridade-verifier-1.5.10.jar) (`13.058.749` bytes | SHA-256: `09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30`)
+- [iped-viewers-impl-4.3.1-2.8.12-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.12-beta/iped-viewers-impl-4.3.1-2.8.12-beta.jar) (`1.663.380` bytes | SHA-256: `83FED2F39B3268B7744F48D61A74B881FB16B79650BD7495B85EDA90D90904F9`)
+
+### Resumo
+- **Fase 1 (`laudo/report.pdf` intacto + `laudo/report-plugin.pdf` padrão Avilla trilíngue):** parser por seção do `report.pdf` original (sem vazamento em campos vazios), cópia byte a byte sem edição para `laudo/report.pdf`, aviso inicial PT/EN/ES explicando que `report.pdf` é o original, `Log Cronológico Encadeado` acima de `Method used`, metodologia do plugin em 3 idiomas (PT/EN/ES) e janela do laudo mantendo "Recarregar do report.pdf" + Cadeia de Custódia e Dados do Relatório HTML (sem Operador/Apreensão).
+- **Fase 2 (`laudo/Log.txt` append-only + âncora PDF sem PDFBox + Auditoria no Verificador `1.5.10`):** arquivo `laudo/Log.txt` append-only (linha 0 `CRIADO` com timestamp de criação e cadeia SHA-256 `prev`/`hash`), alerta com opção ao usuário para recriar (marcando no `report-plugin.pdf` e preservando cópia corrompida), âncora ASCII `CHATCAPTURA_LOGANCHOR_V1` no `/Info` do PDF e auditoria completa no Verificador `1.5.10` (Java 8 puro, sem PDFBox) validando cadeia, prefixo `0..X`, truncamento, ausência e linhas posteriores.
+- Compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.10**.
+
+---
+
 ## v2.8.11-beta (Beta / `beta`) / Verificador 1.5.9
 
 - **Tag**: [v2.8.11-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.11-beta) (Compilação determinística via `build-reproducible.ps1`)
