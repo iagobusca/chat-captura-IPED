@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.9.1-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.9.2-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -169,6 +169,10 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
 
     private final ChatCapturePanel chatCapturePanel = new ChatCapturePanel(this);
     private volatile IItem captureSourceItem;
+    private final java.util.concurrent.atomic.AtomicLong captureSourceLoadGen = new java.util.concurrent.atomic.AtomicLong(0L);
+    private volatile long captureSourceLoadedGen = -1L;
+    private volatile IItem captureSourceLoadedItem;
+    private long fxPendingLoadGen = 0L;
     private volatile String captureContextMessageId;
     private volatile String captureStartMessageId;
     private volatile String captureEndMessageId;
@@ -226,11 +230,14 @@ private volatile RecaptureJob activeRecaptureJob;
                         if (newState == Worker.State.SUCCEEDED) {
                             installChatCaptureSupport();
                             updateSelection();
+                            captureSourceLoadedItem = captureSourceItem;
+                            captureSourceLoadedGen = fxPendingLoadGen;
                             // imprecise, not needed for current chat reports after #633
                             // scrollToPosition();
                         }
-                        if (newState == Worker.State.RUNNING) {
+                        if (newState == Worker.State.RUNNING || newState == Worker.State.SCHEDULED) {
                             mediaHashesInView.clear();
+                            captureSourceLoadedGen = -1L;
                         }
                     }
                 });
@@ -1160,6 +1167,8 @@ private void clearChatCaptureMarks() {
         linkedCaptureViewer = false;
         captureRunning = false;
         captureSourceItem = item;
+        captureSourceLoadedItem = null;
+        captureSourceLoadedGen = -1L;
         currentCaptureOutputRoot = outputRoot.toPath();
         chatCapturePanel.setOutputFolder(outputRoot);
         annotationStore.bindOutputRoot(outputRoot.toPath());
@@ -3011,19 +3020,65 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
             LOGGER.warn("Skipping recapture job without usable anchors or saved ids: {}", job.folder); //$NON-NLS-1$
             return false;
         }
+        if (reuseOrWaitMatchingLoadedChat(job)) {
+            LOGGER.info("Reusing already-loaded chat in viewer for recapture {}", job.folder); //$NON-NLS-1$
+            return true;
+        }
         for (String query : job.luceneQueries) {
             if (query == null || query.isBlank()) {
                 continue;
             }
             job.luceneQuery = query;
+            long beforeGen = captureSourceLoadGen.get();
             LOGGER.info("Trying to re-extract chat {} with query {}", job.folder, query); //$NON-NLS-1$
             if (!openSearcherItem(attachSearcher, query, null, job.sourceName)) {
                 continue;
             }
-            if (waitUntilCaptureSourceMatches(job, 3000)) {
+            if (waitUntilCaptureSourceMatches(job, beforeGen, 15000)) {
                 return true;
             }
             LOGGER.info("Opened candidate for {}, but source did not match. Trying next query.", job.folder); //$NON-NLS-1$
+        }
+        return false;
+    }
+
+    static boolean shouldReuseLoadedRecaptureChat(boolean sourceMatches, long currentGen, long loadedGen, boolean domReady) {
+        return sourceMatches && domReady && currentGen > 0L && loadedGen == currentGen;
+    }
+
+    static boolean isRecaptureLoadCompleted(boolean sourceMatches, long beforeGen, long currentGen, long loadedGen, boolean domReady) {
+        return sourceMatches && domReady && currentGen > beforeGen && loadedGen == currentGen;
+    }
+
+    private boolean isCaptureDomReady() {
+        Object ready = executeScriptAndWait(
+                "(function(){try{return document.readyState==='complete'&&document.querySelectorAll('div.linha').length>0;}catch(e){return false;}})();"); //$NON-NLS-1$
+        return Boolean.TRUE.equals(ready);
+    }
+
+    private boolean reuseOrWaitMatchingLoadedChat(RecaptureJob job) throws InterruptedException {
+        IItem current = captureSourceItem;
+        if (current == null || !matchesRecaptureJob(current, job)) {
+            return false;
+        }
+        long deadline = System.currentTimeMillis() + 10000;
+        while (System.currentTimeMillis() < deadline && !stopCaptureRequested) {
+            IItem source = captureSourceItem;
+            if (source == null || !matchesRecaptureJob(source, job)) {
+                return false;
+            }
+            long currentGen = captureSourceLoadGen.get();
+            long loadedGen = captureSourceLoadedGen;
+            IItem loadedItem = captureSourceLoadedItem;
+            boolean matchesLoaded = loadedItem != null && loadedItem == source && matchesRecaptureJob(loadedItem, job);
+            if (shouldReuseLoadedRecaptureChat(matchesLoaded, currentGen, loadedGen, true) && isCaptureDomReady()) {
+                return true;
+            }
+            if (currentGen > 0L && loadedGen == currentGen) {
+                // Carga atual terminou, mas o DOM nao tem linhas de chat prontas; recarrega normalmente.
+                return false;
+            }
+            sleep(150);
         }
         return false;
     }
@@ -3304,14 +3359,27 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         chatCapturePanel.setRecaptureProgress(stageMessage + folder, batchCurrent, batchTotal, step, 7, indeterminate);
     }
 
-    private boolean waitUntilCaptureSourceMatches(RecaptureJob job, long timeoutMs) throws InterruptedException {
+    private boolean waitUntilCaptureSourceMatches(RecaptureJob job, long beforeGen, long timeoutMs) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            IItem item = captureSourceItem;
-            if (item != null && matchesRecaptureJob(item, job)) {
+        long mismatchSeenAt = -1L;
+        while (System.currentTimeMillis() < deadline && !stopCaptureRequested) {
+            long currentGen = captureSourceLoadGen.get();
+            long loadedGen = captureSourceLoadedGen;
+            IItem loadedItem = captureSourceLoadedItem;
+            boolean matches = loadedItem != null && loadedItem == captureSourceItem && matchesRecaptureJob(loadedItem, job);
+            if (isRecaptureLoadCompleted(matches, beforeGen, currentGen, loadedGen, true) && isCaptureDomReady()) {
                 return true;
             }
-            sleep(250);
+            if (currentGen > beforeGen && loadedGen == currentGen && !matches) {
+                if (mismatchSeenAt < 0L) {
+                    mismatchSeenAt = System.currentTimeMillis();
+                } else if (System.currentTimeMillis() - mismatchSeenAt >= 500L) {
+                    return false;
+                }
+            } else {
+                mismatchSeenAt = -1L;
+            }
+            sleep(150);
         }
         return false;
     }
@@ -10807,7 +10875,15 @@ String invalidReason;
         if (disposed) {
             return;
         }
-        captureSourceItem = content instanceof IItem ? (IItem) content : null;
+        final IItem nextItem = content instanceof IItem ? (IItem) content : null;
+        final long gen = captureSourceLoadGen.incrementAndGet();
+        captureSourceItem = nextItem;
+        captureSourceLoadedGen = -1L;
+        if (Platform.isFxApplicationThread()) {
+            fxPendingLoadGen = gen;
+        } else {
+            Platform.runLater(() -> fxPendingLoadGen = gen);
+        }
         if (content != null) {
             attachSearcher.updateSelectionCache();
         }

@@ -6,6 +6,13 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.2-beta] - 2026-11-23
+
+### Correção de Race Condition no Re-Extrair em Lote (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)
+- **Reaproveitamento do chat já carregado (`HtmlLinkViewer.openRecaptureChat`):** quando o lote de Re-Extrair processa múltiplas capturas consecutivas da mesma conversa já aberta e pronta no WebView, o plugin não dispara mais `openSearcherItem` / reload redundante no `FileProcessor`, evitando que o DOM seja limpo no meio de `prepareRecaptureChatRange` / `ensureCaptureRangeElementsAvailable` (*"A mensagem marcada não está mais disponível na conversa carregada"*).
+- **Sincronização real por geração de carga (`captureSourceLoadGen` / `Worker.State.SUCCEEDED`):** ao abrir uma conversa diferente, `waitUntilCaptureSourceMatches` aguarda a conclusão efetiva da nova carga no JavaFX `WebEngine` e a disponibilidade de `div.linha` no DOM antes de resolver as âncoras.
+- **Verificador `1.6.0` inalterado:** zero alterações em `verificador-integridade/` (mesmos binários `E5006E34...` / `1F14B7A1...`); Plugin **2.9.2-beta** (`1.684.041` bytes `1C96410C...`) e instalador `instalador-chat-captura-IPED-2.9.2-beta-verificador-1.6.0.zip` (`120.424.724` bytes `924CF33B...`) compilados deterministicamente via `build-reproducible.ps1`.
+
 ## [2.9.1-beta] - 2026-11-23
 
 ### Menu Lateral com Scroll Vertical (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)

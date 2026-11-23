@@ -18,6 +18,7 @@ public class UiAndAuxFolderRegressionTest {
         testEmptyOutputFolderDoesNotInstallVerifierOnRecaptureOrStart();
         testRecapturePaginationExcludesInvalidCaptures();
         testSidebarScrollEnablesAccessToAllControlsInCompactHeight();
+        testRecaptureChatReuseAndLoadGenerationSync();
         System.out.println("UiAndAuxFolderRegressionTest: PASS");
     }
 
@@ -133,6 +134,36 @@ public class UiAndAuxFolderRegressionTest {
             assertTrue(scrollable.getScrollableTracksViewportHeight(),
                     "Tall viewport must track height so search list stretches cleanly");
         });
+    }
+
+    private static void testRecaptureChatReuseAndLoadGenerationSync() {
+        // Same chat already loaded and idle -> must reuse without triggering redundant FileProcessor reload
+        assertTrue(HtmlLinkViewer.shouldReuseLoadedRecaptureChat(true, 4L, 4L, true),
+                "Loaded matching chat with settled generation and ready DOM must be reused");
+        assertTrue(!HtmlLinkViewer.shouldReuseLoadedRecaptureChat(true, 4L, -1L, true),
+                "In-flight reload (loadedGen=-1) must NOT be reused prematurely");
+        assertTrue(!HtmlLinkViewer.shouldReuseLoadedRecaptureChat(true, 5L, 4L, true),
+                "Queued reload (loadedGen < currentGen) must NOT be reused prematurely");
+        assertTrue(!HtmlLinkViewer.shouldReuseLoadedRecaptureChat(true, 4L, 4L, false),
+                "Unready DOM must NOT be reused");
+        assertTrue(!HtmlLinkViewer.shouldReuseLoadedRecaptureChat(false, 4L, 4L, true),
+                "Different chat must NOT be reused");
+        assertTrue(!HtmlLinkViewer.shouldReuseLoadedRecaptureChat(true, 0L, 0L, true),
+                "Zero load generation must NOT be reused");
+
+        // Opening a different chat (or reloading) must wait strictly for a newer generation to finish SUCCEEDED
+        assertTrue(!HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 4L, 4L, true),
+                "Stale generation (currentGen == beforeGen) must NOT satisfy new load completion");
+        assertTrue(!HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 5L, -1L, true),
+                "New load still running (loadedGen=-1) must NOT satisfy completion");
+        assertTrue(!HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 5L, 4L, true),
+                "Previous generation SUCCEEDED (loadedGen=4 < currentGen=5) must NOT satisfy completion");
+        assertTrue(!HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 5L, 5L, false),
+                "DOM not ready must NOT satisfy completion");
+        assertTrue(!HtmlLinkViewer.isRecaptureLoadCompleted(false, 4L, 5L, 5L, true),
+                "Mismatched chat must NOT satisfy completion");
+        assertTrue(HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 5L, 5L, true),
+                "Settled matching new generation with ready DOM must satisfy completion");
     }
 
     private static void layoutRecursively(Container container) {

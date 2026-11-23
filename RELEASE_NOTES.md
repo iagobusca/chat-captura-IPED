@@ -7,6 +7,25 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.2-beta (Beta / `beta`) / Verificador 1.6.0
+
+- **Tag**: [v2.9.2-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.2-beta) (Compilação determinística via `build-reproducible.ps1`)
+- **Branch base**: `beta` (canal beta — `main` estável `v2.9.0` e **Verificador `1.6.0`** preservados 100% intactos)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.2-beta-verificador-1.6.0.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.2-beta/instalador-chat-captura-IPED-2.9.2-beta-verificador-1.6.0.zip) (`120.424.724` bytes | SHA-256: `924CF33B65FD4D8FA6D0AA306583F009D7E95B575FA3E28C2D40B462AE5C5AF4`)
+- [integridade-verifier-1.6.0.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.2-beta/integridade-verifier-1.6.0.exe) (`90.589.274` bytes | SHA-256: `1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920`)
+- [integridade-verifier-1.6.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.2-beta/integridade-verifier-1.6.0.jar) (`13.062.572` bytes | SHA-256: `E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745`)
+- [iped-viewers-impl-4.3.1-2.9.2-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.2-beta/iped-viewers-impl-4.3.1-2.9.2-beta.jar) (`1.684.041` bytes | SHA-256: `1C96410CD48E0750023B28CBD30CBFAD590B84F3F2977CA6B54C824CC125C02F`)
+
+### Corrigido
+- **Race condition no Re-Extrair em lote com capturas consecutivas do mesmo chat (`HtmlLinkViewer`):** `openRecaptureChat` agora reaproveita o chat já aberto e pronto no WebView (sem disparar reload redundante no `FileProcessor`), e trocas de conversa aguardam a conclusão real da nova geração de carga (`loadFile` → `Worker.State.SUCCEEDED` + DOM `div.linha` pronto), eliminando as falsas falhas *"A mensagem marcada não está mais disponível na conversa carregada"*.
+
+### Resumo
+- Correção cirúrgica na sincronização de carregamento do WebView durante o **Re-Extrair** na branch `beta` (`2.9.2-beta`), mantendo o **Verificador de Integridade `1.6.0` 100% inalterado** (mesmos hashes oficiais).
+
+---
+
 ## v2.9.1-beta (Beta / `beta`) / Verificador 1.6.0
 
 - **Tag**: [v2.9.1-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.1-beta) (Compilação determinística via `build-reproducible.ps1`)
