@@ -26,6 +26,7 @@ import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
@@ -50,7 +51,7 @@ final class CustodyReportDialog extends JDialog {
     // Origin PDF block
     private final JLabel originPdfStatusLabel = ChatCapturePanel.plainLabel(""); //$NON-NLS-1$
     private final JCheckBox copyOriginPdfCheck = ChatCapturePanel.plainCheckBox(
-            "Copiar report.pdf da origem para laudo/report-origem.pdf (validando SHA-256)", true); //$NON-NLS-1$
+            "Copiar report.pdf da origem sem altera\u00e7\u00e3o para laudo/report.pdf (validando SHA-256)", true); //$NON-NLS-1$
     private final JCheckBox unifiedPdfCheck = ChatCapturePanel.plainCheckBox(
             "Gerar tamb\u00e9m PDF unificado (laudo/report-completo-unificado.pdf: report do plugin + report.pdf original)", false); //$NON-NLS-1$
 
@@ -75,6 +76,23 @@ final class CustodyReportDialog extends JDialog {
     private final JTextField storageCustomField = new JTextField(28);
     private final JTextField sealRefField = new JTextField(28);
     private final JLabel storageCustomLabel = ChatCapturePanel.plainLabel("Especificar armazenamento (Custom):"); //$NON-NLS-1$
+    private final JTextField storageResponsibleField = new JTextField(28);
+    private final JTextField caseNumberField = new JTextField(28);
+    private final JTextField legalAuthorizationField = new JTextField(28);
+    private final JTextField victimsField = new JTextField(28);
+    private final JTextField suspectsField = new JTextField(28);
+    private final JTextField destinationField = new JTextField(28);
+
+    // HTML Report Metadata block (relatorio.htm / caseinformation.htm)
+    private final JTextField orgHeaderField = new JTextField(28);
+    private final JTextField reportNumberField = new JTextField(28);
+    private final JTextField reportDateField = new JTextField(28);
+    private final JTextField reportTitleField = new JTextField(28);
+    private final JTextArea signatoriesArea = new JTextArea(2, 28);
+    private final JTextField requestRefField = new JTextField(28);
+    private final JTextField protocolNumberField = new JTextField(28);
+    private final JTextField protocolDateField = new JTextField(28);
+    private final JTextArea examinedMaterialArea = new JTextArea(2, 28);
 
     // Tool & parameters block
     private final JTextField extractionConfigField = new JTextField(28);
@@ -124,6 +142,12 @@ final class CustodyReportDialog extends JDialog {
         appliedFiltersArea.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
         appliedFiltersArea.setLineWrap(true);
         appliedFiltersArea.setWrapStyleWord(true);
+        signatoriesArea.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        signatoriesArea.setLineWrap(true);
+        signatoriesArea.setWrapStyleWord(true);
+        examinedMaterialArea.putClientProperty("html.disable", Boolean.TRUE); //$NON-NLS-1$
+        examinedMaterialArea.setLineWrap(true);
+        examinedMaterialArea.setWrapStyleWord(true);
         storageCombo.setRenderer(new PlainComboRenderer());
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -144,7 +168,7 @@ final class CustodyReportDialog extends JDialog {
         // --- Secao 2: Identificacao do Dispositivo ---
         row = addSectionHeader(form, row, "2. Identifica\u00e7\u00e3o do Dispositivo (lido do report.pdf + complementa\u00e7\u00e3o)"); //$NON-NLS-1$
         row = addFieldWithBadge(form, row, "Fabricante:", manufacturerField, badgeManufacturer); //$NON-NLS-1$
-        row = addFieldWithBadge(form, row, "Modelo:", modelField, badgeModel); //$NON-NLS-1$
+        row = addFieldWithBadge(form, row, "Modelo / Collected Device:", modelField, badgeModel); //$NON-NLS-1$
         row = addFieldWithBadge(form, row, "IMEI:", imeiField, badgeImei); //$NON-NLS-1$
         row = addFieldWithBadge(form, row, "N\u00famero de s\u00e9rie:", serialField, badgeSerial); //$NON-NLS-1$
         row = addFieldWithBadge(form, row, "Vers\u00e3o do SO:", osVersionField, badgeOs); //$NON-NLS-1$
@@ -152,8 +176,8 @@ final class CustodyReportDialog extends JDialog {
         row = addFieldWithBadge(form, row, "C\u00f3digo da coleta:", collectionCodeField, badgeCollection); //$NON-NLS-1$
         row = addFieldWithBadge(form, row, "Ferramenta extr. original:", originToolField, badgeTool); //$NON-NLS-1$
 
-        // --- Secao 3: Cadeia de Custodia ---
-        row = addSectionHeader(form, row, "3. Cadeia de Cust\u00f3dia"); //$NON-NLS-1$
+        // --- Secao 3: Cadeia de Custodia (Chain Of Custody) ---
+        row = addSectionHeader(form, row, "3. Cadeia de Cust\u00f3dia (Chain Of Custody)"); //$NON-NLS-1$
         row = addSimpleField(form, row, "Quem coletou:", collectedByField); //$NON-NLS-1$
         row = addSimpleField(form, row, "Quem analisou:", analyzedByField); //$NON-NLS-1$
         row = addSimpleField(form, row, "Quando (coleta):", collectedAtField); //$NON-NLS-1$
@@ -161,10 +185,32 @@ final class CustodyReportDialog extends JDialog {
         row = addSimpleField(form, row, "Onde (local):", locationField); //$NON-NLS-1$
         row = addSimpleField(form, row, "Como foi armazenado:", storageCombo); //$NON-NLS-1$
         row = addLabeledComponent(form, row, storageCustomLabel, storageCustomField);
-        row = addSimpleField(form, row, "Lacre / Refer\u00eancia (opcional):", sealRefField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "N\u00ba do Lacre / Refer\u00eancia:", sealRefField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Respons\u00e1vel pelo armazenamento:", storageResponsibleField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "N\u00ba do caso (Case number):", caseNumberField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Autoriza\u00e7\u00e3o Legal:", legalAuthorizationField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Nome completo das v\u00edtimas:", victimsField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Nome completo dos suspeitos:", suspectsField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Destino da evid\u00eancia:", destinationField); //$NON-NLS-1$
 
-        // --- Secao 4: Ferramenta e Parametros no IPED ---
-        row = addSectionHeader(form, row, "4. Ferramenta IPED (4.3.1) e Par\u00e2metros / Filtros"); //$NON-NLS-1$
+        // --- Secao 4: Dados do Relatorio HTML (relatorio.htm) ---
+        row = addSectionHeader(form, row, "4. Dados do Relat\u00f3rio HTML (relatorio.htm / caseinformation.htm)"); //$NON-NLS-1$
+        row = addSimpleField(form, row, "\u00d3rg\u00e3o / Cabe\u00e7alho:", orgHeaderField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Laudo n\u00ba:", reportNumberField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Data do laudo:", reportDateField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "T\u00edtulo:", reportTitleField); //$NON-NLS-1$
+        JScrollPane sigScroll = new JScrollPane(signatoriesArea);
+        sigScroll.setPreferredSize(new Dimension(360, 48));
+        row = addSimpleField(form, row, "Signat\u00e1rio(s):", sigScroll); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Solicita\u00e7\u00e3o:", requestRefField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Protocolo Criminal\u00edstica n\u00ba:", protocolNumberField); //$NON-NLS-1$
+        row = addSimpleField(form, row, "Data do Protocolo:", protocolDateField); //$NON-NLS-1$
+        JScrollPane matScroll = new JScrollPane(examinedMaterialArea);
+        matScroll.setPreferredSize(new Dimension(360, 48));
+        row = addSimpleField(form, row, "Material examinado:", matScroll); //$NON-NLS-1$
+
+        // --- Secao 5: Ferramenta e Parametros no IPED ---
+        row = addSectionHeader(form, row, "5. Ferramenta IPED (4.3.1) e Par\u00e2metros / Filtros"); //$NON-NLS-1$
         row = addSimpleField(form, row, "Configura\u00e7\u00e3o de extra\u00e7\u00e3o:", extractionConfigField); //$NON-NLS-1$
         JScrollPane filterScroll = new JScrollPane(appliedFiltersArea);
         filterScroll.setPreferredSize(new Dimension(360, 64));
@@ -234,6 +280,22 @@ final class CustodyReportDialog extends JDialog {
         storageCombo.setSelectedItem(record.storageType == null ? CustodyCaseRecord.StorageType.PASTA : record.storageType);
         storageCustomField.setText(record.storageCustomText);
         sealRefField.setText(record.storageSealReference);
+        storageResponsibleField.setText(record.storageResponsible);
+        caseNumberField.setText(record.caseNumber);
+        legalAuthorizationField.setText(record.legalAuthorization);
+        victimsField.setText(record.victimsFullName);
+        suspectsField.setText(record.suspectsFullName);
+        destinationField.setText(record.evidenceDestination);
+
+        orgHeaderField.setText(record.organizationHeader);
+        reportNumberField.setText(record.reportNumber);
+        reportDateField.setText(record.reportDate);
+        reportTitleField.setText(record.reportTitle);
+        signatoriesArea.setText(record.signatories);
+        requestRefField.setText(record.requestReference);
+        protocolNumberField.setText(record.forensicProtocolNumber);
+        protocolDateField.setText(record.forensicProtocolDate);
+        examinedMaterialArea.setText(record.examinedMaterial);
 
         extractionConfigField.setText(record.extractionConfig);
         appliedFiltersArea.setText(record.appliedFilters);
@@ -272,13 +334,47 @@ final class CustodyReportDialog extends JDialog {
             return;
         }
         try {
+            applyFieldsToRecord();
             OriginCustodyBinder.OriginReportPreview preview = OriginCustodyBinder.readDeviceAndCustodyPreview(originFolder);
-            record.mergeFromOriginPreview(preview, true);
+            boolean overwrite = true;
+            if (hasConflictingEditedValues(preview)) {
+                JLabel msg = ChatCapturePanel.plainLabel(
+                        "Alguns campos j\u00e1 est\u00e3o preenchidos com valores diferentes do report.pdf. Deseja preencher apenas os campos vazios ou sobrescrever tudo?"); //$NON-NLS-1$
+                Object[] opts = new Object[] { "Preencher apenas vazios", "Sobrescrever tudo", "Cancelar" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                int choice = JOptionPane.showOptionDialog(this, msg, "Recarregar do report.pdf", //$NON-NLS-1$
+                        JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
+                if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) {
+                    return;
+                }
+                overwrite = (choice == 1);
+            }
+            record.mergeFromOriginPreview(preview, overwrite);
             loadRecordIntoFields();
         } catch (Exception ex) {
             originPdfStatusLabel.setText("Erro ao ler report.pdf: " + ex.getMessage()); //$NON-NLS-1$
             originPdfStatusLabel.setForeground(new Color(0x8B, 0x00, 0x00));
         }
+    }
+
+    private boolean hasConflictingEditedValues(OriginCustodyBinder.OriginReportPreview p) {
+        if (p == null || !p.reportPdfPresent) {
+            return false;
+        }
+        return differs(record.deviceModel, p.model)
+                || differs(record.deviceSerialNumber, p.serialNumber)
+                || differs(record.deviceOsVersion, p.osVersion)
+                || differs(record.collectionCode, p.collectionCode)
+                || differs(record.caseNumber, p.caseNumber)
+                || differs(record.legalAuthorization, p.legalAuthorization)
+                || differs(record.victimsFullName, p.victimsFullName)
+                || differs(record.suspectsFullName, p.suspectsFullName)
+                || differs(record.evidenceDestination, p.evidenceDestination);
+    }
+
+    private static boolean differs(String existing, String incoming) {
+        return existing != null && !existing.isBlank()
+                && incoming != null && !incoming.isBlank()
+                && !existing.trim().equals(incoming.trim());
     }
 
     private void updateStorageControls() {
@@ -319,6 +415,22 @@ final class CustodyReportDialog extends JDialog {
         record.storageType = st == null ? CustodyCaseRecord.StorageType.PASTA : st;
         record.storageCustomText = CustodyCaseRecord.clamp(storageCustomField.getText(), 512);
         record.storageSealReference = CustodyCaseRecord.clamp(sealRefField.getText(), 512);
+        record.storageResponsible = CustodyCaseRecord.clamp(storageResponsibleField.getText(), 512);
+        record.caseNumber = CustodyCaseRecord.clamp(caseNumberField.getText(), 512);
+        record.legalAuthorization = CustodyCaseRecord.clamp(legalAuthorizationField.getText(), 512);
+        record.victimsFullName = CustodyCaseRecord.clamp(victimsField.getText(), 512);
+        record.suspectsFullName = CustodyCaseRecord.clamp(suspectsField.getText(), 512);
+        record.evidenceDestination = CustodyCaseRecord.clamp(destinationField.getText(), 512);
+
+        record.organizationHeader = CustodyCaseRecord.clamp(orgHeaderField.getText(), 512);
+        record.reportNumber = CustodyCaseRecord.clamp(reportNumberField.getText(), 512);
+        record.reportDate = CustodyCaseRecord.clamp(reportDateField.getText(), 512);
+        record.reportTitle = CustodyCaseRecord.clamp(reportTitleField.getText(), 512);
+        record.signatories = CustodyCaseRecord.clamp(signatoriesArea.getText(), 4096);
+        record.requestReference = CustodyCaseRecord.clamp(requestRefField.getText(), 512);
+        record.forensicProtocolNumber = CustodyCaseRecord.clamp(protocolNumberField.getText(), 512);
+        record.forensicProtocolDate = CustodyCaseRecord.clamp(protocolDateField.getText(), 512);
+        record.examinedMaterial = CustodyCaseRecord.clamp(examinedMaterialArea.getText(), 4096);
 
         record.extractionConfig = CustodyCaseRecord.clamp(extractionConfigField.getText(), 4096);
         record.appliedFilters = CustodyCaseRecord.clamp(appliedFiltersArea.getText(), 4096);

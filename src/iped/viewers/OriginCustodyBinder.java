@@ -255,8 +255,52 @@ final class OriginCustodyBinder {
         String osVersion = "";
         String whatsappVersion = "";
         String examinerOrCollector = "";
+
+        // System operator identification (read from report.pdf for reproduction)
+        String operatorName = "";
+        String operatorIdNumber = "";
+        String operatorCompany = "";
+        String operatorPosition = "";
+        String operatorEmail = "";
+        String operatorPhone = "";
+        String operatorComments = "";
+        String operatorCertification = "";
+
+        // Who seized the device - Chain Of Custody (read from report.pdf for reproduction)
+        String seizureOrigin = "";
+        String seizureDate = "";
+        String seizureTime = "";
+        String seizureSealedBy = "";
+        String seizureSealNumber = "";
+        String seizureStoredWhere = "";
+        String seizureStorageResponsible = "";
+        String seizureSealedOn = "";
+        String seizureReceivedOn = "";
+        String seizureComments = "";
+
+        // Chain Of Custody
+        String caseNumber = "";
+        String legalAuthorization = "";
+        String victimsFullName = "";
+        String suspectsFullName = "";
+        String evidenceDestination = "";
+        String custodySealNumber = "";
+        String custodyStorageResponsible = "";
+
+        // Calculation of hashes (declared inside report.pdf)
+        String declaredCalcDeviceTxtMd5 = "";
+        String declaredCalcDeviceTxtSha256 = "";
+        String declaredCalcDeviceAvillaMd5 = "";
+        String declaredCalcDeviceAvillaSha256 = "";
+        String declaredHashsTxtMd5 = "";
         String declaredHashsTxtSha256 = "";
+        String declaredHashsAvillaMd5 = "";
         String declaredHashsAvillaSha256 = "";
+
+        // Original Method used block
+        String methodUsedText = "";
+
+        // Files hashed directly in origin folder
         String hashsTxtSha256 = "";
         String hashsAvillaSha256 = "";
         String msgstoreRelPath = "";
@@ -291,8 +335,44 @@ final class OriginCustodyBinder {
             preview.osVersion = pdfInfo.osVersion;
             preview.whatsappVersion = pdfInfo.whatsappVersion;
             preview.examinerOrCollector = pdfInfo.examinerOrCollector;
+
+            preview.operatorName = pdfInfo.operatorName;
+            preview.operatorIdNumber = pdfInfo.operatorIdNumber;
+            preview.operatorCompany = pdfInfo.operatorCompany;
+            preview.operatorPosition = pdfInfo.operatorPosition;
+            preview.operatorEmail = pdfInfo.operatorEmail;
+            preview.operatorPhone = pdfInfo.operatorPhone;
+            preview.operatorComments = pdfInfo.operatorComments;
+            preview.operatorCertification = pdfInfo.operatorCertification;
+
+            preview.seizureOrigin = pdfInfo.seizureOrigin;
+            preview.seizureDate = pdfInfo.seizureDate;
+            preview.seizureTime = pdfInfo.seizureTime;
+            preview.seizureSealedBy = pdfInfo.seizureSealedBy;
+            preview.seizureSealNumber = pdfInfo.seizureSealNumber;
+            preview.seizureStoredWhere = pdfInfo.seizureStoredWhere;
+            preview.seizureStorageResponsible = pdfInfo.seizureStorageResponsible;
+            preview.seizureSealedOn = pdfInfo.seizureSealedOn;
+            preview.seizureReceivedOn = pdfInfo.seizureReceivedOn;
+            preview.seizureComments = pdfInfo.seizureComments;
+
+            preview.caseNumber = pdfInfo.caseNumber;
+            preview.legalAuthorization = pdfInfo.legalAuthorization;
+            preview.victimsFullName = pdfInfo.victimsFullName;
+            preview.suspectsFullName = pdfInfo.suspectsFullName;
+            preview.evidenceDestination = pdfInfo.evidenceDestination;
+            preview.custodySealNumber = pdfInfo.custodySealNumber;
+            preview.custodyStorageResponsible = pdfInfo.custodyStorageResponsible;
+
+            preview.declaredCalcDeviceTxtMd5 = pdfInfo.declaredCalcDeviceTxtMd5;
+            preview.declaredCalcDeviceTxtSha256 = pdfInfo.declaredCalcDeviceTxtSha256;
+            preview.declaredCalcDeviceAvillaMd5 = pdfInfo.declaredCalcDeviceAvillaMd5;
+            preview.declaredCalcDeviceAvillaSha256 = pdfInfo.declaredCalcDeviceAvillaSha256;
+            preview.declaredHashsTxtMd5 = pdfInfo.declaredHashsTxtMd5;
             preview.declaredHashsTxtSha256 = pdfInfo.declaredHashsTxtSha256;
+            preview.declaredHashsAvillaMd5 = pdfInfo.declaredHashsAvillaMd5;
             preview.declaredHashsAvillaSha256 = pdfInfo.declaredHashsAvillaSha256;
+            preview.methodUsedText = pdfInfo.methodUsedText;
         } else {
             preview.collectionCode = inferCollectionCodeFromRoot(normOrigin);
         }
@@ -352,10 +432,50 @@ final class OriginCustodyBinder {
         String whatsappVersion = "";
         String extractionTool = "";
         String examinerOrCollector = "";
+
+        // System operator identification
+        String operatorName = "";
+        String operatorIdNumber = "";
+        String operatorCompany = "";
+        String operatorPosition = "";
+        String operatorEmail = "";
+        String operatorPhone = "";
+        String operatorComments = "";
+        String operatorCertification = "";
+
+        // Who seized the device - Chain Of Custody
+        String seizureOrigin = "";
+        String seizureDate = "";
+        String seizureTime = "";
+        String seizureSealedBy = "";
+        String seizureSealNumber = "";
+        String seizureStoredWhere = "";
+        String seizureStorageResponsible = "";
+        String seizureSealedOn = "";
+        String seizureReceivedOn = "";
+        String seizureComments = "";
+
+        // Chain Of Custody
+        String caseNumber = "";
+        String legalAuthorization = "";
+        String victimsFullName = "";
+        String suspectsFullName = "";
+        String evidenceDestination = "";
+        String custodySealNumber = "";
+        String custodyStorageResponsible = "";
+
+        // Calculation of hashes
+        String declaredCalcDeviceTxtMd5 = "";
+        String declaredCalcDeviceTxtSha256 = "";
+        String declaredCalcDeviceAvillaMd5 = "";
+        String declaredCalcDeviceAvillaSha256 = "";
         String declaredHashsTxtMd5 = "";
         String declaredHashsTxtSha256 = "";
         String declaredHashsAvillaMd5 = "";
         String declaredHashsAvillaSha256 = "";
+
+        // Method used
+        String methodUsedText = "";
         String parseStatus = "ausente";
     }
 
@@ -450,60 +570,304 @@ final class OriginCustodyBinder {
         return info;
     }
 
+    private enum ReportPdfSection {
+        HEADER,
+        EVIDENCE_INFO,
+        OPERATOR_ID,
+        SEIZURE_CUSTODY,
+        CHAIN_OF_CUSTODY,
+        COLLECTION_INFO,
+        HASHES,
+        METHOD_USED
+    }
+
     static void extractCustodyFieldsFromPdfText(String text, CustodyReportInfo out) {
         if (text == null || text.isEmpty()) {
             return;
         }
         String[] lines = text.split("\\r?\\n");
         Set<String> imeis = new LinkedHashSet<>();
+        ReportPdfSection section = ReportPdfSection.HEADER;
+        StringBuilder methodBuf = new StringBuilder();
+
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
             if (line.isEmpty()) {
+                if (section == ReportPdfSection.METHOD_USED && methodBuf.length() > 0) {
+                    methodBuf.append('\n');
+                }
+                continue;
+            }
+            if (isPdfDividerLine(line)) {
                 continue;
             }
             String lower = line.toLowerCase(Locale.ROOT);
             String ascii = stripDiacriticsLower(line);
-            if (out.extractionTool.isEmpty() && ascii.contains("avilla forensics")) {
+
+            ReportPdfSection detectedSection = detectPdfSectionHeader(ascii);
+            if (detectedSection != null) {
+                section = detectedSection;
+                continue;
+            }
+
+            if (section == ReportPdfSection.METHOD_USED) {
+                if (methodBuf.length() < 16384) {
+                    if (methodBuf.length() > 0 && methodBuf.charAt(methodBuf.length() - 1) != '\n') {
+                        methodBuf.append('\n');
+                    }
+                    methodBuf.append(line);
+                }
+                continue;
+            }
+
+            if (out.extractionTool.isEmpty() && ascii.contains("avilla forensics")
+                    && !ascii.startsWith("official avilla forensics operator certification")) {
                 out.extractionTool = line.length() <= 120 ? line : "Avilla Forensics";
             }
+
+            // Always-recognized global fields (header, collection window, hashes, device)
             if (lower.startsWith("collection code:") && out.collectionCode.isEmpty()) {
-                out.collectionCode = afterColonOrNext(lines, i);
-            } else if ((lower.startsWith("start of extraction:") || ascii.startsWith("inicio da extracao:")) && out.startExtraction.isEmpty()) {
-                out.startExtraction = extractDateOrValue(afterColonOrNext(lines, i));
-            } else if ((lower.startsWith("end of extraction:") || ascii.startsWith("fim da extracao:")) && out.endExtraction.isEmpty()) {
-                out.endExtraction = extractDateOrValue(afterColonOrNext(lines, i));
-            } else if (lower.startsWith("hash md5 hashs.txt:") && out.declaredHashsTxtMd5.isEmpty()) {
+                out.collectionCode = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                continue;
+            }
+            if ((lower.startsWith("start of extraction:") || ascii.startsWith("inicio da extracao:")) && out.startExtraction.isEmpty()) {
+                out.startExtraction = extractDateOrValue(afterColonSafe(lines, i));
+                continue;
+            }
+            if ((lower.startsWith("end of extraction:") || ascii.startsWith("fim da extracao:")) && out.endExtraction.isEmpty()) {
+                out.endExtraction = extractDateOrValue(afterColonSafe(lines, i));
+                continue;
+            }
+            if (lower.startsWith("hash md5 calculation-directly-on-the-device.txt:") && out.declaredCalcDeviceTxtMd5.isEmpty()) {
+                out.declaredCalcDeviceTxtMd5 = extractHexToken(lines, i, 32);
+                continue;
+            }
+            if (lower.startsWith("hash sha256 calculation-directly-on-the-device.txt:") && out.declaredCalcDeviceTxtSha256.isEmpty()) {
+                out.declaredCalcDeviceTxtSha256 = extractHexToken(lines, i, 64);
+                continue;
+            }
+            if (lower.startsWith("hash md5 calculation-directly-on-the-device.avilla:") && out.declaredCalcDeviceAvillaMd5.isEmpty()) {
+                out.declaredCalcDeviceAvillaMd5 = extractHexToken(lines, i, 32);
+                continue;
+            }
+            if (lower.startsWith("hash sha256 calculation-directly-on-the-device.avilla:") && out.declaredCalcDeviceAvillaSha256.isEmpty()) {
+                out.declaredCalcDeviceAvillaSha256 = extractHexToken(lines, i, 64);
+                continue;
+            }
+            if (lower.startsWith("hash md5 hashs.txt:") && out.declaredHashsTxtMd5.isEmpty()) {
                 out.declaredHashsTxtMd5 = extractHexToken(lines, i, 32);
-            } else if (lower.startsWith("hash sha256 hashs.txt:") && out.declaredHashsTxtSha256.isEmpty()) {
+                continue;
+            }
+            if (lower.startsWith("hash sha256 hashs.txt:") && out.declaredHashsTxtSha256.isEmpty()) {
                 out.declaredHashsTxtSha256 = extractHexToken(lines, i, 64);
-            } else if (lower.startsWith("hash md5 hashs.avilla:") && out.declaredHashsAvillaMd5.isEmpty()) {
+                continue;
+            }
+            if (lower.startsWith("hash md5 hashs.avilla:") && out.declaredHashsAvillaMd5.isEmpty()) {
                 out.declaredHashsAvillaMd5 = extractHexToken(lines, i, 32);
-            } else if (lower.startsWith("hash sha256 hashs.avilla:") && out.declaredHashsAvillaSha256.isEmpty()) {
+                continue;
+            }
+            if (lower.startsWith("hash sha256 hashs.avilla:") && out.declaredHashsAvillaSha256.isEmpty()) {
                 out.declaredHashsAvillaSha256 = extractHexToken(lines, i, 64);
-            } else if (startsWithAny(ascii, "manufacturer:", "brand:", "fabricante:", "marca:") && out.manufacturer.isEmpty()) {
-                out.manufacturer = cleanExtractedFieldValue(afterColonOrNext(lines, i));
-            } else if (startsWithAny(ascii, "device model:", "product model:", "model:", "modelo:", "modelo do dispositivo:") && out.model.isEmpty()) {
-                out.model = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                continue;
+            }
+
+            // Section-specific parsing (prevents collisions on Comments / Seal number / Responsible for storage)
+            if (section == ReportPdfSection.OPERATOR_ID) {
+                if (startsWithAny(ascii, "operator name") && out.operatorName.isEmpty()) {
+                    out.operatorName = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    if (out.examinerOrCollector.isEmpty() && !out.operatorName.isEmpty()) {
+                        out.examinerOrCollector = out.operatorName;
+                    }
+                    continue;
+                } else if (startsWithAny(ascii, "identification number") && out.operatorIdNumber.isEmpty()) {
+                    out.operatorIdNumber = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "company (", "company:") && out.operatorCompany.isEmpty()) {
+                    out.operatorCompany = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "position company") && out.operatorPosition.isEmpty()) {
+                    out.operatorPosition = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "e-mail:", "email:") && out.operatorEmail.isEmpty()) {
+                    out.operatorEmail = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "phone:", "telefone:") && out.operatorPhone.isEmpty()) {
+                    out.operatorPhone = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "comments:", "comentarios:") && out.operatorComments.isEmpty()) {
+                    out.operatorComments = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "official avilla forensics operator certification") && out.operatorCertification.isEmpty()) {
+                    out.operatorCertification = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                }
+            } else if (section == ReportPdfSection.SEIZURE_CUSTODY) {
+                if (startsWithAny(ascii, "origin of the evidence") && out.seizureOrigin.isEmpty()) {
+                    out.seizureOrigin = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "collection date") && out.seizureDate.isEmpty()) {
+                    out.seizureDate = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "collection time") && out.seizureTime.isEmpty()) {
+                    out.seizureTime = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "evidence bag sealed by") && out.seizureSealedBy.isEmpty()) {
+                    out.seizureSealedBy = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "seal number") && out.seizureSealNumber.isEmpty()) {
+                    out.seizureSealNumber = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "where the evidence was stored") && out.seizureStoredWhere.isEmpty()) {
+                    out.seizureStoredWhere = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "responsible for storage") && out.seizureStorageResponsible.isEmpty()) {
+                    out.seizureStorageResponsible = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "was the device sealed on") && out.seizureSealedOn.isEmpty()) {
+                    out.seizureSealedOn = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "did you receive the device turned on") && out.seizureReceivedOn.isEmpty()) {
+                    out.seizureReceivedOn = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "comments:", "comentarios:") && out.seizureComments.isEmpty()) {
+                    out.seizureComments = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                }
+            } else if (section == ReportPdfSection.CHAIN_OF_CUSTODY) {
+                if (startsWithAny(ascii, "case number") && out.caseNumber.isEmpty()) {
+                    out.caseNumber = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "legal authorization") && out.legalAuthorization.isEmpty()) {
+                    out.legalAuthorization = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "victims's full name", "victim's full name", "victims full name", "nome completo das vitimas") && out.victimsFullName.isEmpty()) {
+                    out.victimsFullName = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "suspects's full name", "suspect's full name", "suspects full name", "nome completo dos suspeitos") && out.suspectsFullName.isEmpty()) {
+                    out.suspectsFullName = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "destination of the evidence") && out.evidenceDestination.isEmpty()) {
+                    out.evidenceDestination = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "seal number") && out.custodySealNumber.isEmpty()) {
+                    out.custodySealNumber = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                } else if (startsWithAny(ascii, "responsible for storage") && out.custodyStorageResponsible.isEmpty()) {
+                    out.custodyStorageResponsible = cleanExtractedFieldValue(afterColonSafe(lines, i));
+                    continue;
+                }
+            }
+
+            // Evidence Information & generic device/tool labels
+            if (startsWithAny(ascii, "manufacturer:", "brand:", "fabricante:", "marca:") && out.manufacturer.isEmpty()) {
+                out.manufacturer = cleanExtractedFieldValue(afterColonSafe(lines, i));
+            } else if (startsWithAny(ascii, "collected device:", "device model:", "product model:", "model:", "modelo:", "modelo do dispositivo:") && out.model.isEmpty()) {
+                out.model = cleanExtractedFieldValue(afterColonSafe(lines, i));
             } else if (startsWithAny(ascii, "imei:", "imei 1:", "imei1:", "imei 2:", "imei2:")) {
-                String val = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                String val = cleanExtractedFieldValue(afterColonSafe(lines, i));
                 if (!val.isEmpty()) {
                     imeis.add(val);
                 }
-            } else if (startsWithAny(ascii, "serial number:", "device serial:", "serial:", "numero de serie:", "n de serie:", "no de serie:", "ro.serialno:") && out.serialNumber.isEmpty()) {
-                out.serialNumber = cleanExtractedFieldValue(afterColonOrNext(lines, i));
-            } else if (startsWithAny(ascii, "android version:", "os version:", "system version:", "versao do so:", "versao do android:", "so:", "sistema operacional:") && out.osVersion.isEmpty()) {
-                out.osVersion = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+            } else if (startsWithAny(ascii, "device serial number:", "serial number:", "device serial:", "serial:", "numero de serie:", "n de serie:", "no de serie:", "ro.serialno:") && out.serialNumber.isEmpty()) {
+                out.serialNumber = cleanExtractedFieldValue(afterColonSafe(lines, i));
+            } else if (startsWithAny(ascii, "operating system version:", "android version:", "os version:", "system version:", "versao do so:", "versao do android:", "so:", "sistema operacional:") && out.osVersion.isEmpty()) {
+                out.osVersion = cleanExtractedFieldValue(afterColonSafe(lines, i));
             } else if (startsWithAny(ascii, "whatsapp version:", "versao do whatsapp:", "com.whatsapp version:", "whatsapp:") && out.whatsappVersion.isEmpty()) {
-                out.whatsappVersion = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                out.whatsappVersion = cleanExtractedFieldValue(afterColonSafe(lines, i));
             } else if (startsWithAny(ascii, "extraction tool:", "tool:", "ferramenta:", "software:") && out.extractionTool.isEmpty()) {
-                out.extractionTool = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                out.extractionTool = cleanExtractedFieldValue(afterColonSafe(lines, i));
             } else if (startsWithAny(ascii, "examiner:", "collector:", "perito:", "coletado por:", "responsavel:") && out.examinerOrCollector.isEmpty()) {
-                out.examinerOrCollector = cleanExtractedFieldValue(afterColonOrNext(lines, i));
+                out.examinerOrCollector = cleanExtractedFieldValue(afterColonSafe(lines, i));
             }
         }
         if (out.imei.isEmpty() && !imeis.isEmpty()) {
             out.imei = String.join(" / ", imeis);
         }
+        if (out.methodUsedText.isEmpty() && methodBuf.length() > 0) {
+            out.methodUsedText = methodBuf.toString().trim();
+        }
+        if (out.extractionTool.isEmpty()
+                && (!out.declaredHashsAvillaSha256.isEmpty() || !out.declaredHashsAvillaMd5.isEmpty()
+                        || !out.collectionCode.isEmpty() && out.methodUsedText.toLowerCase(Locale.ROOT).contains("adb"))) {
+            out.extractionTool = "Avilla Forensics";
+        }
+    }
+
+    private static boolean isPdfDividerLine(String line) {
+        if (line == null || line.length() < 8) {
+            return false;
+        }
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c != '_' && c != '-' && c != '=' && !Character.isWhitespace(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static ReportPdfSection detectPdfSectionHeader(String asciiLower) {
+        if (asciiLower == null || asciiLower.isEmpty() || asciiLower.contains(":")) {
+            return null;
+        }
+        if (asciiLower.equals("evidence information")) {
+            return ReportPdfSection.EVIDENCE_INFO;
+        }
+        if (asciiLower.equals("system operator identification")) {
+            return ReportPdfSection.OPERATOR_ID;
+        }
+        if (asciiLower.startsWith("who seized the device")) {
+            return ReportPdfSection.SEIZURE_CUSTODY;
+        }
+        if (asciiLower.equals("chain of custody")) {
+            return ReportPdfSection.CHAIN_OF_CUSTODY;
+        }
+        if (asciiLower.equals("collection information")) {
+            return ReportPdfSection.COLLECTION_INFO;
+        }
+        if (asciiLower.equals("calculation of hashes")) {
+            return ReportPdfSection.HASHES;
+        }
+        if (asciiLower.equals("method used")) {
+            return ReportPdfSection.METHOD_USED;
+        }
+        return null;
+    }
+
+    private static boolean looksLikeFieldLabelOrHeader(String rawLine) {
+        if (rawLine == null) {
+            return true;
+        }
+        String trimmed = rawLine.trim();
+        if (trimmed.isEmpty() || isPdfDividerLine(trimmed)) {
+            return true;
+        }
+        String ascii = stripDiacriticsLower(trimmed);
+        if (detectPdfSectionHeader(ascii) != null) {
+            return true;
+        }
+        if (trimmed.endsWith(":")) {
+            return true;
+        }
+        int colon = trimmed.indexOf(':');
+        if (colon > 0 && colon <= 80) {
+            String key = stripDiacriticsLower(trimmed.substring(0, colon + 1));
+            if (startsWithAny(key,
+                    "collection code:", "collected device:", "operating system version:", "device serial number:",
+                    "manufacturer:", "brand:", "fabricante:", "marca:", "model:", "device model:", "modelo:",
+                    "imei:", "imei 1:", "imei 2:", "serial number:", "serial:", "android version:", "os version:",
+                    "whatsapp version:", "operator name", "identification number", "company", "position company",
+                    "e-mail:", "email:", "phone:", "comments:", "official avilla forensics",
+                    "origin of the evidence", "collection date", "collection time", "evidence bag sealed by",
+                    "seal number", "where the evidence was stored", "responsible for storage",
+                    "was the device sealed on", "did you receive the device turned on",
+                    "case number", "legal authorization", "victims's full name", "victim's full name",
+                    "suspects's full name", "suspect's full name", "destination of the evidence",
+                    "start of extraction:", "end of extraction:", "hash md5 ", "hash sha256 ")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean startsWithAny(String value, String... prefixes) {
@@ -528,10 +892,10 @@ final class OriginCustodyBinder {
         if (trimmed.isEmpty() || "-".equals(trimmed) || "n/a".equalsIgnoreCase(trimmed) || "none".equalsIgnoreCase(trimmed)) {
             return "";
         }
-        return trimmed.length() <= 256 ? trimmed : trimmed.substring(0, 256);
+        return trimmed.length() <= 512 ? trimmed : trimmed.substring(0, 512);
     }
 
-    private static String afterColonOrNext(String[] lines, int index) {
+    private static String afterColonSafe(String[] lines, int index) {
         String cur = lines[index].trim();
         int colon = cur.indexOf(':');
         if (colon >= 0) {
@@ -541,7 +905,10 @@ final class OriginCustodyBinder {
             }
         }
         if (index + 1 < lines.length) {
-            return lines[index + 1].trim();
+            String next = lines[index + 1].trim();
+            if (!looksLikeFieldLabelOrHeader(next)) {
+                return next;
+            }
         }
         return "";
     }
@@ -553,15 +920,20 @@ final class OriginCustodyBinder {
 
     private static String extractHexToken(String[] lines, int index, int len) {
         Pattern p = Pattern.compile("(?i)\\b([0-9a-f]{" + len + "})\\b");
-        String inline = afterColonOrNext(lines, index);
+        String cur = lines[index].trim();
+        int colon = cur.indexOf(':');
+        String inline = colon >= 0 ? cur.substring(colon + 1).trim() : "";
         Matcher m1 = p.matcher(inline);
         if (m1.find()) {
             return m1.group(1).toLowerCase(Locale.ROOT);
         }
         if (index + 1 < lines.length) {
-            Matcher m2 = p.matcher(lines[index + 1].trim());
-            if (m2.find()) {
-                return m2.group(1).toLowerCase(Locale.ROOT);
+            String next = lines[index + 1].trim();
+            if (!next.contains(":") && !isPdfDividerLine(next)) {
+                Matcher m2 = p.matcher(next);
+                if (m2.find()) {
+                    return m2.group(1).toLowerCase(Locale.ROOT);
+                }
             }
         }
         return "";

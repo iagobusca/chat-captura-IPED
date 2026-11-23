@@ -34,7 +34,8 @@ final class CustodyCaseRecord {
     static final int SCHEMA_VERSION = 1;
     static final String LAUDO_DIR_NAME = "laudo"; //$NON-NLS-1$
     static final String CUSTODY_JSON_FILE = "custodia-caso.json"; //$NON-NLS-1$
-    static final String REPORT_ORIGIN_PDF_FILE = "report-origem.pdf"; //$NON-NLS-1$
+    static final String REPORT_ORIGIN_PDF_FILE = "report.pdf"; //$NON-NLS-1$
+    static final String LEGACY_REPORT_ORIGIN_PDF_FILE = "report-origem.pdf"; //$NON-NLS-1$
     static final String REPORT_PLUGIN_PDF_FILE = "report-plugin.pdf"; //$NON-NLS-1$
     static final String REPORT_UNIFIED_PDF_FILE = "report-completo-unificado.pdf"; //$NON-NLS-1$
     static final String REPORT_HTML_FILE = "laudo-tecnico.html"; //$NON-NLS-1$
@@ -44,6 +45,7 @@ final class CustodyCaseRecord {
 
     private static final int MAX_SHORT_FIELD = 512;
     private static final int MAX_LONG_FIELD = 4096;
+    private static final int MAX_METHOD_TEXT = 16384;
     private static final int MAX_STEPS = 5000;
 
     enum StorageType {
@@ -324,6 +326,52 @@ final class CustodyCaseRecord {
     StorageType storageType = StorageType.PASTA;
     String storageCustomText = ""; //$NON-NLS-1$
     String storageSealReference = ""; //$NON-NLS-1$
+    String caseNumber = ""; //$NON-NLS-1$
+    String legalAuthorization = ""; //$NON-NLS-1$
+    String victimsFullName = ""; //$NON-NLS-1$
+    String suspectsFullName = ""; //$NON-NLS-1$
+    String evidenceDestination = ""; //$NON-NLS-1$
+    String storageResponsible = ""; //$NON-NLS-1$
+
+    // --- HTML Report Metadata (relatorio.htm / caseinformation.htm) ---
+    String organizationHeader = ""; //$NON-NLS-1$
+    String reportNumber = ""; //$NON-NLS-1$
+    String reportDate = ""; //$NON-NLS-1$
+    String reportTitle = ""; //$NON-NLS-1$
+    String signatories = ""; //$NON-NLS-1$
+    String requestReference = ""; //$NON-NLS-1$
+    String forensicProtocolNumber = ""; //$NON-NLS-1$
+    String forensicProtocolDate = ""; //$NON-NLS-1$
+    String examinedMaterial = ""; //$NON-NLS-1$
+
+    // --- Origin report.pdf reproduced sections (read from origin report.pdf, not required in dialog) ---
+    String originOperatorName = ""; //$NON-NLS-1$
+    String originOperatorIdNumber = ""; //$NON-NLS-1$
+    String originOperatorCompany = ""; //$NON-NLS-1$
+    String originOperatorPosition = ""; //$NON-NLS-1$
+    String originOperatorEmail = ""; //$NON-NLS-1$
+    String originOperatorPhone = ""; //$NON-NLS-1$
+    String originOperatorComments = ""; //$NON-NLS-1$
+    String originOperatorCertification = ""; //$NON-NLS-1$
+    String originSeizureOrigin = ""; //$NON-NLS-1$
+    String originSeizureDate = ""; //$NON-NLS-1$
+    String originSeizureTime = ""; //$NON-NLS-1$
+    String originSeizureSealedBy = ""; //$NON-NLS-1$
+    String originSeizureSealNumber = ""; //$NON-NLS-1$
+    String originSeizureStoredWhere = ""; //$NON-NLS-1$
+    String originSeizureStorageResponsible = ""; //$NON-NLS-1$
+    String originSeizureSealedOn = ""; //$NON-NLS-1$
+    String originSeizureReceivedOn = ""; //$NON-NLS-1$
+    String originSeizureComments = ""; //$NON-NLS-1$
+    String originDeclaredCalcDeviceTxtMd5 = ""; //$NON-NLS-1$
+    String originDeclaredCalcDeviceTxtSha256 = ""; //$NON-NLS-1$
+    String originDeclaredCalcDeviceAvillaMd5 = ""; //$NON-NLS-1$
+    String originDeclaredCalcDeviceAvillaSha256 = ""; //$NON-NLS-1$
+    String originDeclaredHashsTxtMd5 = ""; //$NON-NLS-1$
+    String originDeclaredHashsTxtSha256 = ""; //$NON-NLS-1$
+    String originDeclaredHashsAvillaMd5 = ""; //$NON-NLS-1$
+    String originDeclaredHashsAvillaSha256 = ""; //$NON-NLS-1$
+    String originMethodUsedText = ""; //$NON-NLS-1$
 
     // --- Tool & Parameters ---
     String ipedVersion = "4.3.1"; //$NON-NLS-1$
@@ -497,6 +545,87 @@ final class CustodyCaseRecord {
                     collectedBy = clamp(preview.examinerOrCollector, MAX_SHORT_FIELD);
                 }
             }
+            if (!preview.operatorName.isEmpty()) originOperatorName = clamp(preview.operatorName, MAX_SHORT_FIELD);
+            if (!preview.operatorIdNumber.isEmpty()) originOperatorIdNumber = clamp(preview.operatorIdNumber, MAX_SHORT_FIELD);
+            if (!preview.operatorCompany.isEmpty()) {
+                originOperatorCompany = clamp(preview.operatorCompany, MAX_SHORT_FIELD);
+                if (overwriteExisting || organizationHeader.isBlank()) {
+                    organizationHeader = originOperatorCompany;
+                }
+            }
+            if (!preview.operatorPosition.isEmpty()) originOperatorPosition = clamp(preview.operatorPosition, MAX_SHORT_FIELD);
+            if (!preview.operatorEmail.isEmpty()) originOperatorEmail = clamp(preview.operatorEmail, MAX_SHORT_FIELD);
+            if (!preview.operatorPhone.isEmpty()) originOperatorPhone = clamp(preview.operatorPhone, MAX_SHORT_FIELD);
+            if (!preview.operatorComments.isEmpty()) originOperatorComments = clamp(preview.operatorComments, MAX_LONG_FIELD);
+            if (!preview.operatorCertification.isEmpty()) originOperatorCertification = clamp(preview.operatorCertification, MAX_SHORT_FIELD);
+
+            if (!preview.seizureOrigin.isEmpty()) originSeizureOrigin = clamp(preview.seizureOrigin, MAX_SHORT_FIELD);
+            if (!preview.seizureDate.isEmpty()) originSeizureDate = clamp(preview.seizureDate, MAX_SHORT_FIELD);
+            if (!preview.seizureTime.isEmpty()) originSeizureTime = clamp(preview.seizureTime, MAX_SHORT_FIELD);
+            if (!preview.seizureSealedBy.isEmpty()) originSeizureSealedBy = clamp(preview.seizureSealedBy, MAX_SHORT_FIELD);
+            if (!preview.seizureSealNumber.isEmpty()) originSeizureSealNumber = clamp(preview.seizureSealNumber, MAX_SHORT_FIELD);
+            if (!preview.seizureStoredWhere.isEmpty()) originSeizureStoredWhere = clamp(preview.seizureStoredWhere, MAX_SHORT_FIELD);
+            if (!preview.seizureStorageResponsible.isEmpty()) originSeizureStorageResponsible = clamp(preview.seizureStorageResponsible, MAX_SHORT_FIELD);
+            if (!preview.seizureSealedOn.isEmpty()) originSeizureSealedOn = clamp(preview.seizureSealedOn, MAX_SHORT_FIELD);
+            if (!preview.seizureReceivedOn.isEmpty()) originSeizureReceivedOn = clamp(preview.seizureReceivedOn, MAX_SHORT_FIELD);
+            if (!preview.seizureComments.isEmpty()) originSeizureComments = clamp(preview.seizureComments, MAX_LONG_FIELD);
+
+            if (!preview.caseNumber.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("caseNumber"); //$NON-NLS-1$
+                if (overwriteExisting || caseNumber.isBlank()) {
+                    caseNumber = clamp(preview.caseNumber, MAX_SHORT_FIELD);
+                }
+            }
+            if (!preview.legalAuthorization.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("legalAuthorization"); //$NON-NLS-1$
+                if (overwriteExisting || legalAuthorization.isBlank()) {
+                    legalAuthorization = clamp(preview.legalAuthorization, MAX_SHORT_FIELD);
+                }
+            }
+            if (!preview.victimsFullName.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("victimsFullName"); //$NON-NLS-1$
+                if (overwriteExisting || victimsFullName.isBlank()) {
+                    victimsFullName = clamp(preview.victimsFullName, MAX_SHORT_FIELD);
+                }
+            }
+            if (!preview.suspectsFullName.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("suspectsFullName"); //$NON-NLS-1$
+                if (overwriteExisting || suspectsFullName.isBlank()) {
+                    suspectsFullName = clamp(preview.suspectsFullName, MAX_SHORT_FIELD);
+                }
+            }
+            if (!preview.evidenceDestination.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("evidenceDestination"); //$NON-NLS-1$
+                if (overwriteExisting || evidenceDestination.isBlank()) {
+                    evidenceDestination = clamp(preview.evidenceDestination, MAX_SHORT_FIELD);
+                }
+            }
+            String bestSeal = !preview.custodySealNumber.isEmpty() ? preview.custodySealNumber : preview.seizureSealNumber;
+            if (!bestSeal.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("storageSealReference"); //$NON-NLS-1$
+                if (overwriteExisting || storageSealReference.isBlank()) {
+                    storageSealReference = clamp(bestSeal, MAX_SHORT_FIELD);
+                }
+            }
+            String bestResponsible = !preview.custodyStorageResponsible.isEmpty()
+                    ? preview.custodyStorageResponsible
+                    : preview.seizureStorageResponsible;
+            if (!bestResponsible.isEmpty()) {
+                fieldsExtractedFromOriginPdf.add("storageResponsible"); //$NON-NLS-1$
+                if (overwriteExisting || storageResponsible.isBlank()) {
+                    storageResponsible = clamp(bestResponsible, MAX_SHORT_FIELD);
+                }
+            }
+
+            if (!preview.declaredCalcDeviceTxtMd5.isEmpty()) originDeclaredCalcDeviceTxtMd5 = clamp(preview.declaredCalcDeviceTxtMd5, 128);
+            if (!preview.declaredCalcDeviceTxtSha256.isEmpty()) originDeclaredCalcDeviceTxtSha256 = clamp(preview.declaredCalcDeviceTxtSha256, 128);
+            if (!preview.declaredCalcDeviceAvillaMd5.isEmpty()) originDeclaredCalcDeviceAvillaMd5 = clamp(preview.declaredCalcDeviceAvillaMd5, 128);
+            if (!preview.declaredCalcDeviceAvillaSha256.isEmpty()) originDeclaredCalcDeviceAvillaSha256 = clamp(preview.declaredCalcDeviceAvillaSha256, 128);
+            if (!preview.declaredHashsTxtMd5.isEmpty()) originDeclaredHashsTxtMd5 = clamp(preview.declaredHashsTxtMd5, 128);
+            if (!preview.declaredHashsTxtSha256.isEmpty()) originDeclaredHashsTxtSha256 = clamp(preview.declaredHashsTxtSha256, 128);
+            if (!preview.declaredHashsAvillaMd5.isEmpty()) originDeclaredHashsAvillaMd5 = clamp(preview.declaredHashsAvillaMd5, 128);
+            if (!preview.declaredHashsAvillaSha256.isEmpty()) originDeclaredHashsAvillaSha256 = clamp(preview.declaredHashsAvillaSha256, 128);
+            if (!preview.methodUsedText.isEmpty()) originMethodUsedText = clamp(preview.methodUsedText, MAX_METHOD_TEXT);
         }
     }
 
@@ -572,7 +701,24 @@ final class CustodyCaseRecord {
                 .put("storageType", storageType == null ? StorageType.PASTA.code : storageType.code) //$NON-NLS-1$
                 .put("storageCustomText", clamp(storageCustomText, MAX_SHORT_FIELD)) //$NON-NLS-1$
                 .put("storageSealReference", clamp(storageSealReference, MAX_SHORT_FIELD)) //$NON-NLS-1$
-                .put("storageDisplay", formattedStorageDescription()); //$NON-NLS-1$
+                .put("storageDisplay", formattedStorageDescription()) //$NON-NLS-1$
+                .put("caseNumber", clamp(caseNumber, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("legalAuthorization", clamp(legalAuthorization, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("victimsFullName", clamp(victimsFullName, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("suspectsFullName", clamp(suspectsFullName, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("evidenceDestination", clamp(evidenceDestination, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("storageResponsible", clamp(storageResponsible, MAX_SHORT_FIELD)); //$NON-NLS-1$
+
+        JSONObject htmlReport = new JSONObject()
+                .put("organizationHeader", clamp(organizationHeader, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("reportNumber", clamp(reportNumber, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("reportDate", clamp(reportDate, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("reportTitle", clamp(reportTitle, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("signatories", clamp(signatories, MAX_LONG_FIELD)) //$NON-NLS-1$
+                .put("requestReference", clamp(requestReference, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("forensicProtocolNumber", clamp(forensicProtocolNumber, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("forensicProtocolDate", clamp(forensicProtocolDate, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("examinedMaterial", clamp(examinedMaterial, MAX_LONG_FIELD)); //$NON-NLS-1$
 
         JSONObject tool = new JSONObject()
                 .put("ipedVersion", clamp(ipedVersion, 64)) //$NON-NLS-1$
@@ -596,7 +742,34 @@ final class CustodyCaseRecord {
                 .put("msgstorePath", clamp(originMsgstorePath, MAX_LONG_FIELD)) //$NON-NLS-1$
                 .put("msgstoreSha256", clamp(originMsgstoreSha256, 128)) //$NON-NLS-1$
                 .put("waDbSha256", clamp(originWaDbSha256, 128)) //$NON-NLS-1$
-                .put("keySha256", clamp(originKeySha256, 128)); //$NON-NLS-1$
+                .put("keySha256", clamp(originKeySha256, 128)) //$NON-NLS-1$
+                .put("operatorName", clamp(originOperatorName, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorIdNumber", clamp(originOperatorIdNumber, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorCompany", clamp(originOperatorCompany, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorPosition", clamp(originOperatorPosition, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorEmail", clamp(originOperatorEmail, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorPhone", clamp(originOperatorPhone, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("operatorComments", clamp(originOperatorComments, MAX_LONG_FIELD)) //$NON-NLS-1$
+                .put("operatorCertification", clamp(originOperatorCertification, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureOrigin", clamp(originSeizureOrigin, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureDate", clamp(originSeizureDate, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureTime", clamp(originSeizureTime, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureSealedBy", clamp(originSeizureSealedBy, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureSealNumber", clamp(originSeizureSealNumber, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureStoredWhere", clamp(originSeizureStoredWhere, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureStorageResponsible", clamp(originSeizureStorageResponsible, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureSealedOn", clamp(originSeizureSealedOn, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureReceivedOn", clamp(originSeizureReceivedOn, MAX_SHORT_FIELD)) //$NON-NLS-1$
+                .put("seizureComments", clamp(originSeizureComments, MAX_LONG_FIELD)) //$NON-NLS-1$
+                .put("declaredCalcDeviceTxtMd5", clamp(originDeclaredCalcDeviceTxtMd5, 128)) //$NON-NLS-1$
+                .put("declaredCalcDeviceTxtSha256", clamp(originDeclaredCalcDeviceTxtSha256, 128)) //$NON-NLS-1$
+                .put("declaredCalcDeviceAvillaMd5", clamp(originDeclaredCalcDeviceAvillaMd5, 128)) //$NON-NLS-1$
+                .put("declaredCalcDeviceAvillaSha256", clamp(originDeclaredCalcDeviceAvillaSha256, 128)) //$NON-NLS-1$
+                .put("declaredHashsTxtMd5", clamp(originDeclaredHashsTxtMd5, 128)) //$NON-NLS-1$
+                .put("declaredHashsTxtSha256", clamp(originDeclaredHashsTxtSha256, 128)) //$NON-NLS-1$
+                .put("declaredHashsAvillaMd5", clamp(originDeclaredHashsAvillaMd5, 128)) //$NON-NLS-1$
+                .put("declaredHashsAvillaSha256", clamp(originDeclaredHashsAvillaSha256, 128)) //$NON-NLS-1$
+                .put("methodUsedText", clamp(originMethodUsedText, MAX_METHOD_TEXT)); //$NON-NLS-1$
 
         JSONObject knownObj = new JSONObject();
         for (Map.Entry<String, CaptureSnapshot> e : knownCaptures.entrySet()) {
@@ -615,6 +788,7 @@ final class CustodyCaseRecord {
                 .put("updatedAtUtc", clamp(updatedAtUtc, 64)) //$NON-NLS-1$
                 .put("device", device) //$NON-NLS-1$
                 .put("chainOfCustody", custody) //$NON-NLS-1$
+                .put("htmlReportMetadata", htmlReport) //$NON-NLS-1$
                 .put("toolAndParameters", tool) //$NON-NLS-1$
                 .put("originReport", originPdf) //$NON-NLS-1$
                 .put("knownCaptures", knownObj) //$NON-NLS-1$
@@ -663,6 +837,25 @@ final class CustodyCaseRecord {
             r.storageType = StorageType.fromCode(cus.optString("storageType", StorageType.PASTA.code)); //$NON-NLS-1$
             r.storageCustomText = clamp(cus.optString("storageCustomText", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
             r.storageSealReference = clamp(cus.optString("storageSealReference", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.caseNumber = clamp(cus.optString("caseNumber", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.legalAuthorization = clamp(cus.optString("legalAuthorization", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.victimsFullName = clamp(cus.optString("victimsFullName", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.suspectsFullName = clamp(cus.optString("suspectsFullName", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.evidenceDestination = clamp(cus.optString("evidenceDestination", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.storageResponsible = clamp(cus.optString("storageResponsible", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+
+        JSONObject htmlMeta = root.optJSONObject("htmlReportMetadata"); //$NON-NLS-1$
+        if (htmlMeta != null) {
+            r.organizationHeader = clamp(htmlMeta.optString("organizationHeader", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.reportNumber = clamp(htmlMeta.optString("reportNumber", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.reportDate = clamp(htmlMeta.optString("reportDate", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.reportTitle = clamp(htmlMeta.optString("reportTitle", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.signatories = clamp(htmlMeta.optString("signatories", ""), MAX_LONG_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.requestReference = clamp(htmlMeta.optString("requestReference", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.forensicProtocolNumber = clamp(htmlMeta.optString("forensicProtocolNumber", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.forensicProtocolDate = clamp(htmlMeta.optString("forensicProtocolDate", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.examinedMaterial = clamp(htmlMeta.optString("examinedMaterial", ""), MAX_LONG_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         JSONObject tool = root.optJSONObject("toolAndParameters"); //$NON-NLS-1$
@@ -691,6 +884,33 @@ final class CustodyCaseRecord {
             r.originMsgstoreSha256 = clamp(orig.optString("msgstoreSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
             r.originWaDbSha256 = clamp(orig.optString("waDbSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
             r.originKeySha256 = clamp(orig.optString("keySha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorName = clamp(orig.optString("operatorName", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorIdNumber = clamp(orig.optString("operatorIdNumber", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorCompany = clamp(orig.optString("operatorCompany", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorPosition = clamp(orig.optString("operatorPosition", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorEmail = clamp(orig.optString("operatorEmail", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorPhone = clamp(orig.optString("operatorPhone", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorComments = clamp(orig.optString("operatorComments", ""), MAX_LONG_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originOperatorCertification = clamp(orig.optString("operatorCertification", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureOrigin = clamp(orig.optString("seizureOrigin", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureDate = clamp(orig.optString("seizureDate", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureTime = clamp(orig.optString("seizureTime", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureSealedBy = clamp(orig.optString("seizureSealedBy", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureSealNumber = clamp(orig.optString("seizureSealNumber", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureStoredWhere = clamp(orig.optString("seizureStoredWhere", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureStorageResponsible = clamp(orig.optString("seizureStorageResponsible", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureSealedOn = clamp(orig.optString("seizureSealedOn", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureReceivedOn = clamp(orig.optString("seizureReceivedOn", ""), MAX_SHORT_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originSeizureComments = clamp(orig.optString("seizureComments", ""), MAX_LONG_FIELD); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredCalcDeviceTxtMd5 = clamp(orig.optString("declaredCalcDeviceTxtMd5", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredCalcDeviceTxtSha256 = clamp(orig.optString("declaredCalcDeviceTxtSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredCalcDeviceAvillaMd5 = clamp(orig.optString("declaredCalcDeviceAvillaMd5", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredCalcDeviceAvillaSha256 = clamp(orig.optString("declaredCalcDeviceAvillaSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredHashsTxtMd5 = clamp(orig.optString("declaredHashsTxtMd5", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredHashsTxtSha256 = clamp(orig.optString("declaredHashsTxtSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredHashsAvillaMd5 = clamp(orig.optString("declaredHashsAvillaMd5", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originDeclaredHashsAvillaSha256 = clamp(orig.optString("declaredHashsAvillaSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.originMethodUsedText = clamp(orig.optString("methodUsedText", ""), MAX_METHOD_TEXT); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         JSONObject knownObj = root.optJSONObject("knownCaptures"); //$NON-NLS-1$

@@ -3152,19 +3152,24 @@ public final class IntegrityVerifier {
         rpt.append("N0_HASHS_AVILLA_SHA256|").append(avillaSha.isEmpty() ? "ausente" : avillaSha).append("\n");
         rpt.append("N0_REPORT_PDF_SHA256|").append(pdfSha.isEmpty() ? "ausente" : pdfSha).append("\n");
         boolean laudoOriginPdfDiverged = false;
-        Path laudoCopiedPdf = resolve(capturesRoot, "laudo/report-origem.pdf");
-        if (laudoCopiedPdf != null && !isLinkOrReparse(laudoCopiedPdf)
-                && Files.isRegularFile(laudoCopiedPdf, LinkOption.NOFOLLOW_LINKS)) {
-            String copiedSha = hash(laudoCopiedPdf);
-            if (!pdfSha.isEmpty()) {
-                boolean pdfCopyOk = copiedSha.equalsIgnoreCase(pdfSha);
-                rpt.append("LAUDO_REPORT_ORIGEM_PDF|").append(pdfCopyOk ? "CONFERE" : "DIVERGE_ORIGEM_ERRADA")
-                   .append("|SHA256=").append(copiedSha).append("\n");
-                if (!pdfCopyOk) {
-                    laudoOriginPdfDiverged = true;
+        String[] laudoOriginPdfCandidates = new String[] { "laudo/report.pdf", "laudo/report-origem.pdf" };
+        for (String relLaudoPdf : laudoOriginPdfCandidates) {
+            Path laudoCopiedPdf = resolve(capturesRoot, relLaudoPdf);
+            if (laudoCopiedPdf != null && !isLinkOrReparse(laudoCopiedPdf)
+                    && Files.isRegularFile(laudoCopiedPdf, LinkOption.NOFOLLOW_LINKS)) {
+                String copiedSha = hash(laudoCopiedPdf);
+                if (!pdfSha.isEmpty()) {
+                    boolean pdfCopyOk = copiedSha.equalsIgnoreCase(pdfSha);
+                    rpt.append("LAUDO_REPORT_ORIGEM_PDF|").append(relLaudoPdf).append('|')
+                       .append(pdfCopyOk ? "CONFERE" : "DIVERGE_ORIGEM_ERRADA")
+                       .append("|SHA256=").append(copiedSha).append("\n");
+                    if (!pdfCopyOk) {
+                        laudoOriginPdfDiverged = true;
+                    }
+                } else {
+                    rpt.append("LAUDO_REPORT_ORIGEM_PDF|").append(relLaudoPdf)
+                       .append("|PRESENTE_SEM_PDF_NA_ORIGEM|SHA256=").append(copiedSha).append("\n");
                 }
-            } else {
-                rpt.append("LAUDO_REPORT_ORIGEM_PDF|PRESENTE_SEM_PDF_NA_ORIGEM|SHA256=").append(copiedSha).append("\n");
             }
         }
         rpt.append("N1_MSGSTORE_SHA256|").append(dbPre == null ? "ausente" : dbPre.sha256).append("|NO_HASHS_TXT|").append(dbInHashs).append("|BACKUPS_CRYPT_NO_HASHS|").append(hashsIdx.cryptBackups.size()).append("\n");

@@ -59,8 +59,9 @@ final class TechnicalReportGenerator {
         GenerationResult res = new GenerationResult();
         res.laudoDir = laudoDir;
 
-        // 1. Copy original report.pdf if present and enabled (with pre/post SHA-256 verification)
+        // 1. Copy original report.pdf intact (bit-for-bit, unmodified) to laudo/report.pdf with SHA-256 verification
         Path copiedOriginPdf = CaptureIntegrity.resolveContained(laudoDir, CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE);
+        Path legacyCopiedOriginPdf = CaptureIntegrity.resolveContained(laudoDir, CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE);
         if (originFolder != null && record.copyOriginReportPdf) {
             OriginCustodyBinder.OriginReportPreview preview = OriginCustodyBinder.readDeviceAndCustodyPreview(originFolder);
             record.mergeFromOriginPreview(preview, false);
@@ -73,6 +74,11 @@ final class TechnicalReportGenerator {
             record.originReportPdfCopied = true;
             record.originReportPdfCopiedSha256 = CaptureIntegrity.sha256(copiedOriginPdf);
             res.originPdfCopy = copiedOriginPdf;
+            res.originPdfCopied = true;
+        } else if (CaptureIntegrity.isSafeRegularFile(legacyCopiedOriginPdf)) {
+            record.originReportPdfCopied = true;
+            record.originReportPdfCopiedSha256 = CaptureIntegrity.sha256(legacyCopiedOriginPdf);
+            res.originPdfCopy = legacyCopiedOriginPdf;
             res.originPdfCopied = true;
         }
 
@@ -141,6 +147,7 @@ final class TechnicalReportGenerator {
             throws IOException {
         Map<String, Path> files = new LinkedHashMap<>();
         files.put(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE, laudoDir.resolve(CustodyCaseRecord.REPORT_ORIGIN_PDF_FILE));
+        files.put(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE, laudoDir.resolve(CustodyCaseRecord.LEGACY_REPORT_ORIGIN_PDF_FILE));
         files.put(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE, laudoDir.resolve(CustodyCaseRecord.REPORT_PLUGIN_PDF_FILE));
         files.put(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE, laudoDir.resolve(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE));
         files.put(CustodyCaseRecord.REPORT_HTML_FILE, laudoDir.resolve(CustodyCaseRecord.REPORT_HTML_FILE));
@@ -245,7 +252,14 @@ final class TechnicalReportGenerator {
         h.append("</tbody></table></section>"); //$NON-NLS-1$
 
         // Secao 3: Cadeia de Custodia
-        h.append("<section class=\"card\"><h2>3. Cadeia de Cust\u00f3dia</h2><table class=\"kv\">"); //$NON-NLS-1$
+        h.append("<section class=\"card\"><h2>3. Cadeia de Cust\u00f3dia (Chain Of Custody)</h2><table class=\"kv\">"); //$NON-NLS-1$
+        if (!record.caseNumber.isBlank()) row(h, "N\u00ba do caso (Case number)", esc(record.caseNumber)); //$NON-NLS-1$
+        if (!record.legalAuthorization.isBlank()) row(h, "Autoriza\u00e7\u00e3o Legal", esc(record.legalAuthorization)); //$NON-NLS-1$
+        if (!record.victimsFullName.isBlank()) row(h, "Nome completo das v\u00edtimas", esc(record.victimsFullName)); //$NON-NLS-1$
+        if (!record.suspectsFullName.isBlank()) row(h, "Nome completo dos suspeitos", esc(record.suspectsFullName)); //$NON-NLS-1$
+        if (!record.evidenceDestination.isBlank()) row(h, "Destino da evid\u00eancia", esc(record.evidenceDestination)); //$NON-NLS-1$
+        if (!record.storageSealReference.isBlank()) row(h, "N\u00ba do Lacre / Refer\u00eancia", esc(record.storageSealReference)); //$NON-NLS-1$
+        if (!record.storageResponsible.isBlank()) row(h, "Respons\u00e1vel pelo armazenamento", esc(record.storageResponsible)); //$NON-NLS-1$
         row(h, "Quem coletou", esc(nonBlank(record.collectedBy, "N\u00e3o informado"))); //$NON-NLS-1$ //$NON-NLS-2$
         row(h, "Quem analisou", esc(nonBlank(record.analyzedBy, "N\u00e3o informado"))); //$NON-NLS-1$ //$NON-NLS-2$
         row(h, "Quando (coleta)", esc(nonBlank(record.collectedAt, "N\u00e3o informado"))); //$NON-NLS-1$ //$NON-NLS-2$
