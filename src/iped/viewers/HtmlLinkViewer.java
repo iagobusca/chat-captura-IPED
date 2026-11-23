@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.9.2-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.9.3-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -3444,21 +3444,34 @@ private boolean openRecaptureChat(RecaptureJob job) throws InterruptedException 
         if (item == null || job == null) {
             return false;
         }
-        boolean nameMatch = job.sourceName != null && !job.sourceName.isBlank()
-                && job.sourceName.equals(item.getName());
-        String expected = job.sourcePath == null ? "" : job.sourcePath.replace('\\', '/');
-        String actual = safe(item.getPath()).replace('\\', '/');
-        boolean pathMatch = !expected.isBlank() && expected.equalsIgnoreCase(actual);
-        boolean hashMatch = job.sourceHash != null && !job.sourceHash.isBlank()
-                && job.sourceHash.equalsIgnoreCase(safe(item.getHash()));
+        String needle = firstNonBlank(job.chatId, job.title, job.sourceTitle);
+        return matchesRecaptureSourceMetadata(item.getName(), safe(item.getPath()), safe(item.getHash()),
+                job.sourceName, job.sourcePath, job.sourceHash, needle);
+    }
+
+    static boolean matchesRecaptureSourceMetadata(String itemName, String itemPath, String itemHash,
+            String sourceName, String sourcePath, String sourceHash, String fallbackNeedle) {
+        boolean hasSourceName = sourceName != null && !sourceName.isBlank();
+        String expected = sourcePath == null ? "" : sourcePath.replace('\\', '/');
+        boolean hasSourcePath = !expected.isBlank();
+        boolean hasSourceHash = sourceHash != null && !sourceHash.isBlank();
+
+        boolean nameMatch = hasSourceName && sourceName.equals(itemName);
+        String actual = itemPath == null ? "" : itemPath.replace('\\', '/');
+        boolean pathMatch = hasSourcePath && expected.equalsIgnoreCase(actual);
+        boolean hashMatch = hasSourceHash && sourceHash.equalsIgnoreCase(itemHash == null ? "" : itemHash);
         if (nameMatch || pathMatch || hashMatch) {
             return true;
         }
-        // Fallback para capturas legadas: tenta localizar pelo chatId/titulo no nome do item.
-        String needle = firstNonBlank(job.chatId, job.title, job.sourceTitle);
-        if (needle != null && !needle.isBlank()) {
-            String itemText = (safe(item.getName()) + " " + safe(item.getPath())).toLowerCase();
-            if (itemText.contains(needle.toLowerCase())) {
+        // Quando a captura tem identificacao explicita do item/pagina (ex.: ..._0 vs ...),
+        // nao cair no fallback generico por chatId/titulo para nao reutilizar pagina errada do mesmo chat.
+        if (hasSourceName || hasSourcePath || hasSourceHash) {
+            return false;
+        }
+        // Fallback exclusivo para capturas legadas sem metadados de origem.
+        if (fallbackNeedle != null && !fallbackNeedle.isBlank()) {
+            String itemText = ((itemName == null ? "" : itemName) + " " + (itemPath == null ? "" : itemPath)).toLowerCase();
+            if (itemText.contains(fallbackNeedle.toLowerCase())) {
                 return true;
             }
         }

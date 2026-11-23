@@ -164,6 +164,33 @@ public class UiAndAuxFolderRegressionTest {
                 "Mismatched chat must NOT satisfy completion");
         assertTrue(HtmlLinkViewer.isRecaptureLoadCompleted(true, 4L, 5L, 5L, true),
                 "Settled matching new generation with ready DOM must satisfy completion");
+
+        // Split WhatsApp chat pages (...5511985514199 vs ...5511985514199_0) must NEVER false-match via chatId fallback
+        assertTrue(!HtmlLinkViewer.matchesRecaptureSourceMetadata(
+                "WhatsApp Chat - Matheus - 5511985514199",
+                "msgstore.db>>WhatsApp Chat - Matheus - 5511985514199",
+                "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+                "WhatsApp Chat - Matheus - 5511985514199_0",
+                "",
+                "A0E347199C2679D5E9499910202BFF33",
+                "5511985514199"),
+                "Explicit _0 split page must NOT match non-_0 page via chatId fallback");
+        assertTrue(HtmlLinkViewer.matchesRecaptureSourceMetadata(
+                "WhatsApp Chat - Matheus - 5511985514199_0",
+                "msgstore.db>>WhatsApp Chat - Matheus - 5511985514199_0",
+                "A0E347199C2679D5E9499910202BFF33",
+                "WhatsApp Chat - Matheus - 5511985514199_0",
+                "",
+                "A0E347199C2679D5E9499910202BFF33",
+                "5511985514199"),
+                "Exact _0 split page must match");
+        assertTrue(HtmlLinkViewer.matchesRecaptureSourceMetadata(
+                "WhatsApp Chat - Matheus - 5511985514199",
+                "msgstore.db>>WhatsApp Chat - Matheus - 5511985514199",
+                "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+                "", "", "",
+                "5511985514199"),
+                "Legacy capture without explicit source metadata must still match via chatId fallback");
     }
 
     private static void layoutRecursively(Container container) {

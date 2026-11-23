@@ -7,6 +7,25 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.3-beta (Beta / `beta`) / Verificador 1.6.0
+
+- **Tag**: [v2.9.3-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.3-beta) (Compilação determinística via `build-reproducible.ps1`)
+- **Branch base**: `beta` (canal beta — `main` estável `v2.9.0` e **Verificador `1.6.0`** preservados 100% intactos)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.3-beta-verificador-1.6.0.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.3-beta/instalador-chat-captura-IPED-2.9.3-beta-verificador-1.6.0.zip) (`120.425.049` bytes | SHA-256: `C0E1A34FEBBB3384D546934DDB16D15457CBC36D93EA4150F0C4DAA846F2A77B`)
+- [integridade-verifier-1.6.0.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.3-beta/integridade-verifier-1.6.0.exe) (`90.589.274` bytes | SHA-256: `1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920`)
+- [integridade-verifier-1.6.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.3-beta/integridade-verifier-1.6.0.jar) (`13.062.572` bytes | SHA-256: `E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745`)
+- [iped-viewers-impl-4.3.1-2.9.3-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.3-beta/iped-viewers-impl-4.3.1-2.9.3-beta.jar) (`1.684.251` bytes | SHA-256: `1E84F6E390E1CFDC727402B20F21224FA8FBF8977C725774C203699160E0D9F3`)
+
+### Corrigido
+- **Chats divididos (`_0`, `_1`, ...) no Re-Extrair (`HtmlLinkViewer.matchesRecaptureJob`):** quando a captura possui identificação explícita do item de origem (`sourceName` / `sourcePath` / `sourceHash`), o plugin não cai mais no fallback genérico por `chatId`/título — evitando reaproveitar erroneamente a página sem `_0` para capturas que pertencem à página `_0` (e vice-versa).
+
+### Resumo
+- Correção para páginas divididas de conversas grandes no **Re-Extrair** na branch `beta` (`2.9.3-beta`), mantendo o **Verificador de Integridade `1.6.0` 100% inalterado**.
+
+---
+
 ## v2.9.2-beta (Beta / `beta`) / Verificador 1.6.0
 
 - **Tag**: [v2.9.2-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.2-beta) (Compilação determinística via `build-reproducible.ps1`)

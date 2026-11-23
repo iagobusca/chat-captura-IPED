@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.3-beta] - 2026-11-23
+
+### Correção de Páginas Divididas (`_0`) no Re-Extrair (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)
+- **Identificação estrita de páginas divididas (`HtmlLinkViewer.matchesRecaptureSourceMetadata`):** quando a captura possui `sourceName`, `sourcePath` ou `sourceHash` explícitos, o plugin não recorre mais ao fallback genérico por `chatId`/título (reservado exclusivamente a capturas legadas sem metadados de origem), eliminando falsos positivos entre páginas distintas do mesmo chat (ex.: `...5511985514199` vs `...5511985514199_0`).
+- **Verificador `1.6.0` inalterado:** zero alterações em `verificador-integridade/` (mesmos binários `E5006E34...` / `1F14B7A1...`); Plugin **2.9.3-beta** (`1.684.251` bytes `1E84F6E3...`) e instalador `instalador-chat-captura-IPED-2.9.3-beta-verificador-1.6.0.zip` (`120.425.049` bytes `C0E1A34F...`) compilados deterministicamente via `build-reproducible.ps1`.
+
 ## [2.9.2-beta] - 2026-11-23
 
 ### Correção de Race Condition no Re-Extrair em Lote (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)

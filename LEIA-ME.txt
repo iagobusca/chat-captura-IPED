@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.9.2-beta - Verificador de Integridade 1.6.0
+Pacote Chat Captura IPED 2.9.3-beta - Verificador de Integridade 1.6.0
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -10,7 +10,12 @@ O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260
 opencv_java4120.dll e o Verificador de Integridade 1.6.0 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão beta (2.9.2-beta / Verificador 1.6.0 — beta):
+Novidades desta versão beta (2.9.3-beta / Verificador 1.6.0 — beta):
+- Plugin 2.9.3-beta (Correção de Chats Divididos _0 no Re-Extrair — Verificador 1.6.0 inalterado):
+  * Impede que matchesRecaptureJob caia no fallback genérico por chatId quando a captura possui identificação explícita da página de origem (ex.: ..._0 vs página principal sem _0), evitando reaproveitar a página errada de conversas grandes divididas pelo IPED;
+  * Verificador de Integridade 1.6.0 mantido 100% inalterado (mesmos binários e SHA-256 oficiais).
+
+Novidades anteriores (2.9.2-beta / Verificador 1.6.0 — beta):
 - Plugin 2.9.2-beta (Correção de Race Condition no Re-Extrair em Lote — Verificador 1.6.0 inalterado):
   * Reaproveita o chat já aberto e carregado no WebView quando há capturas consecutivas da mesma conversa, eliminando o reload redundante do FileProcessor que causava falsas falhas "A mensagem marcada não está mais disponível na conversa carregada";
   * Sincroniza trocas de conversa por geração de carga (`loadFile` -> `Worker.State.SUCCEEDED` + DOM `div.linha` pronto), garantindo que o Re-Extrair nunca valide o DOM durante um recarregamento assíncrono;
@@ -182,5 +187,5 @@ SHA-256 do Verificador 1.6.0:
 JAR E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745
 EXE 1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920
 
-SHA-256 do plugin 2.9.2-beta:
-JAR 1C96410CD48E0750023B28CBD30CBFAD590B84F3F2977CA6B54C824CC125C02F
+SHA-256 do plugin 2.9.3-beta:
+JAR 1E84F6E390E1CFDC727402B20F21224FA8FBF8977C725774C203699160E0D9F3
