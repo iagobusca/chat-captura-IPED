@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.8.14-beta - Verificador de Integridade 1.5.12
+Pacote Chat Captura IPED 2.9.0 - Verificador de Integridade 1.6.0
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,20 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.5.12 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.6.0 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.8.14-beta / Verificador 1.5.12 — beta simplificada):
+Novidades desta versão estável (2.9.0 / Verificador 1.6.0 — main):
+- Plugin 2.9.0 (Laudo Técnico Nativo PDFBox + Cadeia de Custódia Enxuta + Log Único + Relatório IPED por Captura):
+  * Nova janela enxuta "Dados do Laudo e Cadeia de Custódia" (10 campos essenciais: 4 de Dispositivo + 6 de Cadeia de Custódia com seletor [Pasta | Mídia lacrada | Custom] e botão "Recarregar do report.pdf"), exibida em Start/Re-Extrair e via botão "Dados do Laudo..." no painel;
+  * Cópia byte a byte sem alteração do report.pdf da origem para laudo/report.pdf (SHA-256 verificado), parser por seção Avilla sem vazamento em campos vazios e geração nativa de laudo/report-plugin.pdf via Apache PDFBox 2.0.27 (aviso inicial e metodologia trilíngue PT/EN/ES, cadeia de custódia, hashes e 1 único SHA-256 do laudo/Log.txt);
+  * Log único unificado (laudo/Log.txt) append-only organizado por sessão (CAPTURA ADICIONADA, CAPTURA REMOVIDA, RE-EXTRAIR), com alerta e confirmação do usuário para recriar em caso de ausência/adulteração;
+  * Pacote de relatório IPED embutido por captura (relatorio.htm sem logos, Lista de Arquivos.csv com MD5/SHA-1/SHA-256 e proteção contra formula injection, chat-captura-IPED.log sem texto privado) selado em integridade.json e preservado no Re-Extrair;
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.6.0.
+- Verificador 1.6.0:
+  * Valida sem PDFBox (Java 8 puro) o SHA-256 único de laudo/Log.txt contra laudo/report-plugin.pdf (âncora CHATCAPTURA_LOGANCHOR_V2 + retrocompatibilidade V1), ignora laudo/ na descoberta de capturas preservando 100% de retrocompatibilidade do historico-capturas.txt e valida fail-closed laudo/report.pdf na Auditoria de Origem e o pacote relatorio.htm/CSV/log em cada captura.
+
+Novidades anteriores (2.8.14-beta / Verificador 1.5.12 — beta simplificada):
 - Plugin 2.8.14-beta (Janela Enxuta 10 Campos + Log Unificado com SHA-256 Único):
   * Janela de cadastro/conferência simplificada de 33 para 10 campos essenciais (4 de Dispositivo sem Versão do WhatsApp + 6 de Cadeia de Custódia com campo dinâmico [Pasta | Mídia lacrada | Custom]), cópia automática intacta do report.pdf quando presente, preenchimento automático de relatorio/caseinformation.htm a partir da custódia/dispositivo e detecção automática do filtro de blur de imagens;
   * Logs da pasta laudo/ unificados em um único arquivo laudo/Log.txt legível organizado por sessão (CAPTURA ADICIONADA, CAPTURA REMOVIDA, RE-EXTRAIR), eliminando registro-capturas.jsonl e registro-capturas.log duplicados;
@@ -156,9 +166,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.5.12:
-JAR B84289B03C2EDA7C675FB29B72372677262417D809C991464CE26A219F6C7B3B
-EXE BF3AAC82D5F35D2D7F033D05AED2B7CF539F5620806BDE53A97B0F184E7EF393
+SHA-256 do Verificador 1.6.0:
+JAR E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745
+EXE 1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920
 
-SHA-256 do plugin 2.8.14-beta:
-JAR 6C4418E8A543AE6F07C8F1240A3ADDC979C2B6F707D1D59E0DD8E090DF3F12EE
+SHA-256 do plugin 2.9.0:
+JAR ED3AA0F37DAC4D17846123A7A2FF958113EAFC0A8D733F7C33E026DCEF782C50

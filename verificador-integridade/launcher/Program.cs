@@ -1,4 +1,4 @@
-// Versão 1.5.12 — beta janela enxuta + log unificado Log.txt com SHA-256 único + empacotamento determinístico (.NET 10.0.15).
+// Versão 1.6.0 — estável: laudo técnico, pacote relatorio.htm/CSV/log, Log.txt SHA-256 único V2 e build determinístico (.NET 10.0.15).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

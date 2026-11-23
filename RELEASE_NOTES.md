@@ -7,6 +7,28 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.0 (Estável / `main`) / Verificador 1.6.0
+
+- **Tag**: [v2.9.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.0) (Release estável compilada deterministicamente via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.0-verificador-1.6.0.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.0/instalador-chat-captura-IPED-2.9.0-verificador-1.6.0.zip) (`120.421.798` bytes | SHA-256: `7E69581E8C954CCE2BFCF09DB7E66F13B33D7C62B2FF20EFCC08633A1506615D`)
+- [integridade-verifier-1.6.0.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.0/integridade-verifier-1.6.0.exe) (`90.589.274` bytes | SHA-256: `1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920`)
+- [integridade-verifier-1.6.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.0/integridade-verifier-1.6.0.jar) (`13.062.572` bytes | SHA-256: `E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745`)
+- [iped-viewers-impl-4.3.1-2.9.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.0/iped-viewers-impl-4.3.1-2.9.0.jar) (`1.681.418` bytes | SHA-256: `ED3AA0F37DAC4D17846123A7A2FF958113EAFC0A8D733F7C33E026DCEF782C50`)
+
+### Adicionado
+- **Laudo Técnico Nativo (PDFBox + HTML) e Janela de Cadeia de Custódia Enxuta (10 campos):** nova janela modal exibida em **Start**, **Re-Extrair** e pelo botão **"Dados do Laudo..."** com 4 campos de Dispositivo (`Dispositivo / Modelo`, `IMEI`, `Número de série`, `Versão do SO`), 6 campos de Cadeia de Custódia (`Quem coletou`, `Quem analisou`, `Quando`, `Onde`, seletor `[Pasta | Mídia lacrada | Custom]` com campo dinâmico para `Nº do Lacre` / texto livre e `Nº do caso / Laudo`) e botão **"Recarregar do report.pdf"**.
+- **Cópia Intacta de `laudo/report.pdf` + `laudo/report-plugin.pdf` Trilíngue (PT/EN/ES):** quando há `report.pdf` na origem Avilla, o plugin realiza cópia byte a byte sem edição para `laudo/report.pdf` (SHA-256 conferido), extrai metadados por seção sem vazamento de campos vazios e gera `laudo/report-plugin.pdf` nativo via Apache PDFBox 2.0.27 com aviso inicial e metodologia em 3 idiomas, filtros blur automáticos, hashes originais/exportados e **1 único SHA-256** de `laudo/Log.txt`.
+- **Log Único por Sessão (`laudo/Log.txt`) com Auditoria sem PDFBox no Verificador `1.6.0`:** arquivo append-only organizado por sessões (`CAPTURA ADICIONADA`, `CAPTURA REMOVIDA`, `RE-EXTRAIR`), com alerta e opção ao usuário para recriar em caso de ausência/adulteração e verificação direta pelo Verificador `1.6.0` (Java 8 puro, sem PDFBox) via âncora `CHATCAPTURA_LOGANCHOR_V2` (com retrocompatibilidade `V1`).
+- **Pacote de Relatório IPED Embutido por Captura (`relatorio.htm`, `Lista de Arquivos.csv` e `chat-captura-IPED.log`):** cada captura `html-message-v1` gera relatório frameset offline sem logos/marcas externas, inventário CSV (colunas IPED + `SHA256` + `Mensagem`, MD5/SHA-1/SHA-256 reais e proteção contra formula injection) e log técnico sem texto privado das mensagens — todos selados por SHA-256 em `integridade.json`, validados fail-closed pelo Verificador `1.6.0` e preservados no Re-Extrair, mantendo 100% de retrocompatibilidade com `historico-capturas.txt` antigos.
+
+### Resumo
+- Promoção estável da série `2.8.11-beta`..`2.8.14-beta` para a branch `main` como **Plugin `2.9.0`** / **Verificador `1.6.0`**, com compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada.
+
+---
+
 ## v2.8.14-beta (Beta / `beta`) / Verificador 1.5.12
 
 - **Tag**: [v2.8.14-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.14-beta) (Compilação determinística via `build-reproducible.ps1`)

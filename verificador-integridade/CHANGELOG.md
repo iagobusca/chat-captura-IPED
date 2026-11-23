@@ -4,6 +4,11 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.6.0] - 2026-11-23
+
+### Release Estável (`main` / Plugin v2.9.0)
+- Consolida na linha estável: ignorar `laudo/` na descoberta preservando 100% de retrocompatibilidade do `historico-capturas.txt`, validação fail-closed de `laudo/report.pdf` na Auditoria de Origem, validação sem PDFBox (Java 8 puro) do SHA-256 único de `laudo/Log.txt` contra `laudo/report-plugin.pdf` (`CHATCAPTURA_LOGANCHOR_V2` + retrocompatibilidade `V1`) e validação fail-closed do pacote `relatorio.htm` / `Lista de Arquivos.csv` / `chat-captura-IPED.log` em cada captura. (`build-reproducible.ps1`; JAR `E5006E34...` / EXE `1F14B7A1...`).
+
 ## [1.5.12] - 2026-11-23
 
 ### Validação de `laudo/Log.txt` por SHA-256 Único (`CHATCAPTURA_LOGANCHOR_V2`) (v2.8.14-beta)

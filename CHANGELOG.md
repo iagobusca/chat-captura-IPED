@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.0] - 2026-11-23
+
+### Release Estável (`main`) — Laudo Técnico PDFBox, Cadeia de Custódia Enxuta, Log Único e Pacote de Relatório IPED
+- Promoção estável da série `2.8.11-beta`..`2.8.14-beta` para a branch `main`: janela enxuta de 10 campos (`CustodyReportDialog`), cópia intacta de `laudo/report.pdf`, `laudo/report-plugin.pdf` trilíngue (PT/EN/ES) via PDFBox com 1 único SHA-256 de `laudo/Log.txt` (`CHATCAPTURA_LOGANCHOR_V2`), log único organizado por sessão (`laudo/Log.txt`), pacote embutido por captura (`relatorio.htm` sem logos, `Lista de Arquivos.csv` e `chat-captura-IPED.log`) e formato padronizado de Releases com seção `Adicionado`.
+- Verificador **1.6.0** (`13.062.572` bytes JAR `E5006E34...` | `90.589.274` bytes EXE `1F14B7A1...`) e Plugin **2.9.0** (`1.681.418` bytes `ED3AA0F3...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.9.0-verificador-1.6.0.zip` (`120.421.798` bytes `7E69581E...`).
+
 ## [2.8.14-beta] - 2026-11-23
 
 ### Janela Enxuta (10 Campos), Log Único por Sessão e SHA-256 Único no PDF (Beta / `beta`)
