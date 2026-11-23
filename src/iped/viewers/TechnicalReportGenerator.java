@@ -219,8 +219,7 @@ final class TechnicalReportGenerator {
         if (record.generateUnifiedPdf && record.originReportPdfCopied) {
             h.append("<a class=\"btn alt\" href=\"").append(CustodyCaseRecord.REPORT_UNIFIED_PDF_FILE).append("\">Abrir PDF Unificado</a>"); //$NON-NLS-1$ //$NON-NLS-2$
         }
-        h.append("<a class=\"btn alt\" href=\"").append(CustodyCaseRecord.LOG_TXT_FILE).append("\">Log.txt Encadeado</a>"); //$NON-NLS-1$ //$NON-NLS-2$
-        h.append("<a class=\"btn alt\" href=\"").append(CustodyCaseRecord.AUDIT_LOG_TXT_FILE).append("\">Log Auxiliar (.log)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
+        h.append("<a class=\"btn alt\" href=\"").append(CustodyCaseRecord.LOG_TXT_FILE).append("\">Log.txt Cronol\u00f3gico</a>"); //$NON-NLS-1$ //$NON-NLS-2$
         h.append("<a class=\"btn alt\" href=\"").append(CustodyCaseRecord.LAUDO_HASHES_TXT_FILE).append("\">Hashes do Laudo (.txt)</a>"); //$NON-NLS-1$ //$NON-NLS-2$
         h.append("<a class=\"btn alt\" href=\"../index.html\">Voltar ao \u00cdndice</a>"); //$NON-NLS-1$
         h.append("</div></header><main class=\"wrap\">"); //$NON-NLS-1$
@@ -340,19 +339,21 @@ final class TechnicalReportGenerator {
         }
         h.append("</section>"); //$NON-NLS-1$
 
-        // Secao 8: Log Encadeado de Capturas
-        h.append("<section class=\"card\"><h2>8. Log Cronol\u00f3gico Encadeado (laudo/Log.txt)</h2>"); //$NON-NLS-1$
+        // Secao 8: Log Cronologico Unificado (laudo/Log.txt)
+        h.append("<section class=\"card\"><h2>8. Log Cronol\u00f3gico (laudo/Log.txt)</h2>"); //$NON-NLS-1$
         boolean logOk = chainedLogSnap != null && chainedLogSnap.chainValid;
         String statusBadge = logOk ? "b-ok" : "b-bad"; //$NON-NLS-1$ //$NON-NLS-2$
         h.append("<table class=\"kv\">"); //$NON-NLS-1$
         row(h, "Status do Log.txt", "<span class=\"badge " + statusBadge + "\">" + esc(nonBlank(record.logIntegrityStatus, "NAO_INICIADO")) + "</span>"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
         if (!record.logCreatedAtLocal.isBlank()) {
-            row(h, "Criado em (Linha 0)", esc(record.logCreatedAtLocal + (record.logCreatedAtUtc.isBlank() ? "" : " (UTC: " + record.logCreatedAtUtc + ")"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            row(h, "Criado em", esc(record.logCreatedAtLocal + (record.logCreatedAtUtc.isBlank() ? "" : " (UTC: " + record.logCreatedAtUtc + ")"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         }
-        if (record.logAnchorLastLine >= 0) {
-            row(h, "Faixa ancorada no PDF", esc("Linha 0 ate Linha " + record.logAnchorLastLine + " (" + (record.logAnchorLastLine + 1) + " linhas)")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-            rowMono(h, "SHA-256 do prefixo (0.." + record.logAnchorLastLine + ")", record.logAnchorPrefixSha256); //$NON-NLS-1$ //$NON-NLS-2$
-            rowMono(h, "Hash encadeado da ponta (Linha " + record.logAnchorLastLine + ")", record.logAnchorHeadHash); //$NON-NLS-1$ //$NON-NLS-2$
+        row(h, "Sess\u00f5es registradas", esc("Total: " + record.logSessionCount //$NON-NLS-1$ //$NON-NLS-2$
+                + " (Adicionadas: " + record.logAddedCount //$NON-NLS-1$
+                + " | Re-Extra\u00eddas: " + record.logReextractedCount //$NON-NLS-1$
+                + " | Removidas: " + record.logRemovedCount + ") | " + record.logFileBytes + " bytes")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if (!record.logFileSha256.isBlank()) {
+            rowMono(h, "SHA-256 do arquivo laudo/Log.txt", record.logFileSha256); //$NON-NLS-1$
         }
         h.append("</table>"); //$NON-NLS-1$
         if (!record.logIncidents.isEmpty()) {
@@ -362,22 +363,18 @@ final class TechnicalReportGenerator {
             }
             h.append("</ul>"); //$NON-NLS-1$
         }
-        h.append("<p><b>Cadeia auxiliar (registro-capturas.jsonl):</b> ") //$NON-NLS-1$
-                .append(logChainValid ? "<span class=\"badge b-ok\">CONFERE (" + auditLog.size() + " registros)</span>" //$NON-NLS-1$ //$NON-NLS-2$
-                        : "<span class=\"badge b-bad\">DIVERGENCIA DETECTADA</span>") //$NON-NLS-1$
-                .append("</p>"); //$NON-NLS-1$
-        if (!auditLog.isEmpty()) {
-            h.append("<table><thead><tr><th>#</th><th>Data / Hor\u00e1rio</th><th>Evento</th><th>Captura</th><th>Status</th><th>Arquivos &amp; Detalhes</th><th>Hash Pasta / Registro</th></tr></thead><tbody>"); //$NON-NLS-1$
-            for (CaptureAuditLogManager.AuditLogEntry e : auditLog) {
-                String badgeCls = e.eventType.startsWith("DELETADO") || e.status.contains("ERRO") //$NON-NLS-1$ //$NON-NLS-2$
-                        ? "b-bad" : (e.status.contains("ATUALIZ") ? "b-warn" : "b-ok"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-                h.append("<tr><td>").append(e.sequence) //$NON-NLS-1$
-                        .append("</td><td class=\"mono\">").append(esc(e.timestampLocal)) //$NON-NLS-1$
-                        .append("</td><td><b>").append(esc(e.eventType)).append("</b>") //$NON-NLS-1$ //$NON-NLS-2$
-                        .append("</td><td class=\"mono\">").append(esc(e.captureFolder)) //$NON-NLS-1$
-                        .append("</td><td><span class=\"badge ").append(badgeCls).append("\">").append(esc(e.status)).append("</span>") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                        .append("</td><td>").append(esc(e.summary)) //$NON-NLS-1$
-                        .append("</td><td class=\"mono\">").append(esc(nonBlank(e.folderHash, e.previousFolderHash))) //$NON-NLS-1$
+        if (chainedLogSnap != null && !chainedLogSnap.sessions.isEmpty()) {
+            h.append("<table><thead><tr><th>Sess\u00e3o</th><th>Data / Hor\u00e1rio</th><th>Evento</th><th>Pasta</th><th>Status</th><th>Detalhes</th><th>SHA-256 Pasta</th></tr></thead><tbody>"); //$NON-NLS-1$
+            for (CaptureAuditLogManager.SessionRecord s : chainedLogSnap.sessions) {
+                String badgeCls = s.eventType.contains("REMOVID") || s.status.contains("ERRO") //$NON-NLS-1$ //$NON-NLS-2$
+                        ? "b-bad" : (s.status.contains("ATUALIZ") || s.status.contains("REPAR") ? "b-warn" : "b-ok"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                h.append("<tr><td>#").append(s.sessionNumber) //$NON-NLS-1$
+                        .append("</td><td class=\"mono\">").append(esc(s.timestampLocal)) //$NON-NLS-1$
+                        .append("</td><td><b>").append(esc(s.eventType)).append("</b>") //$NON-NLS-1$ //$NON-NLS-2$
+                        .append("</td><td class=\"mono\">").append(esc(s.captureFolder)) //$NON-NLS-1$
+                        .append("</td><td><span class=\"badge ").append(badgeCls).append("\">").append(esc(s.status)).append("</span>") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        .append("</td><td>").append(esc(s.detail)) //$NON-NLS-1$
+                        .append("</td><td class=\"mono\">").append(esc(s.folderHash)) //$NON-NLS-1$
                         .append("</td></tr>"); //$NON-NLS-1$
             }
             h.append("</tbody></table>"); //$NON-NLS-1$

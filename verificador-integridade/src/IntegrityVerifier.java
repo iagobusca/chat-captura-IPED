@@ -38,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.11";
+    private static final String VERIFIER_VERSION = "1.5.12";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -4844,7 +4844,8 @@ public final class IntegrityVerifier {
         dialog.setVisible(true);
     }
 
-    private static final String LAUDO_LOG_ANCHOR_MARKER = "CHATCAPTURA_LOGANCHOR_V1;";
+    private static final String LAUDO_LOG_ANCHOR_MARKER_V1 = "CHATCAPTURA_LOGANCHOR_V1;";
+    private static final String LAUDO_LOG_ANCHOR_MARKER_V2 = "CHATCAPTURA_LOGANCHOR_V2;";
     private static final String LAUDO_LOG_ZERO_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final long MAX_LAUDO_PDF_ANCHOR_BYTES = 64L * 1024L * 1024L;
     private static final long MAX_LAUDO_LOG_TXT_BYTES = 16L * 1024L * 1024L;
@@ -4853,8 +4854,12 @@ public final class IntegrityVerifier {
     static final class PdfLogAnchor {
         boolean present;
         boolean duplicatedConflict;
+        int version = 0; // 1 = V1 (line range), 2 = V2 (single file SHA-256)
         String createdUtc = "";
         int lastLine = -1;
+        long byteLength = -1L;
+        int sessions = 0;
+        String fileSha256 = "";
         String prefixSha256 = "";
         String headHash = "";
         String status = "";
@@ -4900,21 +4905,22 @@ public final class IntegrityVerifier {
         }
         String latin = new String(pdfBytes, StandardCharsets.ISO_8859_1);
         Set<String> distinctTokens = new LinkedHashSet<>();
-        int pos = 0;
-        while ((pos = latin.indexOf(LAUDO_LOG_ANCHOR_MARKER, pos)) >= 0) {
-            int end = pos + LAUDO_LOG_ANCHOR_MARKER.length();
-            while (end < latin.length()) {
-                char c = latin.charAt(end);
-                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
-                        || c == '_' || c == ';' || c == '=' || c == '.' || c == '+' || c == ':' || c == '-') {
-                    end++;
-                } else {
-                    break;
+        for (String marker : new String[] { LAUDO_LOG_ANCHOR_MARKER_V2, LAUDO_LOG_ANCHOR_MARKER_V1 }) {
+            int pos = 0;
+            while ((pos = latin.indexOf(marker, pos)) >= 0) {
+                int end = pos + marker.length();
+                while (end < latin.length()) {
+                    char c = latin.charAt(end);
+                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                            || c == '_' || c == ';' || c == '=' || c == '.' || c == '+' || c == ':' || c == '-') {
+                        end++;
+                    } else {
+                        break;
+                    }
                 }
+                distinctTokens.add(latin.substring(pos, end));
+                pos = end;
             }
-            String token = latin.substring(pos, end);
-            distinctTokens.add(token);
-            pos = end;
         }
         if (distinctTokens.isEmpty()) {
             return anchor;
@@ -4925,9 +4931,37 @@ public final class IntegrityVerifier {
             return anchor;
         }
         String token = distinctTokens.iterator().next();
-        String body = token.substring(LAUDO_LOG_ANCHOR_MARKER.length());
-        String[] kvs = body.split(";");
-        for (String kv : kvs) {
+        if (token.startsWith(LAUDO_LOG_ANCHOR_MARKER_V2)) {
+            anchor.version = 2;
+            String body = token.substring(LAUDO_LOG_ANCHOR_MARKER_V2.length());
+            for (String kv : body.split(";")) {
+                int eq = kv.indexOf('=');
+                if (eq <= 0) continue;
+                String k = kv.substring(0, eq).trim();
+                String v = kv.substring(eq + 1).trim();
+                if ("created".equals(k)) {
+                    anchor.createdUtc = v;
+                } else if ("bytes".equals(k)) {
+                    try { anchor.byteLength = Long.parseLong(v); } catch (NumberFormatException ignored) { anchor.byteLength = -1L; }
+                } else if ("sessions".equals(k)) {
+                    try { anchor.sessions = Integer.parseInt(v); } catch (NumberFormatException ignored) { anchor.sessions = 0; }
+                } else if ("sha256".equals(k) && v.matches("(?i)[0-9a-f]{64}")) {
+                    anchor.fileSha256 = v.toLowerCase(Locale.ROOT);
+                    anchor.prefixSha256 = anchor.fileSha256;
+                    anchor.headHash = anchor.fileSha256;
+                } else if ("status".equals(k)) {
+                    anchor.status = v;
+                }
+            }
+            if (anchor.byteLength > 0L && anchor.fileSha256.length() == 64) {
+                anchor.present = true;
+            }
+            return anchor;
+        }
+
+        anchor.version = 1;
+        String body = token.substring(LAUDO_LOG_ANCHOR_MARKER_V1.length());
+        for (String kv : body.split(";")) {
             int eq = kv.indexOf('=');
             if (eq <= 0) continue;
             String k = kv.substring(0, eq).trim();
@@ -4984,7 +5018,7 @@ public final class IntegrityVerifier {
                 res.applicable = true;
                 res.passed = false;
                 res.status = "FALHA_ANCORA_PDF_DUPLICADA";
-                res.detail = "Multiplas ancoras CHATCAPTURA_LOGANCHOR_V1 divergentes em laudo/report-plugin.pdf.";
+                res.detail = "Multiplas ancoras CHATCAPTURA_LOGANCHOR divergentes em laudo/report-plugin.pdf.";
                 return res;
             }
             if (anchor.present) {
@@ -5000,7 +5034,9 @@ public final class IntegrityVerifier {
                     res.applicable = true;
                     res.passed = false;
                     res.status = "FALHA_LOG_AUSENTE";
-                    res.detail = "laudo/Log.txt ausente, mas laudo/report-plugin.pdf ancora linhas 0.." + anchor.lastLine + ".";
+                    res.detail = anchor.version == 2
+                            ? ("laudo/Log.txt ausente, mas laudo/report-plugin.pdf ancora SHA-256 " + anchor.fileSha256.substring(0, 12) + "... (" + anchor.byteLength + " bytes).")
+                            : ("laudo/Log.txt ausente, mas laudo/report-plugin.pdf ancora linhas 0.." + anchor.lastLine + ".");
                 }
                 return res;
             }
@@ -5017,6 +5053,78 @@ public final class IntegrityVerifier {
                 res.passed = false;
                 res.status = "FALHA_LOG_ADULTERADO";
                 res.detail = "laudo/Log.txt vazio ou excede limite de 16 MiB (" + logSize + " bytes).";
+                return res;
+            }
+
+            // V2 Single-SHA-256 verification path (or session-formatted Log.txt)
+            byte[] rawBytes = Files.readAllBytes(logPath);
+            String fullFileSha = hex(MessageDigest.getInstance(ALG).digest(rawBytes));
+            String headText = new String(rawBytes, 0, Math.min(rawBytes.length, 512), StandardCharsets.UTF_8);
+            boolean isSessionFormat = headText.contains("=== LOG CRONOLOGICO");
+            if (anchor.version == 2 || (isSessionFormat && (!anchor.present || anchor.version != 1))) {
+                res.actualPrefixSha256 = fullFileSha;
+                res.actualHeadHash = fullFileSha;
+                String fullText = new String(rawBytes, StandardCharsets.UTF_8);
+                for (String ln : fullText.split("\\r?\\n")) {
+                    if (ln.startsWith("CRIADO_EM:")) {
+                        String v = ln.substring("CRIADO_EM:".length()).trim();
+                        int u = v.indexOf("(UTC:");
+                        if (u > 0) {
+                            res.createdAtLocal = v.substring(0, u).trim();
+                            String rest = v.substring(u + 5).trim();
+                            if (rest.endsWith(")")) rest = rest.substring(0, rest.length() - 1).trim();
+                            res.createdAtUtc = rest;
+                        } else {
+                            res.createdAtLocal = v;
+                        }
+                        break;
+                    }
+                }
+                if (!anchor.present) {
+                    res.passed = true;
+                    res.hasWarning = true;
+                    res.status = "AVISO_PDF_SEM_ANCORA";
+                    res.detail = "laudo/Log.txt presente (" + rawBytes.length + " bytes, SHA-256=" + fullFileSha.substring(0, 12)
+                            + "...), mas laudo/report-plugin.pdf nao contem ancora CHATCAPTURA_LOGANCHOR.";
+                    return res;
+                }
+                if (rawBytes.length < anchor.byteLength) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_TRUNCADO";
+                    res.detail = "laudo/Log.txt truncado: PDF ancora " + anchor.byteLength + " bytes, mas arquivo possui apenas " + rawBytes.length + " bytes.";
+                    return res;
+                }
+                MessageDigest prefixMd = MessageDigest.getInstance(ALG);
+                prefixMd.update(rawBytes, 0, (int) anchor.byteLength);
+                String computedAnchoredSha = hex(prefixMd.digest());
+                if (!computedAnchoredSha.equalsIgnoreCase(anchor.fileSha256)) {
+                    res.passed = false;
+                    res.status = "FALHA_LOG_ADULTERADO";
+                    res.detail = "SHA-256 de laudo/Log.txt diverge da ancora gravada em laudo/report-plugin.pdf.";
+                    return res;
+                }
+                if (rawBytes.length > anchor.byteLength) {
+                    long extraBytes = rawBytes.length - anchor.byteLength;
+                    res.passed = true;
+                    res.hasWarning = true;
+                    res.status = "CONFERE_COM_LINHAS_POSTERIORES";
+                    res.detail = "SHA-256 inicial (" + anchor.byteLength + " bytes) confere com report-plugin.pdf; existem "
+                            + extraBytes + " bytes de sessoes posteriores ainda nao ancoradas no PDF.";
+                    return res;
+                }
+                if ("RECRIADO_POR_SOLICITACAO_DO_USUARIO".equalsIgnoreCase(anchor.status)) {
+                    res.passed = true;
+                    res.hasWarning = true;
+                    res.status = "CONFERE_RECRIADO_NO_PDF";
+                    res.detail = "SHA-256 de laudo/Log.txt confere com report-plugin.pdf (AVISO: PDF registra que Log.txt foi recriado por solicitacao do usuario; criado em "
+                            + res.createdAtLocal + ").";
+                    return res;
+                }
+                res.passed = true;
+                res.hasWarning = false;
+                res.status = "CONFERE";
+                res.detail = "SHA-256 unico de laudo/Log.txt (" + fullFileSha.substring(0, 12) + "..., "
+                        + anchor.sessions + " sessoes, " + rawBytes.length + " bytes) confere integralmente com laudo/report-plugin.pdf.";
                 return res;
             }
 

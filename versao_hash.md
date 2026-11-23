@@ -1,6 +1,6 @@
 # Histórico de hashes do Verificador de Integridade
 
-Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.11 acompanha a release beta `v2.8.13-beta` (canal beta em `beta`, com compilação determinística auditável via `build-reproducible.ps1`) e passa a ser a única aceita pelo plugin `2.8.13-beta` (versões `<= 1.5.10` são rejeitadas pela allowlist exclusiva). Compare o hash do arquivo antes de executá-lo.
+Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.12 acompanha a release beta `v2.8.14-beta` (canal beta em `beta`, com compilação determinística auditável via `build-reproducible.ps1`) e passa a ser a única aceita pelo plugin `2.8.14-beta` (versões `<= 1.5.11` são rejeitadas pela allowlist exclusiva). Compare o hash do arquivo antes de executá-lo.
 
 > **Nota de publicação:** As releases públicas no GitHub iniciam na série estável `v2.6.8` / Verificador `1.4.3` (`1.4.3`, `1.4.4`, `1.4.5`). As linhas `<= 1.4.2` documentam o histórico anterior mantido para auditoria e verificação de rejeição em `VerifierIntegrityHashTest`.
 
@@ -8,6 +8,8 @@ Os hashes abaixo são SHA-256 dos binários registrados. A versão 1.5.11 acompa
 
 | Versão | Arquivo | SHA-256 | Evidência |
 |---|---|---|---|
+| 1.5.12 (release v2.8.14-beta) | `integridade-verifier.jar` | `B84289B03C2EDA7C675FB29B72372677262417D809C991464CE26A219F6C7B3B` | Build determinístico (`build-reproducible.ps1` `--release 8`); `13.062.577` bytes; `SELF_TEST_OK 1.5.12` |
+| 1.5.12 (release v2.8.14-beta) | `integridade-verifier.exe` | `BF3AAC82D5F35D2D7F033D05AED2B7CF539F5620806BDE53A97B0F184E7EF393` | Build Windows x64 determinístico (`.NET 10.0.15`); `90.589.276` bytes; `SELF_TEST_OK 1.5.12` |
 | 1.5.11 (release v2.8.13-beta) | `integridade-verifier.jar` | `CC80FA62B2A8AE85AE15D9B6A829EB59E8BBB3E996D3E9A314F288B545C0D24B` | Build determinístico (`build-reproducible.ps1` `--release 8`); `13.061.220` bytes; `SELF_TEST_OK 1.5.11` |
 | 1.5.11 (release v2.8.13-beta) | `integridade-verifier.exe` | `A7F21554A38941543D944563C5B91A1CCD1EA3DC9BE63CEC2623FAF5E2668ACF` | Build Windows x64 determinístico (`.NET 10.0.15`); `90.587.740` bytes; `SELF_TEST_OK 1.5.11` |
 | 1.5.10 (release v2.8.12-beta) | `integridade-verifier.jar` | `09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30` | Build determinístico (`build-reproducible.ps1` `--release 8`); `13.058.749` bytes; `SELF_TEST_OK 1.5.10` |

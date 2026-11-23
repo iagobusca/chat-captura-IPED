@@ -398,13 +398,19 @@ final class CustodyCaseRecord {
     String originWaDbSha256 = ""; //$NON-NLS-1$
     String originKeySha256 = ""; //$NON-NLS-1$
 
-    // --- Chained Log.txt Anchor & Incident History ---
+    // --- Unified Log.txt Anchor (Single SHA-256) & Incident History ---
     String logCreatedAtLocal = ""; //$NON-NLS-1$
     String logCreatedAtUtc = ""; //$NON-NLS-1$
+    String logFileSha256 = ""; //$NON-NLS-1$
+    long logFileBytes = 0L;
+    int logSessionCount = 0;
+    int logAddedCount = 0;
+    int logRemovedCount = 0;
+    int logReextractedCount = 0;
+    // Legacy V1 fields kept for backward-compatible loading of older custodia-caso.json
     int logAnchorLastLine = -1;
     String logAnchorPrefixSha256 = ""; //$NON-NLS-1$
     String logAnchorHeadHash = ""; //$NON-NLS-1$
-    long logFileBytes = 0L;
     String logIntegrityStatus = "NAO_INICIADO"; //$NON-NLS-1$
     final List<String> logIncidents = new ArrayList<>();
 
@@ -800,10 +806,15 @@ final class CustodyCaseRecord {
                 .put("file", LOG_TXT_FILE) //$NON-NLS-1$
                 .put("createdAtLocal", clamp(logCreatedAtLocal, 64)) //$NON-NLS-1$
                 .put("createdAtUtc", clamp(logCreatedAtUtc, 64)) //$NON-NLS-1$
+                .put("sha256", clamp(logFileSha256, 128)) //$NON-NLS-1$
+                .put("byteLength", Math.max(0L, logFileBytes)) //$NON-NLS-1$
+                .put("sessionCount", Math.max(0, logSessionCount)) //$NON-NLS-1$
+                .put("addedCount", Math.max(0, logAddedCount)) //$NON-NLS-1$
+                .put("removedCount", Math.max(0, logRemovedCount)) //$NON-NLS-1$
+                .put("reextractedCount", Math.max(0, logReextractedCount)) //$NON-NLS-1$
                 .put("lastLineIndex", logAnchorLastLine) //$NON-NLS-1$
                 .put("prefixSha256", clamp(logAnchorPrefixSha256, 128)) //$NON-NLS-1$
                 .put("headHash", clamp(logAnchorHeadHash, 128)) //$NON-NLS-1$
-                .put("byteLength", Math.max(0L, logFileBytes)) //$NON-NLS-1$
                 .put("integrityStatus", clamp(logIntegrityStatus, 128)) //$NON-NLS-1$
                 .put("incidents", incidentsArr); //$NON-NLS-1$
 
@@ -944,10 +955,15 @@ final class CustodyCaseRecord {
         if (logObj != null) {
             r.logCreatedAtLocal = clamp(logObj.optString("createdAtLocal", ""), 64); //$NON-NLS-1$ //$NON-NLS-2$
             r.logCreatedAtUtc = clamp(logObj.optString("createdAtUtc", ""), 64); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logFileSha256 = clamp(logObj.optString("sha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
+            r.logFileBytes = Math.max(0L, logObj.optLong("byteLength", 0L)); //$NON-NLS-1$
+            r.logSessionCount = Math.max(0, logObj.optInt("sessionCount", 0)); //$NON-NLS-1$
+            r.logAddedCount = Math.max(0, logObj.optInt("addedCount", 0)); //$NON-NLS-1$
+            r.logRemovedCount = Math.max(0, logObj.optInt("removedCount", 0)); //$NON-NLS-1$
+            r.logReextractedCount = Math.max(0, logObj.optInt("reextractedCount", 0)); //$NON-NLS-1$
             r.logAnchorLastLine = logObj.optInt("lastLineIndex", -1); //$NON-NLS-1$
             r.logAnchorPrefixSha256 = clamp(logObj.optString("prefixSha256", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
             r.logAnchorHeadHash = clamp(logObj.optString("headHash", ""), 128); //$NON-NLS-1$ //$NON-NLS-2$
-            r.logFileBytes = Math.max(0L, logObj.optLong("byteLength", 0L)); //$NON-NLS-1$
             r.logIntegrityStatus = clamp(logObj.optString("integrityStatus", "NAO_INICIADO"), 128); //$NON-NLS-1$ //$NON-NLS-2$
             JSONArray incArr = logObj.optJSONArray("incidents"); //$NON-NLS-1$
             if (incArr != null) {

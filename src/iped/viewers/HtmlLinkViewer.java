@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.13-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.14-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -1441,6 +1441,9 @@ private void clearChatCaptureMarks() {
         }
         record.pluginVersion = CHAT_CAPTURE_PLUGIN_VERSION;
         record.ipedVersion = "4.3.1"; //$NON-NLS-1$
+        record.copyOriginReportPdf = true;
+        record.analyzedAt = CustodyCaseRecord.nowLocalTimestamp();
+        record.appliedFilters = buildAutomaticFiltersSummary();
         if (this.originParentIpedFolder != null && this.originParentIpedFolder.getFileName() != null) {
             record.parentIpedFolderName = this.originParentIpedFolder.getFileName().toString();
         }
@@ -1453,6 +1456,17 @@ private void clearChatCaptureMarks() {
             }
         }
         return record;
+    }
+
+    private String buildAutomaticFiltersSummary() {
+        Path blurDir = this.sensitiveImagesFolder;
+        if (blurDir != null) {
+            String dirName = blurDir.getFileName() == null ? blurDir.toString() : blurDir.getFileName().toString();
+            return "Filtro de censura visual (blur): ATIVO (similaridade=" + this.sensitiveSimilarityPercent //$NON-NLS-1$
+                    + "%, blur=" + normalizeBlurPercent(this.sensitiveBlurPercent) + "% / " //$NON-NLS-1$ //$NON-NLS-2$
+                    + sensitiveBlurCssPixels() + "px, pasta=" + dirName + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return "Filtro de censura visual (blur): INATIVO"; //$NON-NLS-1$
     }
 
     private CustodyCaseRecord confirmCustodyBeforeAction(java.awt.Component alertParent, Path outputRoot,

@@ -6,6 +6,14 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.14-beta] - 2026-11-23
+
+### Janela Enxuta (10 Campos), Log Único por Sessão e SHA-256 Único no PDF (Beta / `beta`)
+- **Janela de Cadastro/Conferência enxuta (`CustodyReportDialog`):** reduzida de 33 para 10 campos essenciais (4 de Dispositivo sem `Versão do WhatsApp` + 6 de Cadeia de Custódia com campo dinâmico `[Pasta | Mídia lacrada | Custom]`), cópia intacta do `report.pdf` sempre automática quando presente, derivação automática de `relatorio/caseinformation.htm` a partir da custódia/dispositivo e registro automático do filtro blur configurado no painel.
+- **Unificação de logs em `laudo/Log.txt`:** removidos `registro-capturas.jsonl` e `registro-capturas.log`; único `laudo/Log.txt` legível organizado por sessão (`CAPTURA ADICIONADA`, `CAPTURA REMOVIDA`, `RE-EXTRAIR`) e `laudo/report-plugin.pdf` compacto com **1 único SHA-256** do arquivo `laudo/Log.txt` (âncora `CHATCAPTURA_LOGANCHOR_V2`).
+- **Verificador `1.5.12`:** valida sem PDFBox (Java 8 puro) o SHA-256 único de `laudo/Log.txt` contra `CHATCAPTURA_LOGANCHOR_V2` em `laudo/report-plugin.pdf` (reprovando 1 byte adulterado, truncamento ou ausência; preservando retrocompatibilidade com âncoras `V1`).
+- Verificador **1.5.12** (`13.062.577` bytes JAR `B84289B0...` | `90.589.276` bytes EXE `BF3AAC82...`) e Plugin **2.8.14-beta** (`1.681.469` bytes `6C4418E8...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.14-beta-verificador-1.5.12.zip` (`120.421.539` bytes `068E2424...`).
+
 ## [2.8.13-beta] - 2026-11-23
 
 ### Fase 3 — Pacote de Relatório IPED Embutido por Captura (`relatorio.htm`, CSV e Log) (Beta / `beta`)

@@ -88,7 +88,7 @@ public final class TechnicalReportAndCustodyTest {
         check(pdfText.contains("Pixel 9 Pro"), "modelo deve constar no PDF gerado via PDFBox");
         check(pdfText.contains("Custom: HD externo criptografado VeraCrypt"), "armazenamento custom deve constar no PDF");
         check(pdfText.contains("START"), "evento START deve constar no PDF");
-        check(pdfText.contains("ADICIONADO captura"), "evento ADICIONADO captura deve constar no PDF");
+        check(pdfText.contains("CAPTURA ADICIONADA"), "evento CAPTURA ADICIONADA deve constar no PDF");
     }
 
     private static void testWithOriginReportPdfCopiesMergesAndValidatesPdfBoxOutput(Path root) throws Exception {
@@ -350,27 +350,44 @@ public final class TechnicalReportAndCustodyTest {
         check(addSum.addedFolders.contains("Chat_Beta-20261123-092500"), "deve detectar nova captura ADICIONADO");
         rec.save(outDir);
 
-        // Delete first capture and reconcile -> DELETADO captura
+        // Delete first capture and reconcile -> CAPTURA REMOVIDA
         deleteTree(cap1);
         CaptureAuditLogManager.ReconcileSummary delSum = CaptureAuditLogManager.reconcileKnownCaptures(outDir, rec, "LAUDO");
-        check(delSum.deletedFolders.contains("Chat_Alfa-20261123-092000"), "deve detectar captura removida DELETADO");
+        check(delSum.deletedFolders.contains("Chat_Alfa-20261123-092000"), "deve detectar captura removida");
         rec.save(outDir);
 
-        List<CaptureAuditLogManager.AuditLogEntry> entries = CaptureAuditLogManager.readLogEntries(outDir);
-        check(CaptureAuditLogManager.verifyAuditLogChain(entries), "cadeia SHA-256 do log de capturas deve conferir");
-        String logTxt = Files.readString(outDir.resolve("laudo/registro-capturas.log"), StandardCharsets.UTF_8);
-        check(logTxt.contains("START | Chat_Alfa-20261123-092000"), "log deve conter START");
-        check(logTxt.contains("ADICIONADO captura | Chat_Alfa-20261123-092000"), "log deve conter ADICIONADO captura");
-        check(logTxt.contains("RE-EXTRAIR | Chat_Alfa-20261123-092000") && logTxt.contains("INALTERADO_OK"),
-                "log deve conter RE-EXTRAIR INALTERADO_OK");
-        check(logTxt.contains("msg=1 inalterado OK, img=1 inalterado OK, audio=1 inalterado OK, video=1 inalterado OK, doc=1 inalterado OK"),
-                "log RE-EXTRAIR deve discriminar msg/img/audio/video/doc inalterados OK: " + logTxt);
-        check(logTxt.contains("ADICIONADO captura | Chat_Beta-20261123-092500"), "log deve conter ADICIONADO da segunda captura");
-        check(logTxt.contains("DELETADO captura | Chat_Alfa-20261123-092000"), "log deve conter DELETADO da primeira captura");
+        // Unified log check: ONLY laudo/Log.txt is created (no duplicate registro-capturas.jsonl or .log)
+        Path logTxtPath = outDir.resolve("laudo/Log.txt");
+        check(Files.isRegularFile(logTxtPath), "laudo/Log.txt deve existir como unico arquivo de log");
+        check(!Files.exists(outDir.resolve("laudo/registro-capturas.jsonl")),
+                "registro-capturas.jsonl nao deve mais ser criado");
+        check(!Files.exists(outDir.resolve("laudo/registro-capturas.log")),
+                "registro-capturas.log nao deve mais ser criado");
 
-        // Tamper a single entry and verify chain fails closed
-        entries.get(1).summary = "ADULTERADO";
-        check(!CaptureAuditLogManager.verifyAuditLogChain(entries), "adulteracao na cadeia do log deve reprovar verifyAuditLogChain");
+        String logTxt = Files.readString(logTxtPath, StandardCharsets.UTF_8);
+        check(logTxt.contains("CAPTURA ADICIONADA (START)") && logTxt.contains("Pasta: Chat_Alfa-20261123-092000"),
+                "Log.txt deve conter sessao CAPTURA ADICIONADA (START)");
+        check(logTxt.contains("| RE-EXTRAIR ---") && logTxt.contains("Status: INALTERADO_OK"),
+                "Log.txt deve conter sessao RE-EXTRAIR INALTERADO_OK");
+        check(logTxt.contains("msg=1 inalterado OK, img=1 inalterado OK, audio=1 inalterado OK, video=1 inalterado OK, doc=1 inalterado OK"),
+                "Log.txt RE-EXTRAIR deve discriminar msg/img/audio/video/doc inalterados OK: " + logTxt);
+        check(logTxt.contains("| CAPTURA ADICIONADA ---") && logTxt.contains("Pasta: Chat_Beta-20261123-092500"),
+                "Log.txt deve conter sessao CAPTURA ADICIONADA da segunda captura");
+        check(logTxt.contains("| CAPTURA REMOVIDA ---") && logTxt.contains("Pasta: Chat_Alfa-20261123-092000"),
+                "Log.txt deve conter sessao CAPTURA REMOVIDA da primeira captura");
+
+        CaptureAuditLogManager.ChainedLogSnapshot snapOk = CaptureAuditLogManager.readAndVerifyChainedLogTxt(
+                outDir, rec.logFileSha256, rec.logFileBytes);
+        check(snapOk.chainValid && snapOk.sessionCount == 4 && snapOk.addedCount == 2
+                        && snapOk.reextractedCount == 1 && snapOk.removedCount == 1,
+                "Snapshot deve contar 4 sessoes (2 adicionadas, 1 re-extraida, 1 removida), obtido=" + snapOk.sessionCount);
+
+        // Tamper 1 byte of Log.txt and verify single-SHA-256 check fails closed
+        Files.writeString(logTxtPath, logTxt.replace("INALTERADO_OK", "ADULTERADO_XX"), StandardCharsets.UTF_8);
+        CaptureAuditLogManager.ChainedLogSnapshot snapBad = CaptureAuditLogManager.readAndVerifyChainedLogTxt(
+                outDir, rec.logFileSha256, rec.logFileBytes);
+        check(!snapBad.chainValid && "ADULTERADO".equals(snapBad.status),
+                "adulteracao em Log.txt deve reprovar verificacao SHA-256 unica: " + snapBad.status);
     }
 
     private static void testChainedLogTxtPdfAnchorAndVerifierWithoutPdfBox(Path root) throws Exception {
@@ -388,32 +405,35 @@ public final class TechnicalReportAndCustodyTest {
 
         Path logTxt = outDir.resolve("laudo/Log.txt");
         check(Files.isRegularFile(logTxt), "laudo/Log.txt deve ser criado");
-        List<String> lines = Files.readAllLines(logTxt, StandardCharsets.UTF_8);
-        check(lines.size() >= 4, "Log.txt deve conter linha 0 CRIADO + START + ADICIONADO + RE-EXTRAIR, atual=" + lines.size());
-        check(lines.get(0).startsWith("0|") && lines.get(0).contains("|CRIADO|") && lines.get(0).contains("prev=" + CaptureAuditLogManager.ZERO_HASH_64),
-                "Linha 0 deve ser CRIADO com prev=64 zeros: " + lines.get(0));
+        String logContent = Files.readString(logTxt, StandardCharsets.UTF_8);
+        check(logContent.startsWith("=== LOG CRONOLOGICO - CHAT CAPTURA IPED ==="),
+                "Log.txt deve iniciar com cabecalho padronizado");
+        check(logContent.contains("[SESSAO #1]") && logContent.contains("[SESSAO #2]"),
+                "Log.txt deve organizar sessoes #1 (START) e #2 (RE-EXTRAIR)");
 
-        // 1. Verify PDFBox wrote the uncompressed ASCII anchor into /Info and IntegrityVerifier parses it WITHOUT PDFBox
+        // 1. Verify PDFBox wrote single-SHA-256 V2 ASCII anchor into /Info and IntegrityVerifier parses it WITHOUT PDFBox
         String rawPdfAscii = new String(Files.readAllBytes(res.pluginPdf), StandardCharsets.ISO_8859_1);
-        check(rawPdfAscii.contains("CHATCAPTURA_LOGANCHOR_V1;"),
-                "PDF gerado via PDFBox deve conter marcador ASCII CHATCAPTURA_LOGANCHOR_V1; no dicionario /Info sem compressao");
+        check(rawPdfAscii.contains("CHATCAPTURA_LOGANCHOR_V2;"),
+                "PDF gerado via PDFBox deve conter marcador ASCII CHATCAPTURA_LOGANCHOR_V2; no dicionario /Info");
+        String pdfTextNorm = readPdfText(res.pluginPdf).replaceAll("\\s+", " ");
+        check(pdfTextNorm.contains(rec.logFileSha256),
+                "report-plugin.pdf deve exibir o SHA-256 unico de laudo/Log.txt");
 
         Object audit1 = invokeVerifierAuditLog(outDir);
         check(getBoolField(audit1, "applicable") && getBoolField(audit1, "passed") && !getBoolField(audit1, "hasWarning"),
                 "Auditoria do Verificador deve passar sem avisos: " + getStringField(audit1, "status") + " - " + getStringField(audit1, "detail"));
         check("CONFERE".equals(getStringField(audit1, "status")), "Status esperado CONFERE, recebido: " + getStringField(audit1, "status"));
 
-        // 2. Append extra line AFTER PDF generation -> Verifier must report CONFERE_COM_LINHAS_POSTERIORES (warning, still valid prefix)
-        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
-                "INALTERADO_OK", "Evento posterior ao PDF", null);
+        // 2. Append extra session AFTER PDF generation -> Verifier reports CONFERE_COM_LINHAS_POSTERIORES (warning, prefix still valid)
+        CaptureAuditLogManager.appendSession(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
+                "INALTERADO_OK", "Sessao posterior ao PDF", prevHash, null);
         Object auditExtra = invokeVerifierAuditLog(outDir);
         check(getBoolField(auditExtra, "passed") && getBoolField(auditExtra, "hasWarning")
                         && "CONFERE_COM_LINHAS_POSTERIORES".equals(getStringField(auditExtra, "status")),
-                "Linha posterior valida deve gerar CONFERE_COM_LINHAS_POSTERIORES: " + getStringField(auditExtra, "status"));
+                "Sessao posterior valida deve gerar CONFERE_COM_LINHAS_POSTERIORES: " + getStringField(auditExtra, "status"));
 
-        // 3. Truncate Log.txt below anchored X -> Verifier MUST fail with FALHA_LOG_TRUNCADO
-        List<String> truncated = lines.subList(0, 2);
-        Files.write(logTxt, (String.join("\n", truncated) + "\n").getBytes(StandardCharsets.UTF_8));
+        // 3. Truncate Log.txt below anchored byte length -> Verifier MUST fail with FALHA_LOG_TRUNCADO
+        Files.writeString(logTxt, logContent.substring(0, Math.min(80, logContent.length())), StandardCharsets.UTF_8);
         Object auditTrunc = invokeVerifierAuditLog(outDir);
         check(!getBoolField(auditTrunc, "passed") && "FALHA_LOG_TRUNCADO".equals(getStringField(auditTrunc, "status")),
                 "Log truncado deve reprovar com FALHA_LOG_TRUNCADO: " + getStringField(auditTrunc, "status"));
@@ -426,16 +446,16 @@ public final class TechnicalReportAndCustodyTest {
 
         // 5. Missing Log.txt + user confirms RECREATE -> recreates Log.txt, marks PDF, Verifier reports CONFERE_RECRIADO_NO_PDF
         String[] promptedIssue = new String[1];
-        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "START", cap1.getFileName().toString(),
-                "CONCLUIDO_OK", "Apos recriacao", (issueType, details) -> {
+        CaptureAuditLogManager.appendSession(outDir, rec, "CAPTURA ADICIONADA (START)", cap1.getFileName().toString(),
+                "CONCLUIDO_OK", "Apos recriacao", prevHash, (issueType, details) -> {
                     promptedIssue[0] = issueType;
                     return true;
                 });
         check("AUSENTE".equals(promptedIssue[0]), "Prompt deve ser acionado com AUSENTE");
         check("RECRIADO_POR_SOLICITACAO_DO_USUARIO".equals(rec.logIntegrityStatus), "Status deve registrar recriacao");
         check(!rec.logIncidents.isEmpty(), "Incidente de recriacao deve ser persistido");
-        List<String> recreatedLines = Files.readAllLines(logTxt, StandardCharsets.UTF_8);
-        check(recreatedLines.get(0).contains("|CRIADO_RECRIADO|"), "Linha 0 recriada deve marcar CRIADO_RECRIADO");
+        check(Files.readString(logTxt, StandardCharsets.UTF_8).contains("RECRIADO_EM:"),
+                "Cabecalho recriado deve registrar RECRIADO_EM:");
         TechnicalReportGenerator.GenerationResult resRecreated = TechnicalReportGenerator.generateAll(outDir, rec, null, "f".repeat(64));
         String recreatedPdfText = readPdfText(resRecreated.pluginPdf).replaceAll("\\s+", " ");
         check(recreatedPdfText.contains("RECRIADO_POR_SOLICITACAO_DO_USUARIO"),
@@ -445,8 +465,8 @@ public final class TechnicalReportAndCustodyTest {
                         && "CONFERE_RECRIADO_NO_PDF".equals(getStringField(auditRecreated, "status")),
                 "Verificador deve reportar CONFERE_RECRIADO_NO_PDF: " + getStringField(auditRecreated, "status"));
 
-        // 6. Tamper a line inside Log.txt -> Verifier MUST fail with FALHA_LOG_ADULTERADO
-        String tamperedContent = Files.readString(logTxt, StandardCharsets.UTF_8).replace("Apos recriacao", "ADULTERADO_X");
+        // 6. Tamper 1 byte inside Log.txt -> Verifier MUST fail with FALHA_LOG_ADULTERADO
+        String tamperedContent = Files.readString(logTxt, StandardCharsets.UTF_8).replace("Apos recriacao", "ADULTERADO_XXX");
         Files.writeString(logTxt, tamperedContent, StandardCharsets.UTF_8);
         Object auditTampered = invokeVerifierAuditLog(outDir);
         check(!getBoolField(auditTampered, "passed") && "FALHA_LOG_ADULTERADO".equals(getStringField(auditTampered, "status")),
@@ -454,14 +474,14 @@ public final class TechnicalReportAndCustodyTest {
 
         // 7. User chooses NOT to recreate on tamper -> does not overwrite broken Log.txt and marks incident
         promptedIssue[0] = null;
-        CaptureAuditLogManager.appendChainedLogLine(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
-                "INALTERADO_OK", "Nao deve gravar", (issueType, details) -> {
+        CaptureAuditLogManager.appendSession(outDir, rec, "RE-EXTRAIR", cap1.getFileName().toString(),
+                "INALTERADO_OK", "Nao deve gravar", prevHash, (issueType, details) -> {
                     promptedIssue[0] = issueType;
                     return false;
                 });
         check("ADULTERADO".equals(promptedIssue[0]), "Prompt deve ser acionado com ADULTERADO");
         check("ADULTERADO_NAO_RECRIADO".equals(rec.logIntegrityStatus), "Status deve ser ADULTERADO_NAO_RECRIADO");
-        check(Files.readString(logTxt, StandardCharsets.UTF_8).contains("ADULTERADO_X"),
+        check(Files.readString(logTxt, StandardCharsets.UTF_8).contains("ADULTERADO_XXX"),
                 "Quando usuario recusa recriacao, Log.txt adulterado nao deve ser sobrescrito");
     }
 
@@ -493,19 +513,25 @@ public final class TechnicalReportAndCustodyTest {
             try {
                 verifyAllSwingHtmlDisabled(dialog.getContentPane());
                 dialog.getStorageComboForTest().setSelectedItem(CustodyCaseRecord.StorageType.PASTA);
-                check(!dialog.getStorageCustomFieldForTest().isEnabled(), "campo custom deve ficar desabilitado em Pasta");
+                check(!dialog.getStorageCustomFieldForTest().isEnabled(), "campo detalhe deve ficar desabilitado em Pasta");
                 dialog.getStorageComboForTest().setSelectedItem(CustodyCaseRecord.StorageType.MIDIA_LACRADA);
-                check(!dialog.getStorageCustomFieldForTest().isEnabled(), "campo custom deve ficar desabilitado em Midia lacrada");
+                check(dialog.getStorageCustomFieldForTest().isEnabled(), "campo detalhe deve habilitar como No do Lacre em Midia lacrada");
                 dialog.getStorageComboForTest().setSelectedItem(CustodyCaseRecord.StorageType.CUSTOM);
-                check(dialog.getStorageCustomFieldForTest().isEnabled(), "campo custom deve habilitar ao selecionar Custom");
+                check(dialog.getStorageCustomFieldForTest().isEnabled(), "campo detalhe deve habilitar ao selecionar Custom");
                 check(!containsLabelText(dialog.getContentPane(), "Nome do operador"),
                         "janela do laudo nao deve exibir campos de operador");
                 check(!containsLabelText(dialog.getContentPane(), "Quem fez a apreens"),
                         "janela do laudo nao deve exibir campos de apreensao");
-                check(containsLabelText(dialog.getContentPane(), "Protocolo Criminal"),
-                        "janela do laudo deve exibir campos do relatorio HTML");
-                check(containsLabelText(dialog.getContentPane(), "Case number"),
-                        "janela do laudo deve exibir campos de Cadeia de Custodia");
+                check(!containsLabelText(dialog.getContentPane(), "WhatsApp"),
+                        "janela enxuta nao deve exibir Versao do WhatsApp");
+                check(!containsLabelText(dialog.getContentPane(), "Filtros aplicados"),
+                        "janela enxuta nao deve exibir campo manual de Filtros aplicados no IPED");
+                check(!containsLabelText(dialog.getContentPane(), "Protocolo Criminal"),
+                        "janela enxuta nao deve exibir secao duplicada do relatorio HTML");
+                check(containsLabelText(dialog.getContentPane(), "Quem coletou"),
+                        "janela enxuta deve exibir Cadeia de Custodia essencial");
+                check(containsLabelText(dialog.getContentPane(), "Dispositivo / Modelo"),
+                        "janela enxuta deve exibir Dispositivo / Modelo");
             } finally {
                 dialog.dispose();
             }

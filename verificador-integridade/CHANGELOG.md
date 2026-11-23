@@ -4,6 +4,12 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.12] - 2026-11-23
+
+### Validação de `laudo/Log.txt` por SHA-256 Único (`CHATCAPTURA_LOGANCHOR_V2`) (v2.8.14-beta)
+- Lê diretamente dos bytes de `laudo/report-plugin.pdf` (Java 8 puro, sem PDFBox) a nova âncora compacta `CHATCAPTURA_LOGANCHOR_V2` com **1 único SHA-256** e tamanho em bytes do arquivo `laudo/Log.txt`, reprovando fail-closed qualquer adulteração de 1 byte, truncamento ou ausência e sinalizando sessões posteriores ou recriação confirmada pelo usuário.
+- Mantém 100% de retrocompatibilidade com âncoras `CHATCAPTURA_LOGANCHOR_V1` de versões beta anteriores. (`build-reproducible.ps1`; JAR `B84289B0...` / EXE `BF3AAC82...`).
+
 ## [1.5.11] - 2026-11-23
 
 ### Validação Fail-Closed do Pacote de Relatório por Captura (v2.8.13-beta)

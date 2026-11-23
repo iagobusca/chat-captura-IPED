@@ -7,6 +7,28 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.14-beta (Beta / `beta`) / Verificador 1.5.12
+
+- **Tag**: [v2.8.14-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.14-beta) (Compilação determinística via `build-reproducible.ps1`)
+- **Branch base**: `beta` (canal beta — `main` estável preservada intacta)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.14-beta-verificador-1.5.12.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.14-beta/instalador-chat-captura-IPED-2.8.14-beta-verificador-1.5.12.zip) (`120.421.539` bytes | SHA-256: `068E24240DBCFC2CB8DC3298983039F0DF71B2F1B634239EA02A5700FF3F6C3C`)
+- [integridade-verifier-1.5.12.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.14-beta/integridade-verifier-1.5.12.exe) (`90.589.276` bytes | SHA-256: `BF3AAC82D5F35D2D7F033D05AED2B7CF539F5620806BDE53A97B0F184E7EF393`)
+- [integridade-verifier-1.5.12.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.14-beta/integridade-verifier-1.5.12.jar) (`13.062.577` bytes | SHA-256: `B84289B03C2EDA7C675FB29B72372677262417D809C991464CE26A219F6C7B3B`)
+- [iped-viewers-impl-4.3.1-2.8.14-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.14-beta/iped-viewers-impl-4.3.1-2.8.14-beta.jar) (`1.681.469` bytes | SHA-256: `6C4418E8A543AE6F07C8F1240A3ADDC979C2B6F707D1D59E0DD8E090DF3F12EE`)
+
+### Adicionado
+- **Janela de Cadastro/Conferência enxuta (de 33 para 10 campos essenciais):** 4 campos de Dispositivo (`Dispositivo / Modelo`, `IMEI`, `Número de série`, `Versão do SO` — removidos `Fabricante`, `Versão do WhatsApp`, `Código da coleta` e `Ferramenta original` da tela) e 6 campos de Cadeia de Custódia (`Quem coletou`, `Quem analisou`, `Quando (coleta)`, `Onde (local)`, seletor `[Pasta | Mídia lacrada | Custom]` com 1 campo dinâmico para `Nº do Lacre` ou texto livre e `Nº do caso / Laudo`).
+- **Preenchimento automático de `relatorio/caseinformation.htm` e filtro blur:** os metadados do relatório HTML da captura (`Signatário(s)`, `Laudo`/`Referências`, `Material examinado`, `Data do laudo`) são derivados automaticamente do cadastro acima, a cópia intacta do `report.pdf` de origem é sempre automática quando existir e o filtro de blur/censura visual é registrado automaticamente a partir do estado real do painel (removendo a seção manual de filtros do IPED).
+- **Log único unificado (`laudo/Log.txt`) organizado por sessão:** removidos os arquivos duplicados `registro-capturas.jsonl` e `registro-capturas.log`; agora existe um único `laudo/Log.txt` legível por sessão (`CAPTURA ADICIONADA`, `CAPTURA REMOVIDA`, `RE-EXTRAIR`), mantendo alerta + opção ao usuário para recriar em caso de ausência ou adulteração.
+- **PDF compacto com 1 único SHA-256 do `laudo/Log.txt` + Verificador `1.5.12`:** `laudo/report-plugin.pdf` exibe resumo limpo com total de sessões e 1 único SHA-256 de `laudo/Log.txt` (âncora `CHATCAPTURA_LOGANCHOR_V2` no `/Info`), auditado sem PDFBox pelo Verificador `1.5.12` (Java 8 puro) com retrocompatibilidade total para âncoras `V1`.
+
+### Resumo
+- Simplificação completa da experiência do laudo na branch `beta` (janela com 10 campos, log único por sessão e SHA-256 único no `report-plugin.pdf`), compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.12**.
+
+---
+
 ## v2.8.13-beta (Beta / `beta`) / Verificador 1.5.11
 
 - **Tag**: [v2.8.13-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.13-beta) (Compilação determinística via `build-reproducible.ps1` — Fase 3)

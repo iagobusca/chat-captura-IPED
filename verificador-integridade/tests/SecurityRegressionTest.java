@@ -2296,6 +2296,31 @@ public final class SecurityRegressionTest {
         if (dupRes.passed || !"FALHA_ANCORA_PDF_DUPLICADA".equals(dupRes.status)) {
             throw new AssertionError("Expected FALHA_ANCORA_PDF_DUPLICADA, got " + dupRes.status);
         }
+
+        // V2 single-SHA-256 session Log.txt audit (without PDFBox)
+        Path caseV2 = Files.createDirectories(root.resolve("laudo-log-v2-audit-case"));
+        Path laudoV2 = Files.createDirectories(caseV2.resolve("laudo"));
+        String v2Log = "=== LOG CRONOLOGICO - CHAT CAPTURA IPED ===\n"
+                + "CRIADO_EM: 2026-11-23T14:00:00-03:00 (UTC: 2026-11-23T17:00:00Z)\n"
+                + "PLUGIN: 2.8.14-beta\n\n"
+                + "--- [SESSAO #1] 2026-11-23T14:01:00-03:00 | CAPTURA ADICIONADA (START) ---\n"
+                + "  Pasta: cap1\n  Status: CONCLUIDO_OK\n  Detalhes: msg=1 OK\n  SHA-256 pasta: " + repeat('a', 64) + "\n";
+        byte[] v2Bytes = v2Log.getBytes(StandardCharsets.UTF_8);
+        String v2Sha = sha256BytesHex(v2Bytes);
+        Files.write(laudoV2.resolve("Log.txt"), v2Bytes);
+        String v2Pdf = "%PDF-1.4\n/ChatCapturaLogAnchor (CHATCAPTURA_LOGANCHOR_V2;created=2026-11-23T17:00:00Z;bytes="
+                + v2Bytes.length + ";sessions=1;sha256=" + v2Sha + ";status=CONFERE)\n%%EOF\n";
+        Files.write(laudoV2.resolve("report-plugin.pdf"), v2Pdf.getBytes(StandardCharsets.ISO_8859_1));
+        IntegrityVerifier.LaudoLogAuditResult v2Ok = IntegrityVerifier.auditLaudoChainedLog(caseV2);
+        if (!v2Ok.applicable || !v2Ok.passed || !"CONFERE".equals(v2Ok.status)) {
+            throw new AssertionError("Expected V2 CONFERE, got " + v2Ok.status + " (" + v2Ok.detail + ")");
+        }
+        // 1-byte tamper in V2 Log.txt must fail closed
+        Files.write(laudoV2.resolve("Log.txt"), v2Log.replace("msg=1 OK", "msg=9 OK").getBytes(StandardCharsets.UTF_8));
+        IntegrityVerifier.LaudoLogAuditResult v2Bad = IntegrityVerifier.auditLaudoChainedLog(caseV2);
+        if (v2Bad.passed || !"FALHA_LOG_ADULTERADO".equals(v2Bad.status)) {
+            throw new AssertionError("Expected V2 FALHA_LOG_ADULTERADO, got " + v2Bad.status);
+        }
     }
 
     private static void captureReportPackageFailClosed(Path root) throws Exception {

@@ -2,6 +2,15 @@
 
 > **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na versão estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). Os builds `<= 2.6.8-beta` abaixo permanecem documentados como histórico de auditoria do repositório local.
 
+## Build 2.8.14-beta (Beta / `beta`) / Verificador 1.5.12
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
+| --- | ---: | --- | --- |
+| `instalador-chat-captura-IPED-2.8.14-beta-verificador-1.5.12.zip` | 120421539 | `068E24240DBCFC2CB8DC3298983039F0DF71B2F1B634239EA02A5700FF3F6C3C` | Pacote completo compilado via `build-reproducible.ps1` (plugin `2.8.14-beta`, Verificador `1.5.12` JAR+EXE com `.NET 10.0.15`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.8.14-beta.jar` | 1681469 | `6C4418E8A543AE6F07C8F1240A3ADDC979C2B6F707D1D59E0DD8E090DF3F12EE` | Fat-JAR determinístico do plugin (`Implementation-Version: 2.8.14-beta`, `--release 11`, OpenCV embutido); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 13062577 | `B84289B03C2EDA7C675FB29B72372677262417D809C991464CE26A219F6C7B3B` | Verificador `1.5.12` JAR determinístico (`--release 8`, bytecode 52, validação de `laudo/Log.txt` por SHA-256 único V2 + retrocompatibilidade V1 sem PDFBox) |
+| `verificador-integridade/integridade-verifier.exe` | 90589276 | `BF3AAC82D5F35D2D7F033D05AED2B7CF539F5620806BDE53A97B0F184E7EF393` | Executável Windows x64 determinístico do Verificador `1.5.12` (`jlink`/`jpackage` + `.NET 10.0.15`, `--self-test` OK) |
+
 ## Build 2.8.13-beta (Beta / `beta`) / Verificador 1.5.11
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Descrição |

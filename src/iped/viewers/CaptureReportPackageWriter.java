@@ -616,8 +616,9 @@ final class CaptureReportPackageWriter {
             JSONObject originBindingJson,
             CustodyCaseRecord rec) {
         String orgHeader = rec == null ? "" : nonNull(rec.organizationHeader).trim(); //$NON-NLS-1$
-        String reportNum = rec == null ? "" : nonNull(rec.reportNumber).trim(); //$NON-NLS-1$
-        String reportDate = rec == null ? "" : nonNull(rec.reportDate).trim(); //$NON-NLS-1$
+        String caseNumber = rec == null ? "" : nonNull(rec.caseNumber).trim(); //$NON-NLS-1$
+        String reportNum = rec == null ? "" : nonBlank(rec.reportNumber, caseNumber); //$NON-NLS-1$
+        String reportDate = rec == null ? "" : nonBlank(rec.reportDate, createdAt); //$NON-NLS-1$
         String reportTitle = rec == null ? "" : nonNull(rec.reportTitle).trim(); //$NON-NLS-1$
         if (reportTitle.isEmpty()) {
             reportTitle = "Captura de Conversa - " + folderName; //$NON-NLS-1$
@@ -626,7 +627,6 @@ final class CaptureReportPackageWriter {
         if (signatories.isEmpty() && rec != null) {
             signatories = nonNull(rec.analyzedBy).trim();
         }
-        String caseNumber = rec == null ? "" : nonNull(rec.caseNumber).trim(); //$NON-NLS-1$
         String legalAuth = rec == null ? "" : nonNull(rec.legalAuthorization).trim(); //$NON-NLS-1$
         String requestRef = rec == null ? "" : nonNull(rec.requestReference).trim(); //$NON-NLS-1$
         String protoNum = rec == null ? "" : nonNull(rec.forensicProtocolNumber).trim(); //$NON-NLS-1$
@@ -634,7 +634,28 @@ final class CaptureReportPackageWriter {
         String examinedMaterial = rec == null ? "" : nonNull(rec.examinedMaterial).trim(); //$NON-NLS-1$
         if (examinedMaterial.isEmpty()) {
             String srcName = sourceMeta == null ? "" : sourceMeta.optString("name", ""); //$NON-NLS-1$ //$NON-NLS-2$
-            examinedMaterial = srcName.isEmpty() ? folderName : srcName;
+            StringBuilder autoMat = new StringBuilder();
+            if (rec != null) {
+                String dev = combineNonEmpty(" ", rec.deviceManufacturer, rec.deviceModel); //$NON-NLS-1$
+                if (!dev.isEmpty()) autoMat.append(dev);
+                if (!nonNull(rec.deviceSerialNumber).trim().isEmpty()) {
+                    if (autoMat.length() > 0) autoMat.append(" | "); //$NON-NLS-1$
+                    autoMat.append("S\u00e9rie: ").append(rec.deviceSerialNumber.trim()); //$NON-NLS-1$
+                }
+                if (!nonNull(rec.deviceImei).trim().isEmpty()) {
+                    if (autoMat.length() > 0) autoMat.append(" | "); //$NON-NLS-1$
+                    autoMat.append("IMEI: ").append(rec.deviceImei.trim()); //$NON-NLS-1$
+                }
+                if (!nonNull(rec.deviceOsVersion).trim().isEmpty()) {
+                    if (autoMat.length() > 0) autoMat.append(" | "); //$NON-NLS-1$
+                    autoMat.append("SO: ").append(rec.deviceOsVersion.trim()); //$NON-NLS-1$
+                }
+            }
+            if (!srcName.isEmpty()) {
+                if (autoMat.length() > 0) autoMat.append(" \u2014 "); //$NON-NLS-1$
+                autoMat.append(srcName);
+            }
+            examinedMaterial = autoMat.length() > 0 ? autoMat.toString() : folderName;
         }
 
         StringBuilder sb = new StringBuilder(6144);

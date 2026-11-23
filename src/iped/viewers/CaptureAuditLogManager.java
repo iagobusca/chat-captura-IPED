@@ -66,6 +66,16 @@ final class CaptureAuditLogManager {
 
     static volatile LogRecoveryPrompt defaultRecoveryPrompt = null;
 
+    static final class SessionRecord {
+        int sessionNumber;
+        String timestampLocal = ""; //$NON-NLS-1$
+        String eventType = ""; //$NON-NLS-1$
+        String captureFolder = ""; //$NON-NLS-1$
+        String status = ""; //$NON-NLS-1$
+        String detail = ""; //$NON-NLS-1$
+        String folderHash = ""; //$NON-NLS-1$
+    }
+
     static final class ChainedLogSnapshot {
         boolean exists;
         boolean chainValid;
@@ -76,9 +86,15 @@ final class CaptureAuditLogManager {
         int lastLineIndex = -1;
         int lineCount = 0;
         long byteLength = 0L;
+        String fileSha256 = ""; //$NON-NLS-1$
+        int sessionCount = 0;
+        int addedCount = 0;
+        int removedCount = 0;
+        int reextractedCount = 0;
         String prefixSha256 = ""; //$NON-NLS-1$
         String headHash = ""; //$NON-NLS-1$
         final List<String> lines = new ArrayList<>();
+        final List<SessionRecord> sessions = new ArrayList<>();
     }
 
     private CaptureAuditLogManager() {
@@ -480,22 +496,14 @@ final class CaptureAuditLogManager {
             if (!current.containsKey(prevFolder)) {
                 CustodyCaseRecord.CaptureSnapshot prev = record.knownCaptures.get(prevFolder);
                 summary.deletedFolders.add(prevFolder);
+                String prevHash = prev == null ? "" : prev.folderHash; //$NON-NLS-1$
                 String delDetail = "Detectado ausente na pasta raiz durante " + triggerContext //$NON-NLS-1$
                         + " | anterior: " + (prev == null ? "-" : prev.counts.toSummaryLine("")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                appendEvent(outputRoot,
-                        "DELETADO captura", //$NON-NLS-1$
-                        prevFolder,
-                        "REMOVIDO_DA_PASTA", //$NON-NLS-1$
-                        delDetail,
-                        "", //$NON-NLS-1$
-                        prev == null ? "" : prev.folderHash, //$NON-NLS-1$
-                        prev == null ? new CustodyCaseRecord.MediaCounts() : prev.counts);
-                appendChainedLogLine(outputRoot, record, "DELETADO", prevFolder, "REMOVIDO_DA_PASTA", //$NON-NLS-1$ //$NON-NLS-2$
-                        delDetail + (prev == null || prev.folderHash.isEmpty() ? "" : "; hashAnterior=" + prev.folderHash), //$NON-NLS-1$ //$NON-NLS-2$
-                        defaultRecoveryPrompt);
-                record.addStep(triggerContext, prevFolder, "DELETADO captura", //$NON-NLS-1$
+                appendSession(outputRoot, record, "CAPTURA REMOVIDA", prevFolder, "REMOVIDO_DA_PASTA", //$NON-NLS-1$ //$NON-NLS-2$
+                        delDetail, prevHash, defaultRecoveryPrompt);
+                record.addStep(triggerContext, prevFolder, "CAPTURA REMOVIDA", //$NON-NLS-1$
                         "Captura removida da pasta raiz (ultimo hash conhecido: " //$NON-NLS-1$
-                                + (prev == null ? "-" : prev.folderHash) + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+                                + (prevHash.isEmpty() ? "-" : prevHash) + ")"); //$NON-NLS-1$ //$NON-NLS-2$
             }
         }
 
@@ -506,18 +514,9 @@ final class CaptureAuditLogManager {
             if (!record.knownCaptures.containsKey(folder)) {
                 summary.addedFolders.add(folder);
                 String addDetail = "Captura adicionada (" + triggerContext + ") | " + snap.counts.toSummaryLine("OK"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                appendEvent(outputRoot,
-                        "ADICIONADO captura", //$NON-NLS-1$
-                        folder,
-                        "ADICIONADO_OK", //$NON-NLS-1$
-                        addDetail,
-                        snap.folderHash,
-                        "", //$NON-NLS-1$
-                        snap.counts);
-                appendChainedLogLine(outputRoot, record, "ADICIONADO", folder, "ADICIONADO_OK", //$NON-NLS-1$ //$NON-NLS-2$
-                        addDetail + (snap.folderHash.isEmpty() ? "" : "; folderHash=" + snap.folderHash), //$NON-NLS-1$ //$NON-NLS-2$
-                        defaultRecoveryPrompt);
-                record.addStep(triggerContext, folder, "ADICIONADO captura", //$NON-NLS-1$
+                appendSession(outputRoot, record, "CAPTURA ADICIONADA", folder, "ADICIONADO_OK", //$NON-NLS-1$ //$NON-NLS-2$
+                        addDetail, snap.folderHash, defaultRecoveryPrompt);
+                record.addStep(triggerContext, folder, "CAPTURA ADICIONADA", //$NON-NLS-1$
                         "Nova captura registrada: " + snap.counts.toSummaryLine("OK") + " | hash=" + snap.folderHash); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             }
         }
@@ -532,22 +531,27 @@ final class CaptureAuditLogManager {
         if (snap == null) {
             return null;
         }
-        String detail = "Captura concluida e todos os arquivos integros OK | "
+        String detail = "Captura concluida e todos os arquivos integros OK | " //$NON-NLS-1$
                 + snap.counts.toSummaryLine("OK") //$NON-NLS-1$
                 + (snap.htmlSha256.isEmpty() ? "" : " | htmlSha256=" + snap.htmlSha256) //$NON-NLS-1$ //$NON-NLS-2$
                 + (snap.captureRootHash.isEmpty() ? "" : " | captureRootHash=" + snap.captureRootHash); //$NON-NLS-1$ //$NON-NLS-2$
-        AuditLogEntry entry = appendEvent(outputRoot,
-                "START", //$NON-NLS-1$
-                snap.folder,
-                "CONCLUIDO_OK", //$NON-NLS-1$
-                detail,
-                snap.folderHash,
-                "", //$NON-NLS-1$
-                snap.counts);
-        appendChainedLogLine(outputRoot, record, "START", snap.folder, "CONCLUIDO_OK", detail, defaultRecoveryPrompt); //$NON-NLS-1$ //$NON-NLS-2$
-        record.addStep("START", snap.folder, "Captura concluida", detail); //$NON-NLS-1$ //$NON-NLS-2$
-        // Also reconcile so ADICIONADO + any external deletions are logged cleanly
+        appendSession(outputRoot, record, "CAPTURA ADICIONADA (START)", snap.folder, "CONCLUIDO_OK", //$NON-NLS-1$ //$NON-NLS-2$
+                detail, snap.folderHash, defaultRecoveryPrompt);
+        record.addStep("START", snap.folder, "CAPTURA ADICIONADA (START)", detail); //$NON-NLS-1$ //$NON-NLS-2$
+        // Mark as known before reconcile so reconcile only records OTHER external additions/deletions
+        record.knownCaptures.put(snap.folder, snap);
         reconcileKnownCaptures(outputRoot, record, "START"); //$NON-NLS-1$
+
+        AuditLogEntry entry = new AuditLogEntry();
+        entry.sequence = record.logSessionCount;
+        entry.timestampLocal = CustodyCaseRecord.nowLocalTimestamp();
+        entry.timestampUtc = CustodyCaseRecord.nowUtcTimestamp();
+        entry.eventType = "CAPTURA ADICIONADA (START)"; //$NON-NLS-1$
+        entry.captureFolder = snap.folder;
+        entry.status = "CONCLUIDO_OK"; //$NON-NLS-1$
+        entry.summary = detail;
+        entry.folderHash = snap.folderHash;
+        entry.counts = snap.counts;
         return entry;
     }
 
@@ -569,19 +573,24 @@ final class CaptureAuditLogManager {
         if (extraDetail != null && !extraDetail.isBlank()) {
             detail.append(" | ").append(extraDetail.trim()); //$NON-NLS-1$
         }
-        AuditLogEntry entry = appendEvent(outputRoot,
-                "RE-EXTRAIR", //$NON-NLS-1$
-                folderName,
-                statusCode,
-                detail.toString(),
-                newHash,
-                previousFolderHash == null ? "" : previousFolderHash, //$NON-NLS-1$
-                counts);
-        appendChainedLogLine(outputRoot, record, "RE-EXTRAIR", folderName, statusCode, detail.toString(), defaultRecoveryPrompt); //$NON-NLS-1$
+        appendSession(outputRoot, record, "RE-EXTRAIR", folderName, statusCode, //$NON-NLS-1$
+                detail.toString(), newHash.isEmpty() ? (previousFolderHash == null ? "" : previousFolderHash) : newHash, //$NON-NLS-1$
+                defaultRecoveryPrompt);
         record.addStep("RE-EXTRAIR", folderName, statusCode, detail.toString()); //$NON-NLS-1$
         if (snap != null) {
             record.knownCaptures.put(snap.folder, snap);
         }
+        AuditLogEntry entry = new AuditLogEntry();
+        entry.sequence = record.logSessionCount;
+        entry.timestampLocal = CustodyCaseRecord.nowLocalTimestamp();
+        entry.timestampUtc = CustodyCaseRecord.nowUtcTimestamp();
+        entry.eventType = "RE-EXTRAIR"; //$NON-NLS-1$
+        entry.captureFolder = folderName;
+        entry.status = statusCode;
+        entry.summary = detail.toString();
+        entry.folderHash = newHash;
+        entry.previousFolderHash = previousFolderHash == null ? "" : previousFolderHash; //$NON-NLS-1$
+        entry.counts = counts;
         return entry;
     }
 
@@ -685,16 +694,17 @@ final class CaptureAuditLogManager {
         return true;
     }
 
-    // ==================== Append-Only Chained laudo/Log.txt (Phase 2) ====================
+    // ==================== Unified Session-Based laudo/Log.txt (Single SHA-256) ====================
 
-    private static String sanitizeLogField(String raw, int maxLen) {
+    private static final String LOG_HEADER_MARKER = "=== LOG CRONOLOGICO - CHAT CAPTURA IPED ==="; //$NON-NLS-1$
+
+    private static String sanitizeLogValue(String raw, int maxLen) {
         if (raw == null) {
             return "-"; //$NON-NLS-1$
         }
         String clean = raw.replace('\0', ' ')
                 .replace('\r', ' ')
                 .replace('\n', ' ')
-                .replace('|', '/')
                 .replaceAll("\\s+", " ") //$NON-NLS-1$ //$NON-NLS-2$
                 .trim();
         if (clean.isEmpty()) {
@@ -703,35 +713,22 @@ final class CaptureAuditLogManager {
         return clean.length() <= maxLen ? clean : clean.substring(0, maxLen);
     }
 
-    private static String buildChainedLogLine(int seq, String tsLocal, String tsUtc,
-            String eventType, String folder, String status, String detail, String prevHash) throws IOException {
-        String safePrev = (prevHash == null || !prevHash.matches("(?i)[0-9a-f]{64}"))
-                ? ZERO_HASH_64 : prevHash.toLowerCase(Locale.ROOT);
-        String payload = seq
-                + "|" + sanitizeLogField(tsLocal, 64) //$NON-NLS-1$
-                + "|" + sanitizeLogField(tsUtc, 64) //$NON-NLS-1$
-                + "|" + sanitizeLogField(eventType, 64) //$NON-NLS-1$
-                + "|" + sanitizeLogField(folder, 256) //$NON-NLS-1$
-                + "|" + sanitizeLogField(status, 64) //$NON-NLS-1$
-                + "|" + sanitizeLogField(detail, 1500) //$NON-NLS-1$
-                + "|prev=" + safePrev; //$NON-NLS-1$
-        String lineHash = CaptureIntegrity.sha256Text(payload);
-        return payload + "|hash=" + lineHash; //$NON-NLS-1$
-    }
-
     static ChainedLogSnapshot readAndVerifyChainedLogTxt(Path outputRoot,
-            int expectedAnchorLine, String expectedAnchorPrefixSha256) throws IOException {
+            String expectedFileSha256, long expectedFileBytes) throws IOException {
         ChainedLogSnapshot snap = new ChainedLogSnapshot();
         if (outputRoot == null) {
             return snap;
         }
         Path laudoDir = CaptureIntegrity.resolveContained(outputRoot, CustodyCaseRecord.LAUDO_DIR_NAME);
         Path logPath = CaptureIntegrity.resolveContained(laudoDir, CustodyCaseRecord.LOG_TXT_FILE);
+        boolean hasExpected = expectedFileBytes > 0L
+                && expectedFileSha256 != null && expectedFileSha256.matches("(?i)[0-9a-f]{64}"); //$NON-NLS-1$
         if (!Files.exists(logPath, LinkOption.NOFOLLOW_LINKS)) {
             snap.exists = false;
-            if (expectedAnchorLine >= 0) {
+            if (hasExpected) {
                 snap.status = "AUSENTE"; //$NON-NLS-1$
-                snap.errorDetail = "laudo/Log.txt ausente, mas havia ancora registrada ate a linha " + expectedAnchorLine; //$NON-NLS-1$
+                snap.errorDetail = "laudo/Log.txt ausente, mas havia ancora SHA-256 registrada (" //$NON-NLS-1$
+                        + expectedFileSha256.substring(0, 12) + "..., " + expectedFileBytes + " bytes)."; //$NON-NLS-1$ //$NON-NLS-2$
             } else {
                 snap.status = "NAO_INICIADO"; //$NON-NLS-1$
             }
@@ -740,154 +737,169 @@ final class CaptureAuditLogManager {
         if (CaptureIntegrity.isLinkOrReparse(laudoDir) || CaptureIntegrity.isLinkOrReparse(logPath)
                 || !Files.isRegularFile(logPath, LinkOption.NOFOLLOW_LINKS)) {
             snap.exists = true;
-            snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
+            snap.status = "ADULTERADO"; //$NON-NLS-1$
             snap.errorDetail = "laudo/Log.txt e link simbolico/juncao ou arquivo invalido."; //$NON-NLS-1$
             return snap;
         }
         long size = CaptureIntegrity.safeRegularFileSize(logPath);
         snap.exists = true;
         snap.byteLength = size;
-        if (size > CaptureIntegrity.MAX_AUDIT_BYTES) {
-            snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-            snap.errorDetail = "laudo/Log.txt excede limite maximo de 16 MiB."; //$NON-NLS-1$
-            return snap;
-        }
-        List<String> rawLines = new ArrayList<>();
-        try (BufferedReader br = Files.newBufferedReader(logPath, StandardCharsets.UTF_8)) {
-            String ln;
-            while ((ln = br.readLine()) != null) {
-                if (rawLines.isEmpty() && !ln.isEmpty() && ln.charAt(0) == '\uFEFF') {
-                    ln = ln.substring(1);
-                }
-                if (ln.isEmpty()) {
-                    continue;
-                }
-                rawLines.add(ln);
-                if (rawLines.size() > MAX_CHAINED_LOG_TXT_LINES) {
-                    snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                    snap.errorDetail = "laudo/Log.txt excede limite maximo de linhas."; //$NON-NLS-1$
-                    return snap;
-                }
-            }
-        }
-        if (rawLines.isEmpty()) {
-            snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-            snap.errorDetail = "laudo/Log.txt esta vazio."; //$NON-NLS-1$
+        if (size <= 0L || size > CaptureIntegrity.MAX_AUDIT_BYTES) {
+            snap.status = "ADULTERADO"; //$NON-NLS-1$
+            snap.errorDetail = "laudo/Log.txt vazio ou excede limite maximo de 16 MiB (" + size + " bytes)."; //$NON-NLS-1$ //$NON-NLS-2$
             return snap;
         }
 
-        String expectedPrev = ZERO_HASH_64;
-        MessageDigest fullPrefixMd;
-        MessageDigest anchorPrefixMd = null;
-        try {
-            fullPrefixMd = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
-            if (expectedAnchorLine >= 0) {
-                anchorPrefixMd = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
-            }
-        } catch (NoSuchAlgorithmException e) {
-            throw new IOException("SHA-256 indisponivel", e); //$NON-NLS-1$
+        byte[] rawBytes = Files.readAllBytes(logPath);
+        snap.fileSha256 = CaptureIntegrity.sha256Bytes(rawBytes);
+        snap.prefixSha256 = snap.fileSha256;
+        snap.headHash = snap.fileSha256;
+
+        String text = new String(rawBytes, StandardCharsets.UTF_8);
+        if (!text.isEmpty() && text.charAt(0) == '\uFEFF') {
+            text = text.substring(1);
+        }
+        String[] allLines = text.split("\\r?\\n", -1); //$NON-NLS-1$
+        if (allLines.length > MAX_CHAINED_LOG_TXT_LINES) {
+            snap.status = "ADULTERADO"; //$NON-NLS-1$
+            snap.errorDetail = "laudo/Log.txt excede limite maximo de linhas."; //$NON-NLS-1$
+            return snap;
         }
 
-        for (int i = 0; i < rawLines.size(); i++) {
-            String line = rawLines.get(i);
-            int hashIdx = line.lastIndexOf("|hash="); //$NON-NLS-1$
-            if (hashIdx <= 0) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Linha " + i + " sem sufixo |hash= valido."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
+        SessionRecord currentSession = null;
+        boolean recognizedFormat = false;
+        for (String line : allLines) {
+            if (!line.isEmpty()) {
+                snap.lines.add(line);
             }
-            String payload = line.substring(0, hashIdx);
-            String declaredHash = line.substring(hashIdx + "|hash=".length()).trim().toLowerCase(Locale.ROOT); //$NON-NLS-1$
-            if (!declaredHash.matches("[0-9a-f]{64}")) { //$NON-NLS-1$
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Linha " + i + " com hash invalido."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
+            if (line.startsWith(LOG_HEADER_MARKER)) {
+                recognizedFormat = true;
+            } else if (line.startsWith("CRIADO_EM:")) { //$NON-NLS-1$
+                recognizedFormat = true;
+                String val = line.substring("CRIADO_EM:".length()).trim(); //$NON-NLS-1$
+                int utcIdx = val.indexOf("(UTC:"); //$NON-NLS-1$
+                if (utcIdx > 0) {
+                    snap.createdAtLocal = val.substring(0, utcIdx).trim();
+                    String rest = val.substring(utcIdx + 5).trim();
+                    if (rest.endsWith(")")) { //$NON-NLS-1$
+                        rest = rest.substring(0, rest.length() - 1).trim();
+                    }
+                    snap.createdAtUtc = rest;
+                } else {
+                    snap.createdAtLocal = val;
+                }
+            } else if (line.startsWith("--- [SESSAO #")) { //$NON-NLS-1$
+                recognizedFormat = true;
+                currentSession = new SessionRecord();
+                int closeBracket = line.indexOf(']');
+                if (closeBracket > "--- [SESSAO #".length()) { //$NON-NLS-1$
+                    try {
+                        currentSession.sessionNumber = Integer.parseInt(
+                                line.substring("--- [SESSAO #".length(), closeBracket).trim()); //$NON-NLS-1$
+                    } catch (NumberFormatException ignored) {
+                        currentSession.sessionNumber = snap.sessions.size() + 1;
+                    }
+                } else {
+                    currentSession.sessionNumber = snap.sessions.size() + 1;
+                }
+                String rest = closeBracket >= 0 ? line.substring(closeBracket + 1).trim() : ""; //$NON-NLS-1$
+                if (rest.endsWith("---")) { //$NON-NLS-1$
+                    rest = rest.substring(0, rest.length() - 3).trim();
+                }
+                int pipe = rest.indexOf('|');
+                if (pipe >= 0) {
+                    currentSession.timestampLocal = rest.substring(0, pipe).trim();
+                    currentSession.eventType = rest.substring(pipe + 1).trim();
+                } else {
+                    currentSession.eventType = rest;
+                }
+                snap.sessions.add(currentSession);
+                String upperEv = currentSession.eventType.toUpperCase(Locale.ROOT);
+                if (upperEv.contains("REMOVID") || upperEv.contains("DELETAD")) { //$NON-NLS-1$ //$NON-NLS-2$
+                    snap.removedCount++;
+                } else if (upperEv.contains("RE-EXTRAIR") || upperEv.contains("REEXTRAIR")) { //$NON-NLS-1$ //$NON-NLS-2$
+                    snap.reextractedCount++;
+                } else {
+                    snap.addedCount++;
+                }
+            } else if (currentSession != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("Pasta:")) { //$NON-NLS-1$
+                    currentSession.captureFolder = trimmed.substring("Pasta:".length()).trim(); //$NON-NLS-1$
+                } else if (trimmed.startsWith("Status:")) { //$NON-NLS-1$
+                    currentSession.status = trimmed.substring("Status:".length()).trim(); //$NON-NLS-1$
+                } else if (trimmed.startsWith("Detalhes:")) { //$NON-NLS-1$
+                    currentSession.detail = trimmed.substring("Detalhes:".length()).trim(); //$NON-NLS-1$
+                } else if (trimmed.startsWith("SHA-256 pasta:")) { //$NON-NLS-1$
+                    currentSession.folderHash = trimmed.substring("SHA-256 pasta:".length()).trim(); //$NON-NLS-1$
+                }
+            } else if (line.startsWith("0|") && line.contains("|hash=")) { //$NON-NLS-1$ //$NON-NLS-2$
+                // Legacy V1 Log.txt still present on disk
+                recognizedFormat = true;
+                String[] parts = line.split("\\|", -1); //$NON-NLS-1$
+                if (parts.length >= 3 && snap.createdAtLocal.isEmpty()) {
+                    snap.createdAtLocal = parts[1].trim();
+                    snap.createdAtUtc = parts[2].trim();
+                }
             }
-            String[] parts = payload.split("\\|", -1); //$NON-NLS-1$
-            if (parts.length != 8) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Linha " + i + " com numero invalido de colunas (" + parts.length + ")."; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                return snap;
-            }
-            int parsedSeq;
-            try {
-                parsedSeq = Integer.parseInt(parts[0].trim());
-            } catch (NumberFormatException nfe) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Linha " + i + " com indice invalido."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
-            }
-            if (parsedSeq != i) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Sequencia quebrada na linha " + i + " (encontrado " + parsedSeq + ")."; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                return snap;
-            }
-            if (!parts[7].startsWith("prev=")) { //$NON-NLS-1$
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Linha " + i + " sem campo prev=."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
-            }
-            String declaredPrev = parts[7].substring("prev=".length()).trim().toLowerCase(Locale.ROOT); //$NON-NLS-1$
-            if (!expectedPrev.equals(declaredPrev)) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Encadeamento prev divergente na linha " + i + "."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
-            }
-            String computedHash = CaptureIntegrity.sha256Text(payload);
-            if (!computedHash.equalsIgnoreCase(declaredHash)) {
-                snap.status = "CADEIA_ADULTERADA"; //$NON-NLS-1$
-                snap.errorDetail = "Hash SHA-256 divergente na linha " + i + "."; //$NON-NLS-1$ //$NON-NLS-2$
-                return snap;
-            }
-            if (i == 0) {
-                snap.createdAtLocal = parts[1].trim();
-                snap.createdAtUtc = parts[2].trim();
-            }
-            byte[] normalizedBytes = (line + "\n").getBytes(StandardCharsets.UTF_8); //$NON-NLS-1$
-            fullPrefixMd.update(normalizedBytes);
-            if (anchorPrefixMd != null && i <= expectedAnchorLine) {
-                anchorPrefixMd.update(normalizedBytes);
-            }
-            expectedPrev = declaredHash;
+        }
+        snap.lineCount = snap.lines.size();
+        snap.lastLineIndex = Math.max(0, snap.lineCount - 1);
+        snap.sessionCount = snap.sessions.size();
+
+        if (!recognizedFormat) {
+            snap.chainValid = false;
+            snap.status = "ADULTERADO"; //$NON-NLS-1$
+            snap.errorDetail = "laudo/Log.txt nao possui cabecalho valido do Chat Captura IPED."; //$NON-NLS-1$
+            return snap;
         }
 
-        snap.lines.addAll(rawLines);
-        snap.lineCount = rawLines.size();
-        snap.lastLineIndex = rawLines.size() - 1;
-        snap.headHash = expectedPrev;
-        snap.prefixSha256 = toHex(fullPrefixMd.digest());
-
-        if (expectedAnchorLine >= 0) {
-            if (snap.lastLineIndex < expectedAnchorLine) {
+        if (hasExpected) {
+            if (rawBytes.length < expectedFileBytes) {
                 snap.chainValid = false;
                 snap.status = "TRUNCADO"; //$NON-NLS-1$
-                snap.errorDetail = "Log.txt truncado: esperadas pelo menos " + (expectedAnchorLine + 1) //$NON-NLS-1$
-                        + " linhas (0.." + expectedAnchorLine + "), encontradas " + snap.lineCount + "."; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                snap.errorDetail = "laudo/Log.txt truncado: esperados pelo menos " + expectedFileBytes //$NON-NLS-1$
+                        + " bytes, encontrados " + rawBytes.length + " bytes."; //$NON-NLS-1$ //$NON-NLS-2$
                 return snap;
             }
-            if (expectedAnchorPrefixSha256 != null && !expectedAnchorPrefixSha256.isBlank() && anchorPrefixMd != null) {
-                String computedAnchorPrefix = toHex(anchorPrefixMd.digest());
-                if (!computedAnchorPrefix.equalsIgnoreCase(expectedAnchorPrefixSha256.trim())) {
-                    snap.chainValid = false;
-                    snap.status = "PREFIXO_DIVERGENTE"; //$NON-NLS-1$
-                    snap.errorDetail = "Prefixo 0.." + expectedAnchorLine + " diverge da ancora anterior (" //$NON-NLS-1$ //$NON-NLS-2$
-                            + expectedAnchorPrefixSha256.substring(0, Math.min(12, expectedAnchorPrefixSha256.length())) + "...)."; //$NON-NLS-1$
-                    return snap;
-                }
+            String prefixSha = computeSha256Prefix(rawBytes, (int) expectedFileBytes);
+            if (!prefixSha.equalsIgnoreCase(expectedFileSha256.trim())) {
+                snap.chainValid = false;
+                snap.status = "ADULTERADO"; //$NON-NLS-1$
+                snap.errorDetail = "SHA-256 de laudo/Log.txt diverge da ancora registrada (" //$NON-NLS-1$
+                        + expectedFileSha256.substring(0, 12) + "...)."; //$NON-NLS-1$
+                return snap;
             }
         }
+
         snap.chainValid = true;
         snap.status = "CONFERE"; //$NON-NLS-1$
         return snap;
     }
 
+    private static String computeSha256Prefix(byte[] data, int length) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
+            md.update(data, 0, Math.min(data.length, length));
+            return toHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 indisponivel", e); //$NON-NLS-1$
+        }
+    }
+
     static synchronized ChainedLogSnapshot ensureChainedLogInitialized(Path outputRoot,
             CustodyCaseRecord record, LogRecoveryPrompt prompt) throws IOException {
-        return appendChainedLogLine(outputRoot, record, null, null, null, null, prompt);
+        return appendSession(outputRoot, record, null, null, null, null, null, prompt);
     }
 
     static synchronized ChainedLogSnapshot appendChainedLogLine(Path outputRoot, CustodyCaseRecord record,
             String eventType, String captureFolder, String status, String detail,
+            LogRecoveryPrompt prompt) throws IOException {
+        return appendSession(outputRoot, record, eventType, captureFolder, status, detail, "", prompt); //$NON-NLS-1$
+    }
+
+    static synchronized ChainedLogSnapshot appendSession(Path outputRoot, CustodyCaseRecord record,
+            String eventType, String captureFolder, String status, String detail, String folderHash,
             LogRecoveryPrompt prompt) throws IOException {
         if (outputRoot == null || record == null) {
             return new ChainedLogSnapshot();
@@ -897,35 +909,22 @@ final class CaptureAuditLogManager {
         Path logPath = CaptureIntegrity.resolveContained(laudoDir, CustodyCaseRecord.LOG_TXT_FILE);
 
         ChainedLogSnapshot snap = readAndVerifyChainedLogTxt(
-                outputRoot, record.logAnchorLastLine, record.logAnchorPrefixSha256);
+                outputRoot, record.logFileSha256, record.logFileBytes);
 
         if ("NAO_INICIADO".equals(snap.status)) { //$NON-NLS-1$
-            // First-time creation of laudo/Log.txt (never truncates existing files)
             OffsetDateTime now = OffsetDateTime.now(ZoneId.systemDefault());
             String tsLocal = CustodyCaseRecord.formatLocalTimestamp(now);
             String tsUtc = now.withOffsetSameInstant(ZoneOffset.UTC).withNano(0).toString();
-            String line0 = buildChainedLogLine(0, tsLocal, tsUtc, "CRIADO", "-", "OK", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                    "Log.txt criado em " + tsLocal + "; plugin=" + HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION, //$NON-NLS-1$ //$NON-NLS-2$
-                    ZERO_HASH_64);
-            appendRawLineLocked(logPath, line0);
-
-            // Preserve reference to legacy registro-capturas.jsonl if present without modifying it
-            Path legacyJsonl = CaptureIntegrity.resolveContained(laudoDir, CustodyCaseRecord.AUDIT_LOG_JSONL_FILE);
-            if (CaptureIntegrity.isSafeRegularFile(legacyJsonl)) {
-                String legacySha = CaptureIntegrity.sha256(legacyJsonl);
-                String prev0 = extractLineHash(line0);
-                String line1 = buildChainedLogLine(1, tsLocal, tsUtc, "IMPORTADO_LEGADO", "-", "OK", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                        "Referencia preservada de registro-capturas.jsonl sha256=" + legacySha, prev0); //$NON-NLS-1$
-                appendRawLineLocked(logPath, line1);
-            }
-            snap = readAndVerifyChainedLogTxt(outputRoot, -1, ""); //$NON-NLS-1$
+            String header = LOG_HEADER_MARKER + "\n" //$NON-NLS-1$
+                    + "CRIADO_EM: " + tsLocal + " (UTC: " + tsUtc + ")\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    + "PLUGIN: " + HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION + "\n"; //$NON-NLS-1$ //$NON-NLS-2$
+            appendRawBlockLocked(logPath, header);
+            snap = readAndVerifyChainedLogTxt(outputRoot, "", 0L); //$NON-NLS-1$
             syncRecordFromLogSnapshot(record, snap, false);
         } else if (!snap.chainValid) {
-            // Missing or tampered Log.txt! Alert user and ask whether to recreate (marking in PDF).
             String issueType = "AUSENTE".equals(snap.status) ? "AUSENTE" : "ADULTERADO"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            String prevAnchorDesc = "linhas 0.." + record.logAnchorLastLine //$NON-NLS-1$
-                    + " prefix=" + (record.logAnchorPrefixSha256.isEmpty() ? "-" : record.logAnchorPrefixSha256) //$NON-NLS-1$ //$NON-NLS-2$
-                    + " head=" + (record.logAnchorHeadHash.isEmpty() ? "-" : record.logAnchorHeadHash); //$NON-NLS-1$ //$NON-NLS-2$
+            String prevAnchorDesc = "sha256=" + (record.logFileSha256.isEmpty() ? "-" : record.logFileSha256) //$NON-NLS-1$ //$NON-NLS-2$
+                    + " (" + record.logFileBytes + " bytes, " + record.logSessionCount + " sessoes)"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             String alertDetails = "Problema detectado em laudo/Log.txt (" + snap.status + "): " //$NON-NLS-1$ //$NON-NLS-2$
                     + snap.errorDetail + "\nAncora anterior: " + prevAnchorDesc; //$NON-NLS-1$
 
@@ -956,12 +955,12 @@ final class CaptureAuditLogManager {
                 record.logIntegrityStatus = "RECRIADO_POR_SOLICITACAO_DO_USUARIO"; //$NON-NLS-1$
                 record.addStep("LOG_AUDITORIA", "laudo/Log.txt", "RECRIADO_POR_SOLICITACAO_DO_USUARIO", incident); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
-                String line0 = buildChainedLogLine(0, tsLocal, tsUtc, "CRIADO_RECRIADO", "-", "RECRIADO", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                        "Log.txt recriado por solicitacao do usuario em " + tsLocal + "; motivo=" + issueType //$NON-NLS-1$ //$NON-NLS-2$
-                                + "; ancoraAnterior=" + prevAnchorDesc + "; plugin=" + HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION, //$NON-NLS-1$ //$NON-NLS-2$
-                        ZERO_HASH_64);
-                appendRawLineLocked(logPath, line0);
-                snap = readAndVerifyChainedLogTxt(outputRoot, -1, ""); //$NON-NLS-1$
+                String header = LOG_HEADER_MARKER + "\n" //$NON-NLS-1$
+                        + "CRIADO_EM: " + tsLocal + " (UTC: " + tsUtc + ")\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        + "PLUGIN: " + HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                        + "RECRIADO_EM: " + tsLocal + " | MOTIVO: " + issueType + " | ANCORA_ANTERIOR: " + prevAnchorDesc + "\n"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                appendRawBlockLocked(logPath, header);
+                snap = readAndVerifyChainedLogTxt(outputRoot, "", 0L); //$NON-NLS-1$
                 syncRecordFromLogSnapshot(record, snap, true);
             } else {
                 String incident = "[" + tsLocal + "] MOTIVO=" + issueType + " (" + snap.status + ") | ACAO=NAO_RECRIADO_PELO_USUARIO | ANCORA_ANTERIOR=" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
@@ -977,12 +976,14 @@ final class CaptureAuditLogManager {
         if (eventType != null && !eventType.isBlank()) {
             OffsetDateTime now = OffsetDateTime.now(ZoneId.systemDefault());
             String tsLocal = CustodyCaseRecord.formatLocalTimestamp(now);
-            String tsUtc = now.withOffsetSameInstant(ZoneOffset.UTC).withNano(0).toString();
-            int nextSeq = snap.lastLineIndex + 1;
-            String nextLine = buildChainedLogLine(nextSeq, tsLocal, tsUtc,
-                    eventType, captureFolder, status, detail, snap.headHash);
-            appendRawLineLocked(logPath, nextLine);
-            snap = readAndVerifyChainedLogTxt(outputRoot, snap.lastLineIndex, snap.prefixSha256);
+            int nextSession = snap.sessionCount + 1;
+            String block = "\n--- [SESSAO #" + nextSession + "] " + tsLocal + " | " + sanitizeLogValue(eventType, 64) + " ---\n" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                    + "  Pasta: " + sanitizeLogValue(captureFolder, 256) + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                    + "  Status: " + sanitizeLogValue(status, 64) + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                    + "  Detalhes: " + sanitizeLogValue(detail, 1500) + "\n" //$NON-NLS-1$ //$NON-NLS-2$
+                    + "  SHA-256 pasta: " + sanitizeLogValue(folderHash, 128) + "\n"; //$NON-NLS-1$ //$NON-NLS-2$
+            appendRawBlockLocked(logPath, block);
+            snap = readAndVerifyChainedLogTxt(outputRoot, snap.fileSha256, snap.byteLength);
             boolean keepRecreatedFlag = "RECRIADO_POR_SOLICITACAO_DO_USUARIO".equals(record.logIntegrityStatus); //$NON-NLS-1$
             syncRecordFromLogSnapshot(record, snap, keepRecreatedFlag);
         } else {
@@ -998,16 +999,16 @@ final class CaptureAuditLogManager {
         }
         record.logCreatedAtLocal = snap.createdAtLocal;
         record.logCreatedAtUtc = snap.createdAtUtc;
-        record.logAnchorLastLine = snap.lastLineIndex;
-        record.logAnchorPrefixSha256 = snap.prefixSha256;
-        record.logAnchorHeadHash = snap.headHash;
+        record.logFileSha256 = snap.fileSha256;
         record.logFileBytes = snap.byteLength;
+        record.logSessionCount = snap.sessionCount;
+        record.logAddedCount = snap.addedCount;
+        record.logRemovedCount = snap.removedCount;
+        record.logReextractedCount = snap.reextractedCount;
+        record.logAnchorLastLine = snap.lastLineIndex;
+        record.logAnchorPrefixSha256 = snap.fileSha256;
+        record.logAnchorHeadHash = snap.fileSha256;
         record.logIntegrityStatus = keepRecreatedStatus ? "RECRIADO_POR_SOLICITACAO_DO_USUARIO" : "CONFERE"; //$NON-NLS-1$ //$NON-NLS-2$
-    }
-
-    private static String extractLineHash(String line) {
-        int idx = line.lastIndexOf("|hash="); //$NON-NLS-1$
-        return idx >= 0 ? line.substring(idx + "|hash=".length()).trim() : ZERO_HASH_64; //$NON-NLS-1$
     }
 
     private static String toHex(byte[] bytes) {
@@ -1018,11 +1019,11 @@ final class CaptureAuditLogManager {
         return sb.toString();
     }
 
-    private static void appendRawLineLocked(Path logPath, String line) throws IOException {
+    private static void appendRawBlockLocked(Path logPath, String block) throws IOException {
         if (CaptureIntegrity.isLinkOrReparse(logPath)) {
             throw new IOException("Link simbolico ou juncao nao permitido em laudo/Log.txt."); //$NON-NLS-1$
         }
-        byte[] data = (line + "\n").getBytes(StandardCharsets.UTF_8); //$NON-NLS-1$
+        byte[] data = block.getBytes(StandardCharsets.UTF_8);
         try (FileChannel ch = FileChannel.open(logPath,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
             FileLock lock = null;
