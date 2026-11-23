@@ -149,7 +149,7 @@ private static final double CHAT_CAPTURE_SCALE = 2.0d;
     private static final double CHAT_CAPTURE_END_MARGIN_CSS = 32.0d;
     private static final String RECAPTURE_TRASH_FOLDER = ".iped-reextract-trash"; //$NON-NLS-1$
 
-    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.12-beta"; //$NON-NLS-1$
+    public static final String CHAT_CAPTURE_PLUGIN_VERSION = "2.8.13-beta"; //$NON-NLS-1$
     private static final int MAX_RECAPTURE_CANDIDATES = 100000;
     private static final int MANIFEST_VERSION = 3;
     private static final int COORDINATES_SCHEMA_VERSION = 2;
@@ -3868,12 +3868,14 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         }
         Path activeOriginFolder = this.originAuditFolder;
         Path originBindingFilePath = null;
+        JSONObject originBindingFull = null;
         if (activeOriginFolder != null) {
             OriginCustodyBinder.OriginBindingResult originResult = OriginCustodyBinder.buildOriginBinding(
                     activeOriginFolder, this.originParentIpedFolder, publicSourceMetadata, records,
                     inlineMediaSha256, attachmentPathBySha,
                     captureDir.getFileName() == null ? "" : captureDir.getFileName().toString(),
                     capturedHtml); //$NON-NLS-1$
+            originBindingFull = originResult.fullBinding;
             originBindingFilePath = staging.resolve(OriginCustodyBinder.ORIGIN_BINDING_FILE);
             CaptureIntegrity.writeAtomically(outputRoot, originBindingFilePath, originResult.fullBinding.toString(2));
             manifest.put("originBinding", originResult.manifestSummary) //$NON-NLS-1$
@@ -3901,6 +3903,17 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             }
             CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("whatsapp.html"), capturedHtml, MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$
             CaptureIntegrity.writeAtomically(outputRoot, staging.resolve("manifest.json"), manifest.toString(2)); //$NON-NLS-1$
+            CaptureReportPackageWriter.ReportPackageSummary reportPkg = CaptureReportPackageWriter.writeCaptureReportPackage(
+                    outputRoot,
+                    staging,
+                    captureDir.getFileName() == null ? "" : captureDir.getFileName().toString(), //$NON-NLS-1$
+                    manifest,
+                    records,
+                    originBindingFull,
+                    this.activeCustodyRecord);
+            if (storedBytes + reportPkg.totalBytes > MAX_HTML_MESSAGE_CAPTURE_BYTES) {
+                throw new IOException("Captura HTML com pacote de relat\u00f3rio ultrapassa o limite total de 64 MiB."); //$NON-NLS-1$
+            }
             CaptureIntegrity.ensureNoSymbolicLinkComponents(outputRoot, captureDir);
             promoteCaptureDirectory(staging, captureDir);
             promoted = true;
@@ -5440,6 +5453,29 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         if (preserveMigration) expectedTrackableFiles.add("migration.json"); //$NON-NLS-1$
         if (preserveLegacyAnnotations) expectedTrackableFiles.add("legacy-annotations.json"); //$NON-NLS-1$
 
+        JSONObject prevIntegrity = parseJsonObjectSafe(existingRoot.resolve("integridade.json"), CaptureIntegrity.MAX_JSON_BYTES); //$NON-NLS-1$
+        List<String> reportPackageToRestore = new ArrayList<>();
+        if (prevIntegrity != null && isIntegrityEventChainValid(prevIntegrity)) {
+            JSONArray prevArtifacts = prevIntegrity.optJSONArray("artifacts"); //$NON-NLS-1$
+            for (int i = 0; prevArtifacts != null && i < prevArtifacts.length(); i++) {
+                JSONObject row = prevArtifacts.optJSONObject(i);
+                if (row == null) continue;
+                String rel = row.optString("path", ""); //$NON-NLS-1$ //$NON-NLS-2$
+                if (!CaptureReportPackageWriter.isAllowedReportPackagePath(rel)) continue;
+                expectedTrackableFiles.add(rel);
+                Path existingFile = CaptureIntegrity.resolveContained(existingRoot, rel);
+                boolean okOnDisk = isSafeRegularFileUnderLimit(existingFile, CaptureIntegrity.MAX_JSON_BYTES)
+                        && CaptureIntegrity.safeRegularFileSize(existingFile) == row.optLong("size", -1L) //$NON-NLS-1$
+                        && CaptureIntegrity.sha256(existingFile).equalsIgnoreCase(row.optString("sha256", "")); //$NON-NLS-1$
+                if (!okOnDisk) {
+                    Path candFile = CaptureIntegrity.resolveContained(candidateRoot, rel);
+                    if (isSafeRegularFileUnderLimit(candFile, CaptureIntegrity.MAX_JSON_BYTES)) {
+                        reportPackageToRestore.add(rel);
+                    }
+                }
+            }
+        }
+
         Set<String> allowedFiles = new HashSet<>(expectedTrackableFiles);
         allowedFiles.add("manifest.json"); //$NON-NLS-1$
         allowedFiles.add("integridade.json"); //$NON-NLS-1$
@@ -5457,10 +5493,9 @@ Set<String> hashes = getCaptureBlockHashes(plan);
         boolean manifestNeedsWrite = !isManifestValidForTarget(oldManifest, candidateMessages, effectiveHtmlSha,
                 candidateAnnotationsSha, oldReconciliationSha, candidateManifest, updateManifestOrigin);
 
-        JSONObject prevIntegrity = parseJsonObjectSafe(existingRoot.resolve("integridade.json"), CaptureIntegrity.MAX_JSON_BYTES); //$NON-NLS-1$
         boolean anyFileChanged = !oldMessagesValidOnDisk || !htmlFileOk || !annotationsFileOk
-                || !attachmentsToRestore.isEmpty() || !extraFilesToDelete.isEmpty()
-                || writeOriginBinding || manifestNeedsWrite;
+                || !attachmentsToRestore.isEmpty() || !reportPackageToRestore.isEmpty()
+                || !extraFilesToDelete.isEmpty() || writeOriginBinding || manifestNeedsWrite;
         if (!anyFileChanged && isExistingIntegrityValidForDisk(existingRoot, prevIntegrity, expectedTrackableFiles)) {
             return SelectiveRepairOutcome.unchanged();
         }
@@ -5486,6 +5521,12 @@ Set<String> hashes = getCaptureBlockHashes(plan);
             Path target = CaptureIntegrity.resolveContained(existingRoot, spec.relativePath);
             CaptureIntegrity.writeBytesAtomically(existingRoot, target, bytes, MAX_HTML_MESSAGE_ATTACHMENT_BYTES);
             restoredPaths.add(spec.relativePath);
+        }
+        for (String reportRel : reportPackageToRestore) {
+            Path candFile = CaptureIntegrity.resolveContained(candidateRoot, reportRel);
+            Path target = CaptureIntegrity.resolveContained(existingRoot, reportRel);
+            copyRegularFileAtomically(candFile, existingRoot, target, CaptureIntegrity.MAX_JSON_BYTES);
+            restoredPaths.add(reportRel);
         }
         if (!oldMessagesValidOnDisk) {
             copyRegularFileAtomically(candidateRoot.resolve("messages.json"), existingRoot, existingRoot.resolve("messages.json"), MAX_HTML_MESSAGE_CAPTURE_BYTES); //$NON-NLS-1$ //$NON-NLS-2$

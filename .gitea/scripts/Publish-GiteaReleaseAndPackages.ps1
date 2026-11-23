@@ -17,7 +17,9 @@ param(
     [Parameter(Mandatory = $true)][string]$PluginPath,
     [string]$GiteaBaseUrl = 'http://127.0.0.1:3000',
     [string]$PackageName = 'chat-captura-iped',
+    [string]$AddedNotes = '',
     [string]$SummaryNotes = '',
+    [string]$RepoRoot = '',
     [bool]$PublishRelease = $true,
     [bool]$PublishPackages = $true,
     [switch]$DryRun
@@ -69,34 +71,116 @@ $pluginFmt = [string]::Format($ptBr, '{0:N0}', $pluginSpec.Bytes)
 
 if ($PublishRelease) {
     $apiBase = "$GiteaBaseUrl/api/v1/repos/$Repo"
+
+    $effectiveRepoRoot = if (![string]::IsNullOrWhiteSpace($RepoRoot)) {
+        $RepoRoot
+    } elseif ($PSScriptRoot) {
+        Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    } else {
+        (Get-Location).Path
+    }
+
+    function Get-AddedBulletsFromDocs {
+        param([string]$RootDir, [string]$Version)
+        $bullets = New-Object System.Collections.Generic.List[string]
+        $verEsc = [Regex]::Escape($Version)
+
+        $relNotesPath = Join-Path $RootDir 'RELEASE_NOTES.md'
+        if (Test-Path -LiteralPath $relNotesPath -PathType Leaf) {
+            $rawLines = [IO.File]::ReadAllLines($relNotesPath, [Text.Encoding]::UTF8)
+            $inVersion = $false
+            $section = ''
+            $adicionado = New-Object System.Collections.Generic.List[string]
+            $resumo = New-Object System.Collections.Generic.List[string]
+            foreach ($ln in $rawLines) {
+                if ($ln -match "^##\s+v?$verEsc\b") {
+                    $inVersion = $true
+                    $section = ''
+                    continue
+                }
+                if ($inVersion -and ($ln -match '^##\s+' -or $ln.Trim() -eq '---')) {
+                    break
+                }
+                if (-not $inVersion) { continue }
+                if ($ln -match '^###\s+Adicionado\b') { $section = 'adicionado'; continue }
+                if ($ln -match '^###\s+Resumo\b') { $section = 'resumo'; continue }
+                if ($ln -match '^###\s+') { $section = 'other'; continue }
+                $trimmed = $ln.Trim()
+                if ($trimmed.StartsWith('- ')) {
+                    if ($section -eq 'adicionado') { $adicionado.Add($trimmed) }
+                    elseif ($section -eq 'resumo') { $resumo.Add($trimmed) }
+                }
+            }
+            if ($adicionado.Count -gt 0) { return $adicionado.ToArray() }
+            if ($resumo.Count -gt 0) { return $resumo.ToArray() }
+        }
+
+        $changelogPath = Join-Path $RootDir 'CHANGELOG.md'
+        if (Test-Path -LiteralPath $changelogPath -PathType Leaf) {
+            $rawLines = [IO.File]::ReadAllLines($changelogPath, [Text.Encoding]::UTF8)
+            $inVersion = $false
+            foreach ($ln in $rawLines) {
+                if ($ln -match "^##\s+\[$verEsc\]") {
+                    $inVersion = $true
+                    continue
+                }
+                if ($inVersion -and $ln -match '^##\s+\[') { break }
+                if (-not $inVersion) { continue }
+                $trimmed = $ln.Trim()
+                if ($trimmed.StartsWith('- ')) {
+                    $bullets.Add($trimmed)
+                }
+            }
+        }
+        return $bullets.ToArray()
+    }
+
+    $addedLines = @()
+    if (![string]::IsNullOrWhiteSpace($AddedNotes)) {
+        foreach ($rawLine in ($AddedNotes -split "`r?`n")) {
+            $t = $rawLine.Trim()
+            if ([string]::IsNullOrWhiteSpace($t)) { continue }
+            if ($t.StartsWith('- ')) { $addedLines += $t } else { $addedLines += "- $t" }
+        }
+    } else {
+        $addedLines = @(Get-AddedBulletsFromDocs -RootDir $effectiveRepoRoot -Version $PluginVersion)
+    }
+    if ($addedLines.Count -eq 0) {
+        $addedLines = @(
+            [Regex]::Unescape("- Funcionalidades e recursos da vers\u00e3o **$PluginVersion** (Verificador **$VerifierVersion**).")
+        )
+    }
+
     $summaryLine = if ([string]::IsNullOrWhiteSpace($SummaryNotes)) {
         [Regex]::Unescape('- Atualiza\u00e7\u00e3o de vers\u00e3o gerada automaticamente via esteira determin\u00edstica do GiteaRunner (`build-reproducible.ps1`), com dupla prova bit a bit (`REPRODUCIBLE_BUILD_VERIFIED=PASS`).')
     } else {
         "- $($SummaryNotes.Trim())"
     }
 
-    $lines = @(
-        '## Otimizado',
-        [Regex]::Unescape("- Vers\u00e3o **$PluginVersion** publicada na branch ``$TargetBranch`` acompanhando o **Verificador de Integridade $VerifierVersion**, compilada e auditada pelo **GiteaRunner** via [``build-reproducible.ps1``]($GiteaBaseUrl/$Repo/src/tag/$Tag/build-reproducible.ps1)."),
-        $summaryLine,
-        [Regex]::Unescape('- **Compila\u00e7\u00e3o Determin\u00edstica Multiplataforma**: timestamps UTC fixos (`1980-02-01T00:00:00Z`), ordena\u00e7\u00e3o lexicogr\u00e1fica (`ReproducibleZipPacker`), manifesto fixo e toolchain pinada (`Temurin JDK 21.0.13+9` + `OpenJFX 21.0.5` + `IPED 4.3.1` + `.NET 10.0.15` com `-p:Deterministic=true`).'),
-        '',
-        '## Corrigido',
-        [Regex]::Unescape("- Allowlist exclusiva de bin\u00e1rios confi\u00e1veis em ``VerifierIntegrity.java``, ``instalar_captura_chat_zap.bat`` e ``VerifierIntegrityHashTest.java`` sincronizada exclusivamente com os bin\u00e1rios determin\u00edsticos oficiais do Verificador **$VerifierVersion** (``$($jarSpec.Sha256.Substring(0,8))...`` e ``$($exeSpec.Sha256.Substring(0,8))...``)."),
-        [Regex]::Unescape('- Esteira do Gitea Actions executou compila\u00e7\u00e3o dupla bit a bit, ``test-security-spec.ps1``, ``run_all_tests.ps1`` e testes de regress\u00e3o antes da publica\u00e7\u00e3o.'),
-        '',
-        '## Incluido',
-        "- Plugin Chat Captura IPED ``$PluginVersion`` (``$pluginName`` | ``$pluginFmt`` bytes | SHA-256: ``$($pluginSpec.Sha256)``).",
-        "- Verificador de Integridade ``$VerifierVersion`` em JAR (``$jarFmt`` bytes) e EXE Windows x64 autocontido (``$exeFmt`` bytes).",
-        "- ZIP instalador completo (``$zipName`` | ``$zipFmt`` bytes | SHA-256: ``$($zipSpec.Sha256)``).",
-        '',
-        "## SHA-256 do Verificador $VerifierVersion",
-        "- JAR: ``$($jarSpec.Sha256)``",
-        "- EXE: ``$($exeSpec.Sha256)``",
-        '',
-        [Regex]::Unescape('Veja ``versao_hash.md`` e ``CHECKSUMS.md`` para todos os hashes e detalhes das vers\u00f5es anteriores.')
-    )
-    $bodyText = $lines -join "`n"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('## Adicionado')
+    foreach ($al in $addedLines) { $lines.Add($al) }
+    $lines.Add('')
+    $lines.Add('## Otimizado')
+    $lines.Add([Regex]::Unescape("- Vers\u00e3o **$PluginVersion** publicada na branch ``$TargetBranch`` acompanhando o **Verificador de Integridade $VerifierVersion**, compilada e auditada pelo **GiteaRunner** via [``build-reproducible.ps1``]($GiteaBaseUrl/$Repo/src/tag/$Tag/build-reproducible.ps1)."))
+    $lines.Add($summaryLine)
+    $lines.Add([Regex]::Unescape('- **Compila\u00e7\u00e3o Determin\u00edstica Multiplataforma**: timestamps UTC fixos (`1980-02-01T00:00:00Z`), ordena\u00e7\u00e3o lexicogr\u00e1fica (`ReproducibleZipPacker`), manifesto fixo e toolchain pinada (`Temurin JDK 21.0.13+9` + `OpenJFX 21.0.5` + `IPED 4.3.1` + `.NET 10.0.15` com `-p:Deterministic=true`).'))
+    $lines.Add('')
+    $lines.Add('## Corrigido')
+    $lines.Add([Regex]::Unescape("- Allowlist exclusiva de bin\u00e1rios confi\u00e1veis em ``VerifierIntegrity.java``, ``instalar_captura_chat_zap.bat`` e ``VerifierIntegrityHashTest.java`` sincronizada exclusivamente com os bin\u00e1rios determin\u00edsticos oficiais do Verificador **$VerifierVersion** (``$($jarSpec.Sha256.Substring(0,8))...`` e ``$($exeSpec.Sha256.Substring(0,8))...``)."))
+    $lines.Add([Regex]::Unescape('- Esteira do Gitea Actions executou compila\u00e7\u00e3o dupla bit a bit, ``test-security-spec.ps1``, ``run_all_tests.ps1`` e testes de regress\u00e3o antes da publica\u00e7\u00e3o.'))
+    $lines.Add('')
+    $lines.Add('## Incluido')
+    $lines.Add("- Plugin Chat Captura IPED ``$PluginVersion`` (``$pluginName`` | ``$pluginFmt`` bytes | SHA-256: ``$($pluginSpec.Sha256)``).")
+    $lines.Add("- Verificador de Integridade ``$VerifierVersion`` em JAR (``$jarFmt`` bytes) e EXE Windows x64 autocontido (``$exeFmt`` bytes).")
+    $lines.Add("- ZIP instalador completo (``$zipName`` | ``$zipFmt`` bytes | SHA-256: ``$($zipSpec.Sha256)``).")
+    $lines.Add('')
+    $lines.Add("## SHA-256 do Verificador $VerifierVersion")
+    $lines.Add("- JAR: ``$($jarSpec.Sha256)``")
+    $lines.Add("- EXE: ``$($exeSpec.Sha256)``")
+    $lines.Add('')
+    $lines.Add([Regex]::Unescape('Veja ``versao_hash.md`` e ``CHECKSUMS.md`` para todos os hashes e detalhes das vers\u00f5es anteriores.'))
+    $bodyText = $lines.ToArray() -join "`n"
 
     $existing = $null
     try {

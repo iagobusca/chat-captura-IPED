@@ -38,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.5.10";
+    private static final String VERIFIER_VERSION = "1.5.11";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -246,6 +246,7 @@ public final class IntegrityVerifier {
             case "reconciliação por mensagem íntegra":
             case "registro de migração íntegro":
             case "vínculo de origem íntegro":
+            case "artefato de relatório íntegro":
             case "anotações legadas preservadas":
             case "inalterada desde a captura anterior":
             case "alterada desde a captura anterior":
@@ -1502,6 +1503,7 @@ public final class IntegrityVerifier {
                 verifyHistory(c,integrity);
                 validateMigrationIntegrity(c,format,integrity);
                 validateOriginBindingIntegrity(c,format,integrity);
+                validateCaptureReportPackageIntegrity(c,integrity);
                 JSONObject migration=format.optJSONObject("migration");
                 if(migration!=null){
                     c.allowedFiles.add("migration.json");
@@ -2378,7 +2380,7 @@ public final class IntegrityVerifier {
         reportScript.append("function sha256Utf8(str){var s=unescape(encodeURIComponent(str)),K=[1116352408,1899447441,3049323471,3921009573,961987163,1508970993,2453635748,2870763221,3624381080,310598401,607225278,1426881987,1925078388,2162078206,2614888103,3248222580,3835390401,4022224774,264347078,604807628,770255983,1249150122,1555081692,1996064986,2554220882,2821834349,2952996808,3210313671,3336571891,3584528711,113926993,338241895,666307205,773529912,1294757372,1396182291,1695183700,1986661051,2177026350,2456956037,2730485921,2820302411,3259730800,3345764771,3516065817,3600352804,4094571909,275423344,430227734,506948616,659060556,883997877,958139571,1322822218,1537002063,1747873779,1955562222,2024104815,2227730452,2361852424,2428436474,2756734187,3204031479,3329325298],H=[1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225],w=[],l=s.length,i,j,a,b,c,d,e,f,g,h,t1,t2,S0,S1,ch,maj,s0,s1,r=function(x,n){return(x>>>n)|(x<<(32-n));};for(i=0;i<l;i++)w[i>>2]|=(s.charCodeAt(i)&255)<<(24-(i&3)*8);w[l>>2]|=0x80<<(24-(l&3)*8);var bl=(((l+8)>>6)+1)*16;for(i=0;i<bl;i++)if(!w[i])w[i]=0;w[bl-1]=(l*8)&0xffffffff;w[bl-2]=Math.floor(l/536870912);for(i=0;i<bl;i+=16){var M=w.slice(i,i+16);for(j=16;j<64;j++){s0=r(M[j-15],7)^r(M[j-15],18)^(M[j-15]>>>3);s1=r(M[j-2],17)^r(M[j-2],19)^(M[j-2]>>>10);M[j]=(M[j-16]+s0+M[j-7]+s1)|0;}a=H[0];b=H[1];c=H[2];d=H[3];e=H[4];f=H[5];g=H[6];h=H[7];for(j=0;j<64;j++){S1=r(e,6)^r(e,11)^r(e,25);ch=(e&f)^((~e)&g);t1=(h+S1+ch+K[j]+M[j])|0;S0=r(a,2)^r(a,13)^r(a,22);maj=(a&b)^(a&c)^(b&c);t2=(S0+maj)|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}H[0]=(H[0]+a)|0;H[1]=(H[1]+b)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;}var out='';for(i=0;i<8;i++)out+=('00000000'+(H[i]>>>0).toString(16)).slice(-8);return out;}");
         reportScript.append("function compareHash(){var v=document.getElementById('publicHash').value.trim().toLowerCase(),r=document.getElementById('comparison');if(!v){r.className='';r.textContent='Informe um hash geral.';return;}if(v===HISTORY_PUBLIC_HASH){show(r,'CONFERE com o Hash geral Público calculado.',true);return;}if(v===HISTORY_FULL_HASH){show(r,'CONFERE com o SHA-256 do histórico completo calculado.',true);return;}show(r,'DIVERGE do Hash geral Público e do histórico completo calculados.',false);}");
         reportScript.append("function extractCaptureBlocks(text){var norm=text.replace(/^\\uFEFF/,'').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'),lines=norm.split('\\n'),blocks=[],cur=null,i,line;for(i=0;i<lines.length;i++){line=lines[i];if(line.indexOf('CAPTURA|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=[line];}else if(line.indexOf('Nota|')===0){if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}cur=null;break;}else if(cur){cur.push(line);}}if(cur){while(cur.length&&cur[cur.length-1]==='')cur.pop();blocks.push(cur.join('\\n'));}return blocks;}");
-        reportScript.append("function blockContentDigest(block){var lines=block.split('\\n'),name='',entries=[],broken=false,i,l,cols,m;for(i=0;i<lines.length;i++){l=lines[i];if(l.indexOf('CAPTURA|')===0){name=l.slice(8);m=/^(?:.*)-(\\d{8}-\\d{6})$/.exec(name);name=m?'*-'+m[1]:'*';}else if(l.indexOf('ARQUIVO|')===0){cols=l.split('|');if(cols.length>=7){var p=cols[1],act=cols[5],st=cols[6],bytes=cols[4];if(!(st==='íntegro'||st==='integro'||st==='anexo íntegro'||st==='mensagem estruturada'||st==='anotações íntegras'||st==='reconciliação por mensagem íntegra'||st==='inalterada desde a captura anterior'||st==='alterada desde a captura anterior'||st==='adicionada desde a captura anterior'||st==='não encontrada na fonte atual'||st==='registro de migração íntegro'||st==='anotações legadas preservadas'||st==='vínculo de origem íntegro')){broken=true;}else if(/^[0-9a-f]{64}$/i.test(act)){if(p.indexOf('mensagem:')===0)entries.push('M|'+p+'|'+act.toLowerCase());else if(p.indexOf('attachments/')===0)entries.push('A|'+p+'|'+bytes+'|'+act.toLowerCase());}}}}if(broken||!entries.length)return '';entries.sort();return sha256Utf8('CAPTURE_CONTENT_V1\\n'+name+'\\n'+entries.join('\\n')+'\\n');}");
+        reportScript.append("function blockContentDigest(block){var lines=block.split('\\n'),name='',entries=[],broken=false,i,l,cols,m;for(i=0;i<lines.length;i++){l=lines[i];if(l.indexOf('CAPTURA|')===0){name=l.slice(8);m=/^(?:.*)-(\\d{8}-\\d{6})$/.exec(name);name=m?'*-'+m[1]:'*';}else if(l.indexOf('ARQUIVO|')===0){cols=l.split('|');if(cols.length>=7){var p=cols[1],act=cols[5],st=cols[6],bytes=cols[4];if(!(st==='íntegro'||st==='integro'||st==='anexo íntegro'||st==='mensagem estruturada'||st==='anotações íntegras'||st==='reconciliação por mensagem íntegra'||st==='inalterada desde a captura anterior'||st==='alterada desde a captura anterior'||st==='adicionada desde a captura anterior'||st==='não encontrada na fonte atual'||st==='registro de migração íntegro'||st==='anotações legadas preservadas'||st==='vínculo de origem íntegro'||st==='artefato de relatório íntegro')){broken=true;}else if(/^[0-9a-f]{64}$/i.test(act)){if(p.indexOf('mensagem:')===0)entries.push('M|'+p+'|'+act.toLowerCase());else if(p.indexOf('attachments/')===0)entries.push('A|'+p+'|'+bytes+'|'+act.toLowerCase());}}}}if(broken||!entries.length)return '';entries.sort();return sha256Utf8('CAPTURE_CONTENT_V1\\n'+name+'\\n'+entries.join('\\n')+'\\n');}");
         reportScript.append("function compareHistory(){var raw=document.getElementById('historyInput').value,rr=document.getElementById('historyResult');if(!raw||!raw.trim()){rr.className='';rr.textContent='Cole o conteúdo de historico-capturas.txt (completo ou público).';document.querySelectorAll('.capture-row .cmp').forEach(function(el){el.className='cmp';el.textContent='Não comparado';});return;}var blocks=extractCaptureBlocks(raw),matched={},matchedContent={};blocks.forEach(function(b){matched[sha256Utf8(b)]=true;var cd=blockContentDigest(b);if(cd)matchedContent[cd]=true;});var okCount=0,contentOnlyCount=0,failCount=0;document.querySelectorAll('.capture-row').forEach(function(row){var bf=row.getAttribute('data-block-full'),bp=row.getAttribute('data-block-public'),bc=row.getAttribute('data-block-content'),out=row.querySelector('.cmp'),exact=!!(matched[bf]||matched[bp]),byContent=!exact&&!!(bc&&matchedContent[bc]),ok=exact||byContent;if(ok){okCount++;if(byContent)contentOnlyCount++;}else failCount++;showCmp(out,ok?'OK':'FALHA',ok);});show(rr,failCount===0?(contentOnlyCount>0?'Histórico confere por conteúdo criptográfico: '+okCount+'/'+(okCount+failCount)+' capturas OK ('+contentOnlyCount+' com metadados/origem atualizados).':'Histórico confere: '+okCount+'/'+(okCount+failCount)+' capturas OK.'):'Divergência ou captura ausente: '+okCount+' OK, '+failCount+' FALHA.',failCount===0);}");
         reportScript.append("function copyValue(b){var t=document.createElement('textarea');t.value=b.getAttribute('data-value');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();}");
         reportScript.append("var btnCmp=document.getElementById('btnCompareHash');if(btnCmp&&btnCmp.addEventListener)btnCmp.addEventListener('click',compareHash);");
@@ -2774,6 +2776,173 @@ public final class IntegrityVerifier {
         c.bytes += safeRegularFileSize(bindingPath);
         if (c.fileCount > MAX_CAPTURE_FILES || c.bytes > MAX_HTML_CAPTURE_BYTES) {
             throw new IOException("Artefato origin-binding.json excede os limites da captura.");
+        }
+    }
+
+    private static final Pattern ALLOWED_AUX_REPORT_SUBPATH = Pattern.compile(
+            "^relatorio/(?:[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+\\.(?:htm|html|css)$");
+    private static final Set<String> ALLOWED_AUX_HTML_TAGS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "html", "head", "meta", "title", "link", "frameset", "frame", "noframes", "body",
+            "div", "span", "header", "footer", "nav", "section", "h1", "h2", "h3", "h4",
+            "p", "br", "hr", "ul", "ol", "li", "table", "thead", "tbody", "tr", "th", "td",
+            "a", "img", "b", "strong", "i", "em", "code", "pre", "small"
+    )));
+    private static final Set<String> ALLOWED_AUX_HTML_ATTRS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "lang", "charset", "http-equiv", "content", "rel", "href", "src", "name",
+            "cols", "rows", "target", "class", "alt", "title", "colspan", "rowspan"
+    )));
+    private static final Pattern CSS_URL_PATTERN = Pattern.compile("(?is)url\\s*\\(");
+
+    static boolean isAllowedCaptureReportPackagePath(String relPath) {
+        if (relPath == null || relPath.isEmpty() || relPath.contains("..") || relPath.indexOf('\\') >= 0 || relPath.indexOf(':') >= 0) {
+            return false;
+        }
+        return "Lista de Arquivos.csv".equals(relPath)
+                || "chat-captura-IPED.log".equals(relPath)
+                || "relatorio.htm".equals(relPath)
+                || ALLOWED_AUX_REPORT_SUBPATH.matcher(relPath).matches();
+    }
+
+    private static void validateCaptureReportPackageIntegrity(Capture c, JSONObject integrity) throws Exception {
+        if (integrity == null) {
+            return;
+        }
+        JSONArray artifacts = integrity.optJSONArray("artifacts");
+        if (artifacts == null || artifacts.length() == 0) {
+            return;
+        }
+        List<JSONObject> reportEntries = new ArrayList<>();
+        for (int i = 0; i < artifacts.length(); i++) {
+            JSONObject row = artifacts.optJSONObject(i);
+            if (row == null) continue;
+            String relPath = row.optString("path", "");
+            if (isAllowedCaptureReportPackagePath(relPath)) {
+                reportEntries.add(row);
+            }
+        }
+        if (reportEntries.isEmpty()) {
+            return;
+        }
+        reportEntries.sort(Comparator.comparing(x -> x.optString("path", "")));
+        for (JSONObject row : reportEntries) {
+            String relPath = row.optString("path", "");
+            Path file = resolve(c.dir, relPath);
+            if (file == null || isLinkOrReparse(file)) {
+                throw new IOException("Caminho de relatório inválido ou link não permitido: " + relPath);
+            }
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                Item missing = new Item();
+                missing.path = relPath;
+                missing.expected = row.optString("sha256", "");
+                missing.actual = "";
+                missing.size = row.optLong("size", -1L);
+                missing.bytes = 0L;
+                missing.state = "ausente";
+                c.items.add(missing);
+                c.allowedFiles.add(relPath);
+                continue;
+            }
+            long fileSize = safeRegularFileSize(file);
+            if (fileSize > MAX_METADATA_BYTES) {
+                throw new IOException("Artefato de relatório excede o limite de leitura segura: " + relPath);
+            }
+            String lower = relPath.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".htm") || lower.endsWith(".html")) {
+                String html = readUtf8Limited(file, MAX_METADATA_BYTES);
+                validateAuxiliaryReportHtml(c.dir, relPath, html);
+            } else if (lower.endsWith(".css")) {
+                String css = readUtf8Limited(file, MAX_METADATA_BYTES);
+                validateAuxiliaryReportCss(relPath, css);
+            }
+            addIntegrityArtifactItem(c, relPath, row, "artefato de relatório íntegro");
+            c.allowedFiles.add(relPath);
+            c.fileCount += 1;
+            c.bytes += fileSize;
+            if (c.fileCount > MAX_CAPTURE_FILES || c.bytes > MAX_HTML_CAPTURE_BYTES) {
+                throw new IOException("Pacote de relatório excede os limites totais da captura.");
+            }
+        }
+        c.items.sort(Comparator.comparing(i -> i.path));
+    }
+
+    static void validateAuxiliaryReportCss(String relPath, String css) throws IOException {
+        if (css == null || css.indexOf('\0') >= 0) {
+            throw new IOException("CSS de relatório inválido (byte nulo): " + relPath);
+        }
+        String normalized = normalizeCssForSecurityCheck(css);
+        if (CSS_FORBIDDEN_CONTENT_PATTERN.matcher(normalized).find()
+                || CSS_URL_PATTERN.matcher(normalized).find()) {
+            throw new IOException("CSS de relatório contém diretiva ou referência url() não permitida: " + relPath);
+        }
+    }
+
+    static void validateAuxiliaryReportHtml(Path captureRoot, String relPath, String html) throws IOException {
+        if (html == null || html.indexOf('\0') >= 0) {
+            throw new IOException("HTML de relatório inválido (byte nulo): " + relPath);
+        }
+        String lower = html.toLowerCase(Locale.ROOT);
+        if (lower.contains("<!--") || lower.contains("-->") || lower.contains("<![cdata[") || lower.contains("<?")) {
+            throw new IOException("HTML de relatório contém comentários, CDATA ou instruções não permitidas: " + relPath);
+        }
+        List<HtmlElementToken> tokens = scanHtmlElements(html);
+        Path normalizedRoot = captureRoot.toAbsolutePath().normalize();
+        Path resolvedFile = normalizedRoot.resolve(relPath).normalize();
+        Path parentDir = resolvedFile.getParent();
+        if (parentDir == null || !parentDir.startsWith(normalizedRoot)) {
+            throw new IOException("Diretório pai inválido no HTML de relatório: " + relPath);
+        }
+        for (HtmlElementToken token : tokens) {
+            if (!ALLOWED_AUX_HTML_TAGS.contains(token.tag)) {
+                throw new IOException("Elemento HTML não permitido em relatório auxiliar (<" + token.tag + ">): " + relPath);
+            }
+            if (token.closing) {
+                continue;
+            }
+            for (Map.Entry<String, String> attr : token.attrs.entrySet()) {
+                String attrName = attr.getKey().toLowerCase(Locale.ROOT);
+                String attrVal = attr.getValue() == null ? "" : attr.getValue().trim();
+                if (attrName.startsWith("on") || !ALLOWED_AUX_HTML_ATTRS.contains(attrName)) {
+                    throw new IOException("Atributo HTML não permitido em relatório auxiliar (" + attrName + "): " + relPath);
+                }
+                if ("meta".equals(token.tag) && "http-equiv".equals(attrName)) {
+                    if (!"content-security-policy".equalsIgnoreCase(attrVal)) {
+                        throw new IOException("Meta http-equiv não permitido em relatório auxiliar (" + attrVal + "): " + relPath);
+                    }
+                }
+                if ("href".equals(attrName) || "src".equals(attrName)) {
+                    validateAuxiliaryRelativeUrl(normalizedRoot, parentDir, relPath, token.tag, attrVal);
+                }
+            }
+            if ("link".equals(token.tag)) {
+                String relAttr = token.attrs.get("rel");
+                String hrefAttr = token.attrs.get("href");
+                if (relAttr == null || !"stylesheet".equalsIgnoreCase(relAttr.trim())
+                        || hrefAttr == null || !hrefAttr.trim().toLowerCase(Locale.ROOT).endsWith(".css")) {
+                    throw new IOException("Tag <link> em relatório auxiliar deve apontar apenas para folha CSS local: " + relPath);
+                }
+            }
+        }
+    }
+
+    private static void validateAuxiliaryRelativeUrl(Path captureRoot, Path htmlParentDir, String relPath, String tag, String rawUrl)
+            throws IOException {
+        if (rawUrl == null || rawUrl.isEmpty()) {
+            throw new IOException("Referência vazia em <" + tag + "> no relatório auxiliar: " + relPath);
+        }
+        String trimmed = rawUrl.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("//") || lower.indexOf(':') >= 0 || trimmed.indexOf('\\') >= 0
+                || trimmed.indexOf('\0') >= 0 || trimmed.startsWith("/")) {
+            throw new IOException("URL externa ou esquema não permitido em <" + tag + "> (" + trimmed + "): " + relPath);
+        }
+        // Only allow %20 space encoding (used for Lista%20de%20Arquivos.csv)
+        String decoded = trimmed.replace("%20", " ").replace("%20", " ");
+        if (decoded.indexOf('%') >= 0 || decoded.indexOf('#') >= 0 || decoded.indexOf('?') >= 0) {
+            throw new IOException("Codificação ou fragmento não permitido em URL do relatório auxiliar (" + trimmed + "): " + relPath);
+        }
+        Path target = htmlParentDir.resolve(decoded).normalize();
+        if (!target.startsWith(captureRoot) || target.equals(captureRoot)) {
+            throw new IOException("URL escapa da pasta da captura em <" + tag + "> (" + trimmed + "): " + relPath);
         }
     }
 

@@ -6,6 +6,14 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.8.13-beta] - 2026-11-23
+
+### Fase 3 — Pacote de Relatório IPED Embutido por Captura (`relatorio.htm`, CSV e Log) (Beta / `beta`)
+- **Pacote de Relatório IPED Embutido (`CaptureReportPackageWriter`):** cada captura `html-message-v1` passa a gerar automaticamente `Lista de Arquivos.csv` (colunas IPED + `SHA256` + `Mensagem`, MD5/SHA-1/SHA-256 reais e proteção contra CSV formula injection), `chat-captura-IPED.log` (log técnico determinístico sem texto privado das mensagens) e `relatorio.htm` + `relatorio/**` (frameset limpo sem logos/marcas externas, `caseinformation.htm`, `contents.htm`, categorias `cat_*.html`, `thumbs_001.htm`, `integridade_resumo.htm`, `ajuda.htm` e CSS limpo sob CSP estrita e zero scripts), todos selados por SHA-256 em `integridade.json` e preservados/reparados seletivamente no **Re-Extrair**.
+- **Verificador `1.5.11`:** validação fail-closed do pacote de relatório da captura contra `integridade.json`, bloqueando extras não inventariados, adulteração de 1 byte, conteúdo ativo/scripts, URLs externas, path traversal e CSS `url()`/`@import`, mantendo total retrocompatibilidade.
+- **Releases Gitea:** adicionada seção `## Adicionado` na publicação automática (ordem `Adicionado`, `Otimizado`, `Corrigido`, `Incluido`, `SHA-256 do Verificador`).
+- Verificador **1.5.11** (`13.061.220` bytes JAR `CC80FA62...` | `90.587.740` bytes EXE `A7F21554...`) e Plugin **2.8.13-beta** (`1.681.985` bytes `DC8D7E91...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.8.13-beta-verificador-1.5.11.zip` (`120.419.728` bytes `2ED36B93...`).
+
 ## [2.8.12-beta] - 2026-11-23
 
 ### Fases 1 e 2 — `report.pdf` Intacto, `report-plugin.pdf` Trilíngue e `laudo/Log.txt` Encadeado (Beta / `beta`)

@@ -2261,6 +2261,7 @@ public final class SecurityRegressionTest {
             throw new AssertionError("isIgnoredCaptureDirectoryName must ignore laudo case-insensitively");
         }
         laudoChainedLogAuditWithoutPdfBox(root);
+        captureReportPackageFailClosed(root);
     }
 
     private static void laudoChainedLogAuditWithoutPdfBox(Path root) throws Exception {
@@ -2295,6 +2296,212 @@ public final class SecurityRegressionTest {
         if (dupRes.passed || !"FALHA_ANCORA_PDF_DUPLICADA".equals(dupRes.status)) {
             throw new AssertionError("Expected FALHA_ANCORA_PDF_DUPLICADA, got " + dupRes.status);
         }
+    }
+
+    private static void captureReportPackageFailClosed(Path root) throws Exception {
+        if (!IntegrityVerifier.isAllowedCaptureReportPackagePath("Lista de Arquivos.csv")
+                || !IntegrityVerifier.isAllowedCaptureReportPackagePath("chat-captura-IPED.log")
+                || !IntegrityVerifier.isAllowedCaptureReportPackagePath("relatorio.htm")
+                || !IntegrityVerifier.isAllowedCaptureReportPackagePath("relatorio/caseinformation.htm")
+                || !IntegrityVerifier.isAllowedCaptureReportPackagePath("relatorio/res/estilo.css")) {
+            throw new AssertionError("Valid report package paths must be allowed");
+        }
+        if (IntegrityVerifier.isAllowedCaptureReportPackagePath("relatorio/a/b/c.html")
+                || IntegrityVerifier.isAllowedCaptureReportPackagePath("relatorio/evil.js")
+                || IntegrityVerifier.isAllowedCaptureReportPackagePath("../relatorio.htm")
+                || IntegrityVerifier.isAllowedCaptureReportPackagePath("extra.html")) {
+            throw new AssertionError("Invalid or deep report package paths must be rejected");
+        }
+
+        Path capDir = Files.createDirectories(root.resolve("phase3-report-pkg-verify"));
+        Path relDir = Files.createDirectories(capDir.resolve("relatorio"));
+        Path resDir = Files.createDirectories(relDir.resolve("res"));
+        String cleanHtml = "<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\">"
+                + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'self'\">"
+                + "<link rel=\"stylesheet\" href=\"res/estilo.css\"><title>Info</title></head>"
+                + "<body><a href=\"../Lista%20de%20Arquivos.csv\">CSV</a></body></html>";
+        IntegrityVerifier.validateAuxiliaryReportHtml(capDir, "relatorio/caseinformation.htm", cleanHtml);
+        IntegrityVerifier.validateAuxiliaryReportCss("relatorio/res/estilo.css", "body{color:#111;margin:0;}");
+
+        // Active content, external URLs, path traversal, and CSS url() must fail closed
+        String[] badHtmls = new String[] {
+            "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>",
+            "<!DOCTYPE html><html><body><a href=\"https://evil.example/x\">x</a></body></html>",
+            "<!DOCTYPE html><html><body><img src=\"../attachments/a.png\" onerror=\"alert(1)\"></body></html>",
+            "<!DOCTYPE html><html><body><a href=\"../../fora.txt\">escape</a></body></html>",
+            "<!DOCTYPE html><html><body><!-- comentario -->ok</body></html>"
+        };
+        for (String bad : badHtmls) {
+            boolean rejected = false;
+            try {
+                IntegrityVerifier.validateAuxiliaryReportHtml(capDir, "relatorio/caseinformation.htm", bad);
+            } catch (IOException expected) {
+                rejected = true;
+            }
+            if (!rejected) {
+                throw new AssertionError("validateAuxiliaryReportHtml must reject: " + bad);
+            }
+        }
+        boolean cssRejected = false;
+        try {
+            IntegrityVerifier.validateAuxiliaryReportCss("relatorio/res/estilo.css", "body{background:url(https://evil.test/x.png);}");
+        } catch (IOException expected) {
+            cssRejected = true;
+        }
+        if (!cssRejected) {
+            throw new AssertionError("validateAuxiliaryReportCss must reject url(...)");
+        }
+
+        // Full verify() E2E on a sealed html-message-v1 capture with report package
+        String convKey = repeat('1', 64);
+        String srcFp = repeat('2', 64);
+        String domId = "101";
+        String natural = "2026-11-23 12:00:00\nAlice\nincoming\ntext";
+        String msgKey = sha256Utf8(convKey + "\n" + domId + "\n" + natural + "\n0");
+        JSONObject msg = new JSONObject()
+                .put("domId", domId).put("order", 0).put("timestamp", "2026-11-23 12:00:00")
+                .put("sender", "Alice").put("direction", "incoming").put("type", "text")
+                .put("duplicateOrdinal", 0).put("text", "Ola").put("classes", "incoming")
+                .put("attachments", new JSONArray()).put("key", msgKey);
+        Method msgHashM = IntegrityVerifier.class.getDeclaredMethod("htmlMessageHash", JSONObject.class);
+        msgHashM.setAccessible(true);
+        String mHash = (String) msgHashM.invoke(null, msg);
+        msg.put("messageHash", mHash);
+        JSONArray msgs = new JSONArray().put(msg);
+
+        String whatsappHtml = "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\">"
+                + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'\">"
+                + "<title>Chat</title></head><body><div class=\"chat\">"
+                + "<div class=\"message incoming\" data-capture-message-key=\"" + msgKey + "\">Ola</div>"
+                + "</div></body></html>";
+        byte[] htmlBytes = whatsappHtml.getBytes(StandardCharsets.UTF_8);
+        String htmlSha = sha256Utf8(whatsappHtml);
+        Files.write(capDir.resolve("whatsapp.html"), htmlBytes);
+        byte[] msgsBytes = new JSONObject().put("messages", msgs).toString(2).getBytes(StandardCharsets.UTF_8);
+        Files.write(capDir.resolve("messages.json"), msgsBytes);
+
+        JSONObject srcMeta = new JSONObject().put("name", "chat.html").put("size", 100).put("type", "text/html").put("itemHash", "abc").put("deleted", false);
+        JSONObject manifest = new JSONObject()
+                .put("schemaVersion", 1).put("captureFormat", "html-message-v1").put("presentationVersion", 0)
+                .put("pluginVersion", "2.8.13-beta").put("ipedVersion", "4.3.1")
+                .put("status", "completed").put("state", "complete")
+                .put("createdAt", "2026-11-23T12:00:00Z")
+                .put("sourceFingerprint", srcFp).put("conversationKey", convKey)
+                .put("sourceMetadata", srcMeta)
+                .put("anchors", new JSONObject().put("start", domId).put("end", domId))
+                .put("messageCount", 1).put("messagesFile", "messages.json")
+                .put("messageHashes", new JSONArray().put(new JSONObject().put("domId", domId).put("key", msgKey).put("messageHash", mHash)))
+                .put("htmlSha256", htmlSha).put("annotationsSha256", "").put("reconciliationSha256", "");
+        Method rootHashM = IntegrityVerifier.class.getDeclaredMethod("htmlCaptureRootHash",
+                JSONArray.class, String.class, String.class, String.class, JSONObject.class);
+        rootHashM.setAccessible(true);
+        manifest.put("captureRootHash", (String) rootHashM.invoke(null, msgs, htmlSha, "", "", manifest));
+        Files.write(capDir.resolve("manifest.json"), manifest.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        // Write report package files
+        Files.write(capDir.resolve("Lista de Arquivos.csv"), "\"Nome\";\"SHA256\"\n\"whatsapp.html\";\"0\"\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(capDir.resolve("chat-captura-IPED.log"), "CHAT_CAPTURA_IPED_LOG_V1\nmessageCount=1\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(capDir.resolve("relatorio.htm"), "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>R</title></head><frameset cols=\"230,*\"><frame src=\"relatorio/caseinformation.htm\" name=\"ReportPage\"></frameset></html>".getBytes(StandardCharsets.UTF_8));
+        Files.write(relDir.resolve("caseinformation.htm"), cleanHtml.getBytes(StandardCharsets.UTF_8));
+        Files.write(resDir.resolve("estilo.css"), "body{color:#111;margin:0;}".getBytes(StandardCharsets.UTF_8));
+
+        writeSealedIntegrityJson(capDir);
+
+        Method verifyM = IntegrityVerifier.class.getDeclaredMethod("verify", Class.forName("IntegrityVerifier$Capture"));
+        verifyM.setAccessible(true);
+        Field statusF = Class.forName("IntegrityVerifier$Capture").getDeclaredField("historyStatus");
+        statusF.setAccessible(true);
+
+        Object cap1 = newCapture(capDir);
+        verifyM.invoke(null, cap1);
+        String st1 = (String) statusF.get(cap1);
+        if (!"consistente com registro local; consistente com registro local (manifesto de mensagens)".equals(st1)) {
+            throw new AssertionError("Sealed capture with report package must pass cleanly, got: " + st1);
+        }
+
+        // 1. Uninventoried extra file in relatorio/ must fail closed
+        Path extraFile = relDir.resolve("extra.html");
+        Files.write(extraFile, "<!DOCTYPE html><html><body>extra</body></html>".getBytes(StandardCharsets.UTF_8));
+        Object cap2 = newCapture(capDir);
+        verifyM.invoke(null, cap2);
+        String st2 = (String) statusF.get(cap2);
+        if (!st2.contains("arquivos extras na captura: 1")) {
+            throw new AssertionError("Uninventoried relatorio/extra.html must be flagged as extra, got: " + st2);
+        }
+        Files.delete(extraFile);
+
+        // 2. 1-byte tamper of chat-captura-IPED.log must fail
+        Files.write(capDir.resolve("chat-captura-IPED.log"), "CHAT_CAPTURA_IPED_LOG_V1\nmessageCount=2\n".getBytes(StandardCharsets.UTF_8));
+        Object cap3 = newCapture(capDir);
+        verifyM.invoke(null, cap3);
+        String st3 = (String) statusF.get(cap3);
+        if (!st3.contains("arquivo divergente: chat-captura-IPED.log")) {
+            throw new AssertionError("Tampered chat-captura-IPED.log must fail verification, got: " + st3);
+        }
+        Files.write(capDir.resolve("chat-captura-IPED.log"), "CHAT_CAPTURA_IPED_LOG_V1\nmessageCount=1\n".getBytes(StandardCharsets.UTF_8));
+
+        // 3. Injecting <script> into relatorio/caseinformation.htm EVEN WITH recomputed integridade.json must throw IOException!
+        Files.write(relDir.resolve("caseinformation.htm"), "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>".getBytes(StandardCharsets.UTF_8));
+        writeSealedIntegrityJson(capDir);
+        boolean scriptBlocked = false;
+        try {
+            verifyM.invoke(null, newCapture(capDir));
+        } catch (java.lang.reflect.InvocationTargetException ite) {
+            if (ite.getCause() instanceof IOException) {
+                scriptBlocked = true;
+            }
+        }
+        if (!scriptBlocked) {
+            throw new AssertionError("Injected <script> in relatorio/caseinformation.htm must fail closed even with recomputed integridade.json");
+        }
+    }
+
+    private static void writeSealedIntegrityJson(Path capDir) throws Exception {
+        List<Path> all = new ArrayList<>();
+        try (java.util.stream.Stream<Path> walk = Files.walk(capDir)) {
+            walk.filter(Files::isRegularFile).forEach(p -> {
+                String name = p.getFileName().toString();
+                if (!"manifest.json".equals(name) && !"integridade.json".equals(name) && !"reextracao-auditoria.jsonl".equals(name)) {
+                    all.add(p);
+                }
+            });
+        }
+        all.sort(java.util.Comparator.comparing(p -> capDir.relativize(p).toString().replace('\\', '/')));
+        JSONArray arts = new JSONArray();
+        StringBuilder inv = new StringBuilder();
+        for (Path f : all) {
+            String rel = capDir.relativize(f).toString().replace('\\', '/');
+            byte[] b = Files.readAllBytes(f);
+            String sha = sha256BytesHex(b);
+            arts.put(new JSONObject().put("path", rel).put("size", b.length).put("sha256", sha));
+            inv.append(rel).append('|').append(b.length).append('|').append(sha).append('\n');
+        }
+        String contentRoot = sha256Utf8(inv.toString());
+        JSONObject ev = new JSONObject()
+                .put("sequence", 1)
+                .put("action", "capture_created")
+                .put("timestamp", "2026-11-23T12:00:00Z")
+                .put("pluginVersion", "2.8.13-beta")
+                .put("previousRecordHash", "")
+                .put("contentRootHash", contentRoot)
+                .put("recordHashFormat", "canonical-v1");
+        Method canonM = IntegrityVerifier.class.getDeclaredMethod("canonicalJson", Object.class);
+        canonM.setAccessible(true);
+        String evHash = sha256Utf8((String) canonM.invoke(null, ev));
+        ev.put("recordHash", evHash);
+        JSONObject integrity = new JSONObject()
+                .put("schemaVersion", 2)
+                .put("contentRootHash", contentRoot)
+                .put("artifacts", arts)
+                .put("events", new JSONArray().put(ev));
+        Files.write(capDir.resolve("integridade.json"), integrity.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256BytesHex(byte[] bytes) throws Exception {
+        byte[] dig = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder sb = new StringBuilder(dig.length * 2);
+        for (byte b : dig) sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
     }
 
     private static Object newCapture(Path folder) throws Exception {

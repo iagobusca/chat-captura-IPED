@@ -326,6 +326,7 @@ jobs:
             JarPath         = $env:JAR_PATH
             PluginPath      = $env:PLUGIN_PATH
             GiteaBaseUrl    = 'http://127.0.0.1:3000'
+            RepoRoot        = $repoRoot
             PublishRelease  = $true
             PublishPackages = $true
           }

@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.8.12-beta - Verificador de Integridade 1.5.10
+Pacote Chat Captura IPED 2.8.13-beta - Verificador de Integridade 1.5.11
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,18 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.5.10 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.5.11 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão (2.8.12-beta / Verificador 1.5.10 — beta Fases 1+2):
+Novidades desta versão (2.8.13-beta / Verificador 1.5.11 — beta Fase 3):
+- Plugin 2.8.13-beta (Fase 3 — Pacote de Relatório IPED Embutido por Captura):
+  * Geração automática dentro de cada captura html-message-v1 de Lista de Arquivos.csv (colunas oficiais do IPED + SHA256 + Mensagem, com neutralização contra CSV formula injection), chat-captura-IPED.log (log técnico determinístico sem texto privado de mensagens) e relatorio.htm + relatorio/** (estrutura de frameset do IPED sem logos ou marcas institucionais externas, com caseinformation.htm, contents.htm, páginas de categorias, galeria thumbs_001.htm, resumo de integridade, ajuda offline e CSS limpo com CSP estrita e zero scripts);
+  * Todos os artefatos do pacote de relatório (incluindo chat-captura-IPED.log e Lista de Arquivos.csv) são selados por SHA-256 em integridade.json e preservados/reparados seletivamente no Re-Extrair sem quebrar INALTERADO_OK;
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.5.11.
+- Verificador 1.5.11:
+  * Valida em modo fail-closed o pacote de relatório da captura (Lista de Arquivos.csv, chat-captura-IPED.log, relatorio.htm e relatorio/*.htm|html|css) contra o inventário SHA-256 de integridade.json, bloqueando arquivos extras não inventariados, alterações de 1 byte, scripts/event handlers, URLs externas, path traversal e CSS com url()/@import, preservando 100% de compatibilidade com capturas anteriores.
+
+Novidades anteriores (2.8.12-beta / Verificador 1.5.10 — beta Fases 1+2):
 - Plugin 2.8.12-beta (Fases 1 e 2 — report.pdf intacto, report-plugin.pdf trilíngue e Log.txt encadeado):
   * Parser por seção do report.pdf Avilla (Evidence Information, System operator identification, Who seized the device, Chain Of Custody, Collection information, 8 hashes e bloco Method used integral) sem vazamento em campos vazios;
   * Cópia byte a byte sem edição do report.pdf original para laudo/report.pdf (SHA-256 conferido) e novo laudo/report-plugin.pdf padrão Avilla com aviso inicial trilíngue (PT/EN/ES), Log Cronológico Encadeado acima de Method used e metodologia do plugin em 3 idiomas (PT/EN/ES);
@@ -140,9 +148,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.5.10:
-JAR 09D7166AE5EF62C63E6888B392D12C67A6457861974B2677352FE4D65520DE30
-EXE 8C34C3E1E744BE108E5EE0D28010C053FF35166F5E7D119B1AE0E745E79082AC
+SHA-256 do Verificador 1.5.11:
+JAR CC80FA62B2A8AE85AE15D9B6A829EB59E8BBB3E996D3E9A314F288B545C0D24B
+EXE A7F21554A38941543D944563C5B91A1CCD1EA3DC9BE63CEC2623FAF5E2668ACF
 
-SHA-256 do plugin 2.8.12-beta:
-JAR 83FED2F39B3268B7744F48D61A74B881FB16B79650BD7495B85EDA90D90904F9
+SHA-256 do plugin 2.8.13-beta:
+JAR DC8D7E9193166F51046A51AD5C7DAB3A0CB8B379DAA4503010BF5E588E426737

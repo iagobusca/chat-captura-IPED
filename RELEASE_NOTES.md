@@ -7,6 +7,28 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.8.13-beta (Beta / `beta`) / Verificador 1.5.11
+
+- **Tag**: [v2.8.13-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.13-beta) (Compilação determinística via `build-reproducible.ps1` — Fase 3)
+- **Branch base**: `beta` (canal beta — `main` estável preservada intacta)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.8.13-beta-verificador-1.5.11.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.13-beta/instalador-chat-captura-IPED-2.8.13-beta-verificador-1.5.11.zip) (`120.419.728` bytes | SHA-256: `2ED36B93C8420A4DD2E2821A6CEB9443AD957BB42AF6C21CBE0814FF0579AB12`)
+- [integridade-verifier-1.5.11.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.13-beta/integridade-verifier-1.5.11.exe) (`90.587.740` bytes | SHA-256: `A7F21554A38941543D944563C5B91A1CCD1EA3DC9BE63CEC2623FAF5E2668ACF`)
+- [integridade-verifier-1.5.11.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.13-beta/integridade-verifier-1.5.11.jar) (`13.061.220` bytes | SHA-256: `CC80FA62B2A8AE85AE15D9B6A829EB59E8BBB3E996D3E9A314F288B545C0D24B`)
+- [iped-viewers-impl-4.3.1-2.8.13-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.8.13-beta/iped-viewers-impl-4.3.1-2.8.13-beta.jar) (`1.681.985` bytes | SHA-256: `DC8D7E9193166F51046A51AD5C7DAB3A0CB8B379DAA4503010BF5E588E426737`)
+
+### Adicionado
+- **Pacote de Relatório IPED Embutido por Captura (`CaptureReportPackageWriter`):** cada captura `html-message-v1` agora gera automaticamente `relatorio.htm` + `relatorio/**` (estrutura de frameset compatível com o IPED **sem logos ou marcas institucionais externas**, incluindo `caseinformation.htm`, `contents.htm`, páginas por categoria `cat_*.html`, galeria `thumbs_001.htm`, `integridade_resumo.htm`, `ajuda.htm` offline e folhas CSS limpas sob CSP restritiva e zero scripts).
+- **Inventário CSV e Log Técnico da Captura selados por SHA-256:** geração determinística de `Lista de Arquivos.csv` (cabeçalho oficial do IPED + `SHA256` + `Mensagem`, com MD5/SHA-1/SHA-256 reais e neutralização contra CSV formula injection) e `chat-captura-IPED.log` (log técnico sem exposição de texto privado das mensagens), todos registrados no inventário `integridade.json` e preservados/reparados seletivamente no **Re-Extrair**.
+- **Validação Fail-Closed no Verificador `1.5.11`:** suporte dedicado a `Lista de Arquivos.csv`, `chat-captura-IPED.log`, `relatorio.htm` e `relatorio/*.htm|html|css` contra `integridade.json`, bloqueando extras não inventariados, adulteração de 1 byte, `<script>`/`on*=`, URLs externas, path traversal e CSS `url()`/`@import`, mantendo 100% de compatibilidade retroativa com capturas anteriores.
+- **Formato padronizado das Releases Gitea (`Adicionado`, `Otimizado`, `Corrigido`, `Incluido`, `SHA-256 do Verificador`):** seção `## Adicionado` incorporada automaticamente pelo script de publicação das releases.
+
+### Resumo
+- Fase 3 completa da série beta (Pacote de Relatório IPED Embutido por Captura + Validação Fail-Closed no Verificador `1.5.11` + nova seção `Adicionado` nas Releases Gitea), com compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e allowlist exclusiva sincronizada para Verificador **1.5.11**.
+
+---
+
 ## v2.8.12-beta (Beta / `beta`) / Verificador 1.5.10
 
 - **Tag**: [v2.8.12-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.8.12-beta) (Compilação determinística via `build-reproducible.ps1` — Fases 1 e 2)

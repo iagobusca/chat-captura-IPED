@@ -40,6 +40,7 @@ public final class TechnicalReportAndCustodyTest {
             testRealAvillaReportPdfFormatAndTrilingualPluginPdf(tempRoot);
             testChainedAuditLogStartReextractAddedDeletedAndTamper(tempRoot);
             testChainedLogTxtPdfAnchorAndVerifierWithoutPdfBox(tempRoot);
+            testPhase3CaptureReportPackageGenerationAndSecurity(tempRoot);
             testCustodyDialogSelectorAndSwingHtmlDisable();
             testLaudoDirectoryIgnoredByVerifierDiscover(tempRoot);
             System.out.println("TechnicalReportAndCustodyTest: PASS");
@@ -540,6 +541,117 @@ public final class TechnicalReportAndCustodyTest {
         java.lang.reflect.Method isIgnored = iv.getDeclaredMethod("isIgnoredCaptureDirectoryName", String.class);
         isIgnored.setAccessible(true);
         check(Boolean.TRUE.equals(isIgnored.invoke(null, "laudo")), "IntegrityVerifier deve ignorar pasta laudo");
+    }
+
+    private static void testPhase3CaptureReportPackageGenerationAndSecurity(Path root) throws Exception {
+        Path outDir = Files.createDirectories(root.resolve("case-phase3-report-pkg"));
+        Path capDir = Files.createDirectories(outDir.resolve("Chat_Fase3-20261123-120000"));
+        createSampleHtmlCapture(capDir, "Conversa Fase 3");
+
+        // Inject secret text into messages.json to assert chat-captura-IPED.log never leaks message text
+        JSONObject messagesObj = new JSONObject(Files.readString(capDir.resolve("messages.json"), StandardCharsets.UTF_8));
+        JSONArray messagesArr = messagesObj.getJSONArray("messages");
+        messagesArr.getJSONObject(0).put("text", "TEXTO_CONFIDENCIAL_NAO_DEVE_VAZAR_NO_LOG");
+        Files.writeString(capDir.resolve("messages.json"), messagesObj.toString(2), StandardCharsets.UTF_8);
+
+        JSONObject manifest = new JSONObject(Files.readString(capDir.resolve("manifest.json"), StandardCharsets.UTF_8));
+        manifest.put("createdAt", "2026-11-23T12:00:00Z");
+        Files.writeString(capDir.resolve("manifest.json"), manifest.toString(2), StandardCharsets.UTF_8);
+
+        CustodyCaseRecord rec = new CustodyCaseRecord();
+        rec.organizationHeader = "Instituto de Pericia Independente";
+        rec.reportNumber = "LAUDO-2026/042";
+        rec.reportDate = "23/11/2026";
+        rec.reportTitle = "Exame de Conversa WhatsApp";
+        rec.signatories = "Perito Oficial A / Perito B";
+        rec.caseNumber = "IPL 123/2026";
+        rec.legalAuthorization = "Decisao Judicial 999";
+        rec.requestReference = "Oficio 77/2026";
+        rec.forensicProtocolNumber = "PROT-8888";
+        rec.forensicProtocolDate = "20/11/2026";
+        rec.examinedMaterial = "Smartphone Redmi Note 14 Pro";
+        rec.deviceModel = "Redmi Note 14 Pro";
+        rec.deviceSerialNumber = "3a75b587";
+        rec.collectedBy = "Equipe Alfa";
+        rec.analyzedBy = "Perito Oficial A";
+        rec.custodyLocation = "Sala Cofre 02";
+
+        CaptureReportPackageWriter.ReportPackageSummary pkg = CaptureReportPackageWriter.writeCaptureReportPackage(
+                outDir, capDir, "Chat_Fase3-20261123-120000", manifest, messagesArr, null, rec);
+        check(pkg.writtenRelativePaths.contains("Lista de Arquivos.csv"), "deve gerar Lista de Arquivos.csv");
+        check(pkg.writtenRelativePaths.contains("chat-captura-IPED.log"), "deve gerar chat-captura-IPED.log");
+        check(pkg.writtenRelativePaths.contains("relatorio.htm"), "deve gerar relatorio.htm");
+        check(pkg.writtenRelativePaths.contains("relatorio/contents.htm"), "deve gerar relatorio/contents.htm");
+        check(pkg.writtenRelativePaths.contains("relatorio/caseinformation.htm"), "deve gerar relatorio/caseinformation.htm");
+        check(pkg.writtenRelativePaths.contains("relatorio/thumbs_001.htm"), "deve gerar galeria thumbs_001.htm");
+        check(pkg.writtenRelativePaths.contains("relatorio/cat_whatsapp.html"), "deve gerar cat_whatsapp.html");
+        check(pkg.writtenRelativePaths.contains("relatorio/cat_imagens.html"), "deve gerar cat_imagens.html");
+        check(pkg.writtenRelativePaths.contains("relatorio/cat_audios.html"), "deve gerar cat_audios.html");
+        check(pkg.writtenRelativePaths.contains("relatorio/cat_videos.html"), "deve gerar cat_videos.html");
+        check(pkg.writtenRelativePaths.contains("relatorio/cat_documentos_pdf.html"), "deve gerar cat_documentos_pdf.html");
+        check(pkg.writtenRelativePaths.contains("relatorio/integridade_resumo.htm"), "deve gerar integridade_resumo.htm");
+        check(pkg.writtenRelativePaths.contains("relatorio/ajuda.htm"), "deve gerar ajuda.htm");
+
+        String csv = Files.readString(capDir.resolve("Lista de Arquivos.csv"), StandardCharsets.UTF_8);
+        check(csv.startsWith("\"Nome\";\"Atalho\";\"Tamanho\";\"Ext\";\"Marcador\";\"Categoria\";\"MD5\";\"SHA1\";\"Deletado\";\"Recuperado\";\"Acesso\";\"Modifica\u00e7\u00e3o\";\"Cria\u00e7\u00e3o\";\"Caminho\";\"TrackId\";\"SHA256\";\"Mensagem\""),
+                "Lista de Arquivos.csv deve seguir cabecalho IPED + SHA256 + Mensagem");
+        check(csv.contains("\"whatsapp.html\""), "CSV deve listar whatsapp.html");
+        check(csv.contains("\"Imagens\"") && csv.contains("\"\u00c1udios\"") && csv.contains("\"V\u00eddeos\"") && csv.contains("\"Documentos\""),
+                "CSV deve categorizar anexos");
+        check(CaptureReportPackageWriter.sanitizeCsvCell("=CMD|' /C calc'!A0").startsWith("'="),
+                "CSV deve neutralizar formula injection");
+
+        String logTxt = Files.readString(capDir.resolve("chat-captura-IPED.log"), StandardCharsets.UTF_8);
+        check(logTxt.startsWith("CHAT_CAPTURA_IPED_LOG_V1\n"), "log da captura deve ter cabecalho V1");
+        check(!logTxt.contains("TEXTO_CONFIDENCIAL_NAO_DEVE_VAZAR_NO_LOG"),
+                "chat-captura-IPED.log NUNCA pode vazar texto privado das mensagens");
+        check(logTxt.contains("counts=msg:1,img:1,audio:1,video:1,doc:1,outros:0"),
+                "log da captura deve registrar contagens corretas");
+
+        String caseInfoHtml = Files.readString(capDir.resolve("relatorio/caseinformation.htm"), StandardCharsets.UTF_8);
+        check(caseInfoHtml.contains("Instituto de Pericia Independente"), "caseinformation.htm deve conter cabecalho de orgao");
+        check(caseInfoHtml.contains("LAUDO-2026/042") && caseInfoHtml.contains("23/11/2026"), "caseinformation.htm deve conter Laudo e data");
+        check(caseInfoHtml.contains("Exame de Conversa WhatsApp"), "caseinformation.htm deve conter Titulo");
+        check(caseInfoHtml.contains("Perito Oficial A / Perito B"), "caseinformation.htm deve conter Signatario(s)");
+        check(caseInfoHtml.contains("Oficio 77/2026") && caseInfoHtml.contains("PROT-8888"), "caseinformation.htm deve conter Solicitacao e Protocolo");
+        check(caseInfoHtml.contains("Smartphone Redmi Note 14 Pro"), "caseinformation.htm deve conter Material examinado");
+        check(caseInfoHtml.contains("../Lista%20de%20Arquivos.csv") && caseInfoHtml.contains("../chat-captura-IPED.log"),
+                "caseinformation.htm deve linkar CSV e log relativos");
+
+        // Ensure ZERO logos/PF branding/scripts/external links across all generated HTML & CSS files
+        Class<?> iv = Class.forName("IntegrityVerifier");
+        java.lang.reflect.Method valHtml = iv.getDeclaredMethod("validateAuxiliaryReportHtml", Path.class, String.class, String.class);
+        valHtml.setAccessible(true);
+        java.lang.reflect.Method valCss = iv.getDeclaredMethod("validateAuxiliaryReportCss", String.class, String.class);
+        valCss.setAccessible(true);
+        for (String rel : pkg.writtenRelativePaths) {
+            if (rel.endsWith(".htm") || rel.endsWith(".html") || rel.endsWith(".css")) {
+                String content = Files.readString(capDir.resolve(rel), StandardCharsets.UTF_8);
+                String lower = content.toLowerCase(java.util.Locale.ROOT);
+                check(!lower.contains("emblema.png") && !lower.contains("armas.gif") && !lower.contains("dpf.ico")
+                        && !lower.contains("background.jpg") && !lower.contains("header.gif")
+                        && !lower.contains("pol\u00edcia federal") && !lower.contains("policia federal")
+                        && !lower.contains("<script") && !lower.contains("http://") && !lower.contains("https://"),
+                        "Artefato sem logos/scripts/URLs externas: " + rel);
+                if (rel.endsWith(".css")) {
+                    valCss.invoke(null, rel, content);
+                } else {
+                    valHtml.invoke(null, capDir, rel, content);
+                }
+            }
+        }
+
+        // Seal integridade.json and verify all report package files are inventoried
+        JSONObject integrity = CaptureIntegrity.integrityRecord(capDir, null, "capture_created", HtmlLinkViewer.CHAT_CAPTURE_PLUGIN_VERSION);
+        JSONArray invArts = integrity.getJSONArray("artifacts");
+        boolean foundCsv = false, foundLog = false, foundRel = false;
+        for (int i = 0; i < invArts.length(); i++) {
+            String p = invArts.getJSONObject(i).optString("path", "");
+            if ("Lista de Arquivos.csv".equals(p)) foundCsv = true;
+            if ("chat-captura-IPED.log".equals(p)) foundLog = true;
+            if ("relatorio.htm".equals(p)) foundRel = true;
+        }
+        check(foundCsv && foundLog && foundRel, "integridade.json deve selar Lista de Arquivos.csv, chat-captura-IPED.log e relatorio.htm");
     }
 
     private static void verifyAllSwingHtmlDisabled(Container container) {

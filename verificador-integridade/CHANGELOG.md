@@ -4,6 +4,12 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.5.11] - 2026-11-23
+
+### Validação Fail-Closed do Pacote de Relatório por Captura (v2.8.13-beta)
+- Valida artefatos do pacote de relatório da captura (`Lista de Arquivos.csv`, `chat-captura-IPED.log`, `relatorio.htm` e `relatorio/*.htm|html|css`) selados em `integridade.json` com estado saudável `artefato de relatório íntegro` (compatível com `integridade.html` e comparação pública por conteúdo criptográfico).
+- Bloqueia em modo fail-closed arquivos extras não inventariados, alterações de 1 byte, tags/atributos ativos (`<script>`, `on*=`), URLs externas, path traversal e diretivas CSS proibidas (`url()`, `@import`), preservando 100% de retrocompatibilidade com capturas anteriores. (`build-reproducible.ps1`; JAR `CC80FA62...` / EXE `A7F21554...`).
+
 ## [1.5.10] - 2026-11-23
 
 ### Auditoria do Log Cronológico `laudo/Log.txt` sem PDFBox + `laudo/report.pdf` (v2.8.12-beta)
