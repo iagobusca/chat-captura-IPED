@@ -1,9 +1,11 @@
 package iped.viewers;
 
 import java.awt.BorderLayout;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -28,7 +30,9 @@ import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
+import javax.swing.JViewport;
 import javax.swing.ListSelectionModel;
+import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
@@ -112,6 +116,9 @@ public class ChatCapturePanel extends JPanel {
     private JPanel countersPanel;
     private JPanel linksCell;
     private JLabel notesLabel;
+    private JPanel progressPanel;
+    private JPanel sidebarContent;
+    private JScrollPane sidebarScroll;
     private boolean linkedCaptureMode;
     private String linkedCustomName;
 
@@ -126,11 +133,11 @@ public class ChatCapturePanel extends JPanel {
     private int searchResultTotal;
 
     public ChatCapturePanel(HtmlLinkViewer viewer) {
-        super(new BorderLayout(4, 6));
+        super(new BorderLayout());
         this.viewer = viewer;
         searchDebounce = new Timer(450, e -> viewer.searchChat(searchField.getText()));
         searchDebounce.setRepeats(false);
-        setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        setBorder(null);
         setPreferredSize(new Dimension(290, 320));
 
         JPanel form = new JPanel(new BorderLayout(4, 4));
@@ -185,11 +192,14 @@ public class ChatCapturePanel extends JPanel {
         blurLevelRow.add(plainLabel("Blur censura"), BorderLayout.NORTH); //$NON-NLS-1$
         blurLevelRow.add(sensitiveBlurLevel, BorderLayout.CENTER);
 
-        JPanel options = new JPanel(new GridLayout(7, 1, 4, 4));
+        JPanel blurParamsRow = new JPanel(new GridLayout(1, 2, 4, 4));
+        blurParamsRow.add(similarityRow);
+        blurParamsRow.add(blurLevelRow);
+
+        JPanel options = new JPanel(new GridLayout(6, 1, 4, 4));
         options.add(customNameRow);
         options.add(sensitiveRow);
-        options.add(similarityRow);
-        options.add(blurLevelRow);
+        options.add(blurParamsRow);
         options.add(originRow);
         options.add(parentIpedRow);
         annotationsToggle.setToolTipText(Messages.getString("ChatCapturePanel.IncludeAnnotations")); //$NON-NLS-1$
@@ -229,15 +239,25 @@ public class ChatCapturePanel extends JPanel {
         progress.add(recaptureBatchProgress);
         progress.add(recaptureStepLabel);
         progress.add(recaptureStepProgress);
+        progressPanel = progress;
         setRecaptureProgressVisible(false);
 
-        bottom.add(actions, BorderLayout.WEST);
+        status.setMinimumSize(new Dimension(0, status.getPreferredSize().height));
+        bottom.add(actions, BorderLayout.NORTH);
         bottom.add(status, BorderLayout.CENTER);
         bottom.add(progress, BorderLayout.SOUTH);
 
-        add(form, BorderLayout.NORTH);
-        add(buildCenter(), BorderLayout.CENTER);
-        add(bottom, BorderLayout.SOUTH);
+        sidebarContent = new ScrollableSidebarPanel();
+        sidebarContent.add(form, BorderLayout.NORTH);
+        sidebarContent.add(buildCenter(), BorderLayout.CENTER);
+        sidebarContent.add(bottom, BorderLayout.SOUTH);
+
+        sidebarScroll = new JScrollPane(sidebarContent,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        sidebarScroll.setBorder(null);
+        sidebarScroll.getVerticalScrollBar().setUnitIncrement(16);
+        add(sidebarScroll, BorderLayout.CENTER);
 
         chooseFolder.addActionListener(e -> selectFolder());
         chooseSensitiveFolder.addActionListener(e -> selectSensitiveFolder());
@@ -321,6 +341,14 @@ public class ChatCapturePanel extends JPanel {
         return recapture;
     }
 
+    JScrollPane getSidebarScrollPaneForTest() {
+        return sidebarScroll;
+    }
+
+    JTextField getOutputFolderFieldForTest() {
+        return outputFolder;
+    }
+
     public void setOutputFolder(java.io.File folder) {
         if (folder != null) {
             outputFolder.setText(folder.getAbsolutePath());
@@ -390,7 +418,8 @@ public class ChatCapturePanel extends JPanel {
 
         searchArea.add(searchTop, BorderLayout.NORTH);
         searchArea.add(new JScrollPane(searchList), BorderLayout.CENTER);
-        searchArea.setPreferredSize(new Dimension(290, 240));
+        searchArea.setMinimumSize(new Dimension(0, 150));
+        searchArea.setPreferredSize(new Dimension(260, 190));
         updateSearchButtons();
 
         searchPrevious.addActionListener(e -> viewer.previousChatSearchHit());
@@ -620,8 +649,7 @@ public class ChatCapturePanel extends JPanel {
         linkedDestinationRow.setVisible(true);
         linkedDestinationLabel.setText("<html>" + html(destination == null ? "" : destination.getAbsolutePath()) //$NON-NLS-1$ //$NON-NLS-2$
                 + "<br><small>" + html(Messages.getString("ChatCapturePanel.LinkedDestinationHint")) + "</small></html>"); //$NON-NLS-1$ //$NON-NLS-2$
-        revalidate();
-        repaint();
+        revalidateSidebar();
     }
 
     /**
@@ -642,8 +670,7 @@ public class ChatCapturePanel extends JPanel {
         // sobram apenas Imagens e Arquivos
         countersPanel.setLayout(new GridLayout(1, 4, 4, 2));
         setAnnotationsEnabled(false);
-        revalidate();
-        repaint();
+        revalidateSidebar();
     }
 
     static String html(String value) {
@@ -724,9 +751,61 @@ public class ChatCapturePanel extends JPanel {
     }
 
     private void setRecaptureProgressVisible(boolean visible) {
+        if (progressPanel != null) {
+            progressPanel.setVisible(visible);
+        }
         recaptureBatchLabel.setVisible(visible);
         recaptureStepLabel.setVisible(visible);
         recaptureBatchProgress.setVisible(visible);
         recaptureStepProgress.setVisible(visible);
+        revalidateSidebar();
+    }
+
+    private void revalidateSidebar() {
+        if (sidebarContent != null) {
+            sidebarContent.revalidate();
+            sidebarContent.repaint();
+        }
+        revalidate();
+        repaint();
+    }
+
+    private static final class ScrollableSidebarPanel extends JPanel implements Scrollable {
+
+        private static final long serialVersionUID = 1L;
+
+        ScrollableSidebarPanel() {
+            super(new BorderLayout(4, 6));
+            setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return getPreferredSize();
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return Math.max(48, visibleRect.height - 24);
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            Container parent = getParent();
+            if (parent instanceof JViewport) {
+                return parent.getHeight() > getPreferredSize().height;
+            }
+            return false;
+        }
     }
 }

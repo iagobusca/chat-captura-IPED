@@ -6,6 +6,13 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.1-beta] - 2026-11-23
+
+### Menu Lateral com Scroll Vertical (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)
+- **Menu lateral rolável (`ChatCapturePanel`):** todo o menu lateral (`form` + contadores/busca + botões `Start` / `Re-Extrair` / `Dados do Laudo...` / status / progresso) foi envolvido em um `JScrollPane` vertical com `ScrollableSidebarPanel` acompanhando a largura da barra (sem barra horizontal e `unitIncrement = 16`), impedindo que opções ou botões fiquem cortados em monitores/janelas menores.
+- **Compactação e largura total dos botões:** `Similaridade blur` e `Blur censura` reorganizados lado a lado em 1 linha (`GridLayout(1, 2)`) e grade de botões de ação movida para largura total acima do status.
+- **Verificador `1.6.0` inalterado:** zero alterações em `verificador-integridade/` (mesmos binários `E5006E34...` / `1F14B7A1...`); Plugin **2.9.1-beta** (`1.682.985` bytes `2E62143D...`) e instalador `instalador-chat-captura-IPED-2.9.1-beta-verificador-1.6.0.zip` (`120.423.482` bytes `95094BFD...`) compilados deterministicamente via `build-reproducible.ps1`.
+
 ## [2.9.0] - 2026-11-23
 
 ### Release Estável (`main`) — Laudo Técnico PDFBox, Cadeia de Custódia Enxuta, Log Único e Pacote de Relatório IPED

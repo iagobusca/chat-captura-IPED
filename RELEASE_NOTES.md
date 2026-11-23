@@ -7,6 +7,26 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.1-beta (Beta / `beta`) / Verificador 1.6.0
+
+- **Tag**: [v2.9.1-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.1-beta) (Compilação determinística via `build-reproducible.ps1`)
+- **Branch base**: `beta` (canal beta — `main` estável `v2.9.0` e **Verificador `1.6.0`** preservados 100% intactos)
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.1-beta-verificador-1.6.0.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.1-beta/instalador-chat-captura-IPED-2.9.1-beta-verificador-1.6.0.zip) (`120.423.482` bytes | SHA-256: `95094BFD9DCE1DB9A8E55AC700C716331FBBD179081D5CC6B14341A7CBD54556`)
+- [integridade-verifier-1.6.0.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.1-beta/integridade-verifier-1.6.0.exe) (`90.589.274` bytes | SHA-256: `1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920`)
+- [integridade-verifier-1.6.0.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.1-beta/integridade-verifier-1.6.0.jar) (`13.062.572` bytes | SHA-256: `E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745`)
+- [iped-viewers-impl-4.3.1-2.9.1-beta.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.1-beta/iped-viewers-impl-4.3.1-2.9.1-beta.jar) (`1.682.985` bytes | SHA-256: `2E62143D0BD7162155D08A5B7FF9BD09CA7650C2C14AAEE98B88ED49965FD5A9`)
+
+### Adicionado
+- **Scroll vertical no menu lateral (`ChatCapturePanel` — Opção B):** todo o menu lateral (pasta de destino, nome custom, pasta imagens blur, origem Avilla, caso IPED pai, anotações, contadores, busca e botões `Start` / `Re-Extrair` / `Anotar chat salvo...` / `Salvar Trecho-Notas` / `Dados do Laudo...`) agora é exibido dentro de um `JScrollPane` vertical com `Scrollable` ajustado à largura da barra (sem barra horizontal e com rolagem suave pela rodinha do mouse).
+- **Layout mais compacto e legível:** `Similaridade blur` e `Blur censura` posicionados lado a lado em 1 linha e grade de botões de ação em largura total acima da linha de status e do progresso de re-extração.
+
+### Resumo
+- Ajuste exclusivo de interface do plugin na branch `beta` (`2.9.1-beta`) para garantir acesso completo a todas as opções e botões em telas menores ou painéis divididos, mantendo o **Verificador de Integridade `1.6.0` 100% inalterado** (mesmos hashes oficiais).
+
+---
+
 ## v2.9.0 (Estável / `main`) / Verificador 1.6.0
 
 - **Tag**: [v2.9.0](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.0) (Release estável compilada deterministicamente via `build-reproducible.ps1`)

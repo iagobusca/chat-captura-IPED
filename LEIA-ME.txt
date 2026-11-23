@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.9.0 - Verificador de Integridade 1.6.0
+Pacote Chat Captura IPED 2.9.1-beta - Verificador de Integridade 1.6.0
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -10,7 +10,13 @@ O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260
 opencv_java4120.dll e o Verificador de Integridade 1.6.0 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão estável (2.9.0 / Verificador 1.6.0 — main):
+Novidades desta versão beta (2.9.1-beta / Verificador 1.6.0 — beta):
+- Plugin 2.9.1-beta (Menu Lateral com Scroll Vertical — Verificador 1.6.0 inalterado):
+  * Menu lateral inteiro envolvido em JScrollPane vertical (barra vertical sob demanda, sem barra horizontal e rolagem suave na rodinha do mouse), garantindo visualização e clique em todas as opções (pasta destino, nome custom, pasta imagens blur, origem Avilla, caso IPED pai, busca e botões Start / Re-Extrair / Dados do Laudo...) em telas menores ou painéis reduzidos;
+  * Controles "Similaridade blur" e "Blur censura" reorganizados lado a lado em 1 linha compacta e barra de botões de ação em largura total acima do status;
+  * Verificador de Integridade 1.6.0 mantido 100% inalterado (mesmos binários e SHA-256 oficiais).
+
+Novidades anteriores (2.9.0 / Verificador 1.6.0 — main):
 - Plugin 2.9.0 (Laudo Técnico Nativo PDFBox + Cadeia de Custódia Enxuta + Log Único + Relatório IPED por Captura):
   * Nova janela enxuta "Dados do Laudo e Cadeia de Custódia" (10 campos essenciais: 4 de Dispositivo + 6 de Cadeia de Custódia com seletor [Pasta | Mídia lacrada | Custom] e botão "Recarregar do report.pdf"), exibida em Start/Re-Extrair e via botão "Dados do Laudo..." no painel;
   * Cópia byte a byte sem alteração do report.pdf da origem para laudo/report.pdf (SHA-256 verificado), parser por seção Avilla sem vazamento em campos vazios e geração nativa de laudo/report-plugin.pdf via Apache PDFBox 2.0.27 (aviso inicial e metodologia trilíngue PT/EN/ES, cadeia de custódia, hashes e 1 único SHA-256 do laudo/Log.txt);
@@ -170,5 +176,5 @@ SHA-256 do Verificador 1.6.0:
 JAR E5006E345C0894E0678BFE97A71FBD5399D1FEEA77D67A30DCCF90049A580745
 EXE 1F14B7A10E9AEE2B94B699066478AAD237A424077C7D0A033005DBD2FEED4920
 
-SHA-256 do plugin 2.9.0:
-JAR ED3AA0F37DAC4D17846123A7A2FF958113EAFC0A8D733F7C33E026DCEF782C50
+SHA-256 do plugin 2.9.1-beta:
+JAR 2E62143D0BD7162155D08A5B7FF9BD09CA7650C2C14AAEE98B88ED49965FD5A9

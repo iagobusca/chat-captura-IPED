@@ -1,9 +1,13 @@
 package iped.viewers;
 
+import java.awt.Component;
+import java.awt.Container;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import javax.swing.JScrollPane;
+import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 
 public class UiAndAuxFolderRegressionTest {
@@ -13,6 +17,7 @@ public class UiAndAuxFolderRegressionTest {
         testOutputFolderResolution();
         testEmptyOutputFolderDoesNotInstallVerifierOnRecaptureOrStart();
         testRecapturePaginationExcludesInvalidCaptures();
+        testSidebarScrollEnablesAccessToAllControlsInCompactHeight();
         System.out.println("UiAndAuxFolderRegressionTest: PASS");
     }
 
@@ -74,6 +79,69 @@ public class UiAndAuxFolderRegressionTest {
                 "Known invalid capture must never be included in selected folders");
         assertTrue(collected.contains("cap-1") && collected.contains("cap-2"),
                 "Valid captures must be retained in bulk selection");
+    }
+
+    private static void testSidebarScrollEnablesAccessToAllControlsInCompactHeight() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            ChatCapturePanel panel = new ChatCapturePanel(null);
+            JScrollPane scroll = panel.getSidebarScrollPaneForTest();
+            assertNotNull(scroll, "Sidebar JScrollPane must exist");
+            assertTrue(scroll.getVerticalScrollBarPolicy() == JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    "Sidebar vertical scrollbar must be AS_NEEDED");
+            assertTrue(scroll.getHorizontalScrollBarPolicy() == JScrollPane.HORIZONTAL_SCROLLBAR_NEVER,
+                    "Sidebar horizontal scrollbar must be NEVER");
+            assertTrue(scroll.getVerticalScrollBar().getUnitIncrement() >= 16,
+                    "Sidebar vertical unit increment must support smooth mouse-wheel scroll");
+
+            Component view = scroll.getViewport().getView();
+            assertNotNull(view, "Sidebar viewport view must exist");
+            assertTrue(view instanceof Scrollable, "Sidebar viewport view must implement Scrollable");
+            Scrollable scrollable = (Scrollable) view;
+            assertTrue(scrollable.getScrollableTracksViewportWidth(),
+                    "Sidebar view must track viewport width to avoid horizontal clipping");
+
+            Component output = panel.getOutputFolderFieldForTest();
+            Component startBtn = panel.getStartStopButtonForTest();
+            Component recaptureBtn = panel.getRecaptureButtonForTest();
+            assertTrue(SwingUtilities.isDescendingFrom(output, view),
+                    "Output folder input must live inside scrollable sidebar view");
+            assertTrue(SwingUtilities.isDescendingFrom(startBtn, view),
+                    "Start button must live inside scrollable sidebar view");
+            assertTrue(SwingUtilities.isDescendingFrom(recaptureBtn, view),
+                    "Recapture button must live inside scrollable sidebar view");
+
+            // Compact dock height (e.g. 290x380): view keeps full preferred height and scrolls vertically
+            panel.setSize(290, 380);
+            layoutRecursively(panel);
+            assertTrue(!scrollable.getScrollableTracksViewportHeight(),
+                    "Compact height must allow vertical scrolling instead of squishing content");
+            assertTrue(view.getHeight() > 380,
+                    "Scrollable sidebar view height (" + view.getHeight() + ") must exceed compact viewport height (380)");
+            assertTrue(output.getWidth() > 0 && output.getHeight() > 0,
+                    "Output folder input must have positive bounds");
+            assertTrue(startBtn.getWidth() > 0 && startBtn.getHeight() > 0,
+                    "Start button must remain laid out with positive bounds");
+            assertTrue(recaptureBtn.getWidth() > 0 && recaptureBtn.getHeight() > 0,
+                    "Recapture button must remain laid out with positive bounds");
+            java.awt.Point startPos = SwingUtilities.convertPoint(startBtn.getParent(), startBtn.getLocation(), view);
+            assertTrue(startPos.y + startBtn.getHeight() <= view.getHeight(),
+                    "Start button must remain fully reachable within scrollable view bounds");
+
+            // Tall dock height (e.g. 290x1200): view stretches cleanly to fill viewport
+            panel.setSize(290, 1200);
+            layoutRecursively(panel);
+            assertTrue(scrollable.getScrollableTracksViewportHeight(),
+                    "Tall viewport must track height so search list stretches cleanly");
+        });
+    }
+
+    private static void layoutRecursively(Container container) {
+        container.doLayout();
+        for (Component child : container.getComponents()) {
+            if (child instanceof Container) {
+                layoutRecursively((Container) child);
+            }
+        }
     }
 
     private static void assertEqual(String expected, String actual, String msg) {
