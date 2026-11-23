@@ -59,6 +59,7 @@ public final class SecurityRegressionTest {
             jarMaliciosoNaCapturaIgnorado(root);
             buildPinSqliteJdbcHash();
             laudoFolderIgnoredAndOriginReportPdfCopyValidated(root);
+            wrappedPlainLabelWrapsAndDisablesHtml();
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -2520,6 +2521,36 @@ public final class SecurityRegressionTest {
                 .put("artifacts", arts)
                 .put("events", new JSONArray().put(ev));
         Files.write(capDir.resolve("integridade.json"), integrity.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void wrappedPlainLabelWrapsAndDisablesHtml() throws Exception {
+        final String sample = "Log Cronológico (laudo/Log.txt): LOG_INTEGRO_OK — SHA-256 de laudo/Log.txt conferido com report-plugin.pdf (38 sessões registradas sem divergências).";
+        final java.awt.Color okGreen = new java.awt.Color(0, 110, 50);
+        javax.swing.SwingUtilities.invokeAndWait(new Runnable() {
+            @Override
+            public void run() {
+                javax.swing.JTextArea area = IntegrityVerifier.wrappedPlainLabel(sample, 46, okGreen);
+                if (!Boolean.TRUE.equals(area.getClientProperty("html.disable"))) {
+                    throw new AssertionError("wrappedPlainLabel must set html.disable=true");
+                }
+                if (area.isEditable() || !area.getLineWrap() || !area.getWrapStyleWord() || area.isOpaque()) {
+                    throw new AssertionError("wrappedPlainLabel must be non-editable, transparent, and word-wrapped");
+                }
+                if (!okGreen.equals(area.getForeground())) {
+                    throw new AssertionError("wrappedPlainLabel must preserve foreground color");
+                }
+                if (area.getMaximumSize().width != Integer.MAX_VALUE) {
+                    throw new AssertionError("wrappedPlainLabel max width must expand horizontally");
+                }
+                area.setSize(600, Short.MAX_VALUE);
+                int wideHeight = area.getPreferredSize().height;
+                area.setSize(220, Short.MAX_VALUE);
+                int narrowHeight = area.getPreferredSize().height;
+                if (narrowHeight <= wideHeight) {
+                    throw new AssertionError("wrappedPlainLabel must grow vertically when narrowed (wide=" + wideHeight + ", narrow=" + narrowHeight + ")");
+                }
+            }
+        });
     }
 
     private static String sha256BytesHex(byte[] bytes) throws Exception {

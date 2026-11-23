@@ -38,7 +38,7 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.6.0";
+    private static final String VERIFIER_VERSION = "1.6.1";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -195,6 +195,36 @@ public final class IntegrityVerifier {
         JLabel label = new JLabel(text);
         label.putClientProperty("html.disable", Boolean.TRUE);
         return label;
+    }
+
+    static JTextArea wrappedPlainLabel(String text, int columns, java.awt.Color foreground) {
+        final JTextArea area = new JTextArea(text == null ? "" : text) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension pref = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, pref.height);
+            }
+        };
+        area.putClientProperty("html.disable", Boolean.TRUE);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setOpaque(false);
+        area.setBorder(null);
+        java.awt.Font labelFont = UIManager.getFont("Label.font");
+        if (labelFont != null) {
+            area.setFont(labelFont);
+        }
+        if (foreground != null) {
+            area.setForeground(foreground);
+        }
+        area.setColumns(Math.max(20, columns));
+        area.setAlignmentX(Component.LEFT_ALIGNMENT);
+        Dimension initialPref = area.getPreferredSize();
+        if (initialPref.width > 0) {
+            area.setSize(initialPref.width, Short.MAX_VALUE);
+        }
+        return area;
     }
 
     static JCheckBox plainCheckBox(String text, boolean selected) {
@@ -719,18 +749,26 @@ public final class IntegrityVerifier {
         final JFrame[] frameRef=new JFrame[1];
         final LaudoLogAuditResult logAudit = auditLaudoChainedLog(root);
         runOnEdt(()->{
-            JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
-            panel.add(plainLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada."));
-            panel.add(plainLabel("Capturas verificadas: "+selected.size()));
+            final JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
+            final List<JTextArea> wrappedLabels=new ArrayList<>();
+            JTextArea modeLbl=wrappedPlainLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada.",46,null);
+            wrappedLabels.add(modeLbl);
+            panel.add(modeLbl);
+            panel.add(Box.createVerticalStrut(4));
+            JLabel countLbl=plainLabel("Capturas verificadas: "+selected.size());
+            countLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panel.add(countLbl);
             if(logAudit!=null&&logAudit.applicable){
-                JLabel logLbl=plainLabel("Log Cronológico (laudo/Log.txt): "+logAudit.status+" — "+logAudit.detail);
-                if(!logAudit.passed)logLbl.setForeground(new java.awt.Color(150,0,0));
-                else if(logAudit.hasWarning)logLbl.setForeground(new java.awt.Color(140,85,0));
-                else logLbl.setForeground(new java.awt.Color(0,110,50));
+                java.awt.Color logColor=!logAudit.passed?new java.awt.Color(150,0,0):(logAudit.hasWarning?new java.awt.Color(140,85,0):new java.awt.Color(0,110,50));
+                JTextArea logLbl=wrappedPlainLabel("Log Cronológico (laudo/Log.txt): "+logAudit.status+" — "+logAudit.detail,46,logColor);
+                wrappedLabels.add(logLbl);
+                panel.add(Box.createVerticalStrut(4));
                 panel.add(logLbl);
             }
             panel.add(Box.createVerticalStrut(10));
-            panel.add(hashValueRow("SHA-256 do histórico completo público",historyPublicHash,"Hash SHA-256 do histórico completo público copiado."));
+            JPanel hashRow=hashValueRow("SHA-256 do histórico completo público",historyPublicHash,"Hash SHA-256 do histórico completo público copiado.");
+            hashRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            panel.add(hashRow);
             panel.add(Box.createVerticalStrut(8));
             JPanel gridActions=new JPanel(new java.awt.GridLayout(2,2,6,6));
             JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Resultado",true);
@@ -744,9 +782,24 @@ public final class IntegrityVerifier {
             JPanel bottomRow=new JPanel(new java.awt.GridLayout(1,1,6,6));
             bottomRow.add(close);
             JPanel actions=new JPanel(new java.awt.BorderLayout(0,6));
+            actions.setAlignmentX(Component.LEFT_ALIGNMENT);
             actions.add(gridActions,java.awt.BorderLayout.CENTER);
             actions.add(bottomRow,java.awt.BorderLayout.SOUTH);
             panel.add(actions);
+            panel.addComponentListener(new java.awt.event.ComponentAdapter(){
+                private int lastInnerWidth=-1;
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e){
+                    java.awt.Insets ins=panel.getInsets();
+                    int innerW=Math.max(120,panel.getWidth()-ins.left-ins.right);
+                    if(innerW==lastInnerWidth)return;
+                    lastInnerWidth=innerW;
+                    for(JTextArea ta:wrappedLabels){
+                        ta.setSize(innerW,Short.MAX_VALUE);
+                    }
+                    panel.revalidate();
+                }
+            });
             frame.setContentPane(panel);
             frame.addWindowListener(new WindowAdapter(){public void windowClosing(WindowEvent e){latch.countDown();}});
             frame.pack();frame.setLocationRelativeTo(null);frame.setVisible(true);

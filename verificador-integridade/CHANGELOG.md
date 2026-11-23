@@ -4,6 +4,11 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.6.1] - 2026-11-23
+
+### Quebra de Linha Responsiva na Janela de Resultado (v2.9.4-beta)
+- Substitui os rótulos `JLabel` de linha única (`"Log Cronológico (laudo/Log.txt): ..."` e `"MODO: ..."`) em `showSummaryDialog` por `wrappedPlainLabel` (`JTextArea` somente leitura com `setLineWrap(true)`, `setWrapStyleWord(true)`, `html.disable = true`, preservação de cores e reflow dinâmico ao redimensionar a janela), evitando o corte com `"..."` em janelas menores. (`build-reproducible.ps1`; JAR `D1DD3497...` / EXE `B0ED0152...`).
+
 ## [1.6.0] - 2026-11-23
 
 ### Release Estável (`main` / Plugin v2.9.0)

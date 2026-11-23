@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.4-beta] - 2026-11-23
+
+### Quebra de Linha Responsiva no Verificador 1.6.1 (Beta / `beta`)
+- **Verificador `1.6.1` (`IntegrityVerifier.wrappedPlainLabel`):** substitui os `JLabel` de linha única de `"Log Cronológico (laudo/Log.txt): ..."` e `"MODO: ..."` na janela de resultado por `JTextArea` somente leitura com quebra automática por palavra (`html.disable = true`, preservação das cores de status, seleção/cópia com Ctrl+C e reflow dinâmico no redimensionamento), eliminando truncamento com `"..."` em janelas pequenas.
+- **Plugin `2.9.4-beta`:** allowlist exclusiva (`VerifierIntegrity`) e instalador sincronizados para os binários oficiais do Verificador **1.6.1** (`13.064.528` bytes JAR `D1DD3497...` | `90.590.810` bytes EXE `B0ED0152...`); Plugin **2.9.4-beta** (`1.684.245` bytes `B36A4D28...`) e instalador `instalador-chat-captura-IPED-2.9.4-beta-verificador-1.6.1.zip` (`120.429.185` bytes `36A6B31B...`) compilados via `build-reproducible.ps1`.
+
 ## [2.9.3-beta] - 2026-11-23
 
 ### Correção de Páginas Divididas (`_0`) no Re-Extrair (Beta / `beta` — Plugin apenas; Verificador 1.6.0 inalterado)

@@ -59,7 +59,7 @@ $JdkWithJpackage = Resolve-JdkHome -Explicit $JdkWithJpackage -EnvNames @('JAVA2
 
 if (!$JsonJar) { $JsonJar = Join-Path $Base 'dependencies\json-20260719.jar' }
 if (!$Output) { $Output = Join-Path $Base 'dist' }
-$Work = Join-Path $Base 'build-single-exe\1.6.0'
+$Work = Join-Path $Base 'build-single-exe\1.6.1'
 $Classes = Join-Path $Work 'classes'
 $Input = Join-Path $Work 'input'
 $Runtime = Join-Path $Work 'runtime11'
@@ -77,7 +77,7 @@ if (Test-Path -LiteralPath $Icon) {
 }
 $Jar = Join-Path $Input 'integridade-verifier.jar'
 $Manifest = Join-Path $Work 'MANIFEST.MF'
-@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.6.0','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
+@('Manifest-Version: 1.0','Main-Class: IntegrityVerifier','Implementation-Version: 1.6.1','') | Set-Content -LiteralPath $Manifest -Encoding ASCII
 & (Join-Path $Java8 'bin\jar.exe') cfm $Jar $Manifest -C $Classes .
 if ($LASTEXITCODE) { throw 'Falha ao montar o JAR Java.' }
 $JsonClasses = Join-Path $Work 'json-classes'
@@ -104,7 +104,7 @@ Copy-Item $Jar (Join-Path $Base 'integridade-verifier.jar') -Force
 & (Join-Path $Java11 'bin\jlink.exe') --module-path (Join-Path $Java11 'jmods') --add-modules java.base,java.datatransfer,java.desktop,java.xml,java.logging,java.sql --strip-debug --no-header-files --no-man-pages --output $Runtime
 if ($LASTEXITCODE) { throw 'Falha ao criar runtime Java 11 reduzido.' }
 New-Item -ItemType Directory -Force -Path $AppImage | Out-Null
-& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.6.0
+& (Join-Path $JdkWithJpackage 'bin\jpackage.exe') --type app-image --name integridade-verifier --input $Input --main-jar integridade-verifier.jar --main-class IntegrityVerifier --runtime-image $Runtime --dest $AppImage --app-version 1.6.1
 if ($LASTEXITCODE) { throw 'Falha ao criar imagem Java empacotada.' }
 $Rows = Get-ChildItem -LiteralPath $PayloadDir -File -Recurse | ForEach-Object {
     $Relative = $_.FullName.Substring($PayloadDir.Length).TrimStart('\','/').Replace('\','/')

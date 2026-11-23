@@ -2,6 +2,15 @@
 
 > **Nota de publicação:** As releases públicas oficiais no GitHub iniciam na versão estável **`v2.6.8`** (`v2.6.8`, `v2.6.9`, `v2.7.0`). Os builds `<= 2.6.8-beta` abaixo permanecem documentados como histórico de auditoria do repositório local.
 
+## Build 2.9.4-beta (Beta / `beta`) / Verificador 1.6.1
+
+| Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
+| --- | ---: | --- | --- |
+| `instalador-chat-captura-IPED-2.9.4-beta-verificador-1.6.1.zip` | 120429185 | `36A6B31B2665F80E87E51254D771EFA33D32C7938E0FE9AEC40C2BFFA2FC040E` | Pacote completo beta compilado via `build-reproducible.ps1` (plugin `2.9.4-beta`, Verificador `1.6.1` com quebra de linha responsiva no resumo e `.NET 10.0.15`) |
+| `instalar_captura_chat_zap/iped-viewers-impl-4.3.1-2.9.4-beta.jar` | 1684245 | `B36A4D283120DA7D9D4D2ADF43B17E5CC57F4823F69516B06B30DB4295F527A9` | Fat-JAR determinístico do plugin (`Implementation-Version: 2.9.4-beta`, `--release 11`, OpenCV embutido, allowlist exclusiva Verificador `1.6.1`); mesmo binário de `iped-viewers-impl-4.3.1.jar` |
+| `verificador-integridade/integridade-verifier.jar` | 13064528 | `D1DD34970DB68DA0442106CCF40E887B60A6FABCC7E2BDAEE92E9F87E938EFC9` | Verificador `1.6.1` JAR determinístico (`--release 8`, bytecode 52, quebra de linha responsiva em `"Log Cronológico (laudo/Log.txt)"` e `"MODO: ..."` na tela de resultado) |
+| `verificador-integridade/integridade-verifier.exe` | 90590810 | `B0ED015292457F5F3389755786EFCFE7961A77E18A3356C2CA6B0AFE7CFEC59B` | Executável Windows x64 determinístico do Verificador `1.6.1` (`jlink`/`jpackage` + `.NET 10.0.15`, `--self-test` OK) |
+
 ## Build 2.9.3-beta (Beta / `beta`) / Verificador 1.6.0
 
 | Arquivo | Tamanho (bytes) | SHA-256 | Descrição |
