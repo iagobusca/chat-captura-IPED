@@ -356,7 +356,8 @@ jobs:
             tests\iped\viewers\CaptureIntegrityTest.java `
             tests\iped\viewers\OriginCustodyBinderTest.java `
             tests\iped\viewers\OriginAuditEndToEndTest.java `
-            tests\iped\viewers\SelectiveRecaptureRepairTest.java
+            tests\iped\viewers\SelectiveRecaptureRepairTest.java `
+            tests\iped\viewers\TechnicalReportAndCustodyTest.java
           if ($LASTEXITCODE -ne 0) { throw "javac phase2-plugin-tests falhou" }
           $p2RtCp = "$p2Classes;$p2CompileCp"
           foreach ($cls in @(
@@ -378,6 +379,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "OriginAuditEndToEndTest falhou" }
           & $java21 '-Dprism.order=sw' --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp "$vhClasses;$p2RtCp" iped.viewers.SelectiveRecaptureRepairTest
           if ($LASTEXITCODE -ne 0) { throw "SelectiveRecaptureRepairTest falhou" }
+          & $java21 '-Dprism.order=sw' --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp "$vhClasses;$p2RtCp" iped.viewers.TechnicalReportAndCustodyTest
+          if ($LASTEXITCODE -ne 0) { throw "TechnicalReportAndCustodyTest falhou" }
           & $java21 '-Dprism.order=sw' --module-path $env:JAVAFX_LIB --add-modules javafx.controls,javafx.web,javafx.swing -cp $p2RtCp iped.viewers.OpenCvLoaderTest (Join-Path $repo 'instalar_captura_chat_zap\opencv_java4120.dll')
           if ($LASTEXITCODE -ne 0) { throw "OpenCvLoaderTest falhou" }
 
@@ -459,18 +462,21 @@ jobs:
           $runUrl = "$($env:GITHUB_SERVER_URL)/$repoFull/actions/runs/$($env:GITHUB_RUN_ID)"
 
           $notesLines = @(
+            "## Adicionado",
+            "- **Laudo Técnico Nativo (Apache PDFBox 2.0.27) e Janela de Cadeia de Custódia Enxuta (10 campos):** modal ``Dados do Laudo e Cadeia de Custódia`` exibido em **Start**, **Re-Extrair** e pelo botão **Dados do Laudo...** com 4 campos de Dispositivo (``Dispositivo / Modelo``, ``IMEI``, ``Número de série``, ``Versão do SO``), 6 campos de Cadeia de Custódia (``Quem coletou``, ``Quem analisou``, ``Quando``, ``Onde``, seletor ``[Pasta | Mídia lacrada | Custom]`` com campo dinâmico para ``Nº do Lacre`` / texto livre e ``Nº do caso / Laudo``) e botão **Recarregar do report.pdf**.",
+            "- **Cópia Intacta de ``laudo/report.pdf`` + ``laudo/report-plugin.pdf`` Trilíngue (PT/EN/ES):** cópia byte a byte sem edição do ``report.pdf`` original da extração Avilla (SHA-256 verificado), parser por seção sem vazamento em campos vazios e geração nativa de ``laudo/report-plugin.pdf`` com aviso inicial e metodologia em 3 idiomas, registro automático do filtro blur, hashes originais/exportados e **1 único SHA-256** de ``laudo/Log.txt``.",
+            "- **Log Único por Sessão (``laudo/Log.txt``) auditado sem PDFBox no Verificador ``$vVer``:** log append-only organizado por sessões (``CAPTURA ADICIONADA``, ``CAPTURA REMOVIDA``, ``RE-EXTRAIR``) verificado diretamente em Java 8 puro pela âncora ``CHATCAPTURA_LOGANCHOR_V2`` (com retrocompatibilidade ``V1``).",
+            "- **Pacote de Relatório IPED Embutido por Captura (``relatorio.htm``, ``Lista de Arquivos.csv`` e ``chat-captura-IPED.log``):** relatório offline em frameset sem logos externos, inventário CSV com MD5/SHA-1/SHA-256 reais e proteção contra formula injection, e log técnico sem texto privado das mensagens — todos selados em ``integridade.json``, validados fail-closed pelo Verificador ``$vVer`` e preservados no **Re-Extrair**.",
+            "- **Scroll vertical completo no menu lateral (``ChatCapturePanel``):** todo o menu lateral envolvido em ``JScrollPane`` vertical com rolagem suave na rodinha do mouse, ``Similaridade blur`` e ``Blur censura`` lado a lado e botões de ação em largura total.",
+            "",
             "## Otimizado",
-            "- Versão estável **$pVer** compilada deterministicamente (``build-reproducible.ps1`` com dupla verificação bit a bit ``REPRODUCIBLE_BUILD_VERIFIED=PASS``), validada e publicada diretamente pelo GitHub Actions a partir do código-fonte desta tag ([workflow](https://github.com/$repoFull/blob/$tag/.github/workflows/release.yml) | [build run]($runUrl)) sobre a base oficial do **IPED 4.3.1** (SHA-256 verificado), acompanhando o **Verificador de Integridade $vVer** ([GUIA_DE_USO.md](https://github.com/$repoFull/blob/$tag/GUIA_DE_USO.md) | [espec.md](https://github.com/$repoFull/blob/$tag/espec.md)).",
-            "- **Auditoria Multiplataforma**: timestamps UTC fixos (``1980-02-01T00:00:00Z``), ordenação lexicográfica (``ReproducibleZipPacker``) e toolchain pinada (``Temurin 21.0.13+9`` + ``OpenJFX 21.0.5`` + ``.NET 10.0.15`` com ``-p:Deterministic=true``), permitindo recompilação auditável no Windows, Linux e macOS.",
-            "- Verificador de Integridade **$vVer**: scanner HTML léxico determinístico por máquina de estados (``scanHtmlElements`` / ``parseHtmlTagStrict``), abertura segura ``openFile`` com ``LinkOption.NOFOLLOW_LINKS`` e teto ``maxBytes``, runtime ``.NET 10.0.15`` (0 CVEs) no executável autocontido, proteção anti-reparse/zip-bomb no launcher, allowlists HTML/MIME simétricas com o plugin e leitura de capturas completas sem tetos artificiais de relatório.",
-            "- Plugin **$pVer**: compatibilidade binária e de compilação com o IPED ``4.3.1`` oficial (invocação reflexiva de ``AttachmentSearcher.openItem``), liberação determinística de recursos em ``ChatCaptureLinkedWindow`` (``DISPOSE_ON_CLOSE`` + ``closed.get()``) e ``HtmlLinkViewer.dispose()``, helper ``isInsideOpenAnchorTag`` e defesa em profundidade Swing com ``html.disable=true`` em ``SearchHitRenderer`` (``ChatCapturePanel``) e ``SavedChatPickerDialog``.",
+            "- Versão **$pVer** compilada deterministicamente (``build-reproducible.ps1`` com dupla verificação bit a bit ``REPRODUCIBLE_BUILD_VERIFIED=PASS``), validada e publicada diretamente pelo GitHub Actions a partir do código-fonte desta tag ([workflow](https://github.com/$repoFull/blob/$tag/.github/workflows/release.yml) | [build run]($runUrl)) sobre a base oficial do **IPED 4.3.1** (SHA-256 verificado), acompanhando o **Verificador de Integridade $vVer** ([GUIA_DE_USO.md](https://github.com/$repoFull/blob/$tag/GUIA_DE_USO.md) | [espec.md](https://github.com/$repoFull/blob/$tag/espec.md)).",
+            "- **Auditoria Multiplataforma**: timestamps UTC fixos (``1980-02-01T00:00:00Z``), ordenação lexicográfica (``ReproducibleZipPacker``) e toolchain pinada (``Temurin 21.0.13+9`` + ``OpenJFX 21.0.5`` + ``.NET 10.0.15`` com ``-p:Deterministic=true``), com driver ``sqlite-jdbc-3.41.2.2.jar`` embutido no Verificador (SHA-256 pinado).",
             "",
             "## Corrigido",
-            "- Bloqueio completo de bypasses HTML por aspas/apóstrofos isolados em atributos sem aspas (``F-01`` Fase 4) nas versões de apresentação ``0`` e ``2``, remoção de método morto (``isAllowedPath``, ``field``, ``number``) e proteção contra corrida de symlinks em ``safeRegularFileSize``.",
-            "- Defesa em profundidade Swing com ``putClientProperty(""html.disable"", Boolean.TRUE)`` antes da renderização de texto em ``SearchHitRenderer`` e seletores locais do plugin, evitando interpretação HTML em strings derivadas do índice ou nomes de pastas.",
-            "- Instalador ``instalar_captura_chat_zap.bat`` e ``install-localization.ps1`` corrigidos para caminhos com ``!``, rollback atômico em falhas, neutralização de continuação ``\`` em ``.properties``, atualização de chaves de localização modificadas e eliminação de duplicação de ``json-*.jar``/``opencv-*.jar`` em ``IPED\lib\``.",
+            "- **Re-Extrair em lote (race condition + páginas divididas ``_0``):** reaproveitamento do chat já aberto e carregado no WebView sem reload redundante no ``FileProcessor``, sincronização real por geração de carga (``loadFile`` -> ``Worker.State.SUCCEEDED`` + DOM ``div.linha`` pronto) e identificação estrita de páginas divididas (``..._0`` vs página principal) em ``matchesRecaptureJob``.",
+            "- **Quebra de linha responsiva no Verificador ``$vVer``:** ``Log Cronológico (laudo/Log.txt)`` e ``MODO: ...`` na janela de resultado usam ``wrappedPlainLabel`` (``JTextArea`` somente leitura com quebra por palavra, ``html.disable = true``, cópia com ``Ctrl+C`` e reflow dinâmico no redimensionamento), eliminando truncamento com ``...``.",
             "- Allowlist exclusiva de binários confiáveis em ``VerifierIntegrity.java``, ``instalar_captura_chat_zap.bat`` e ``VerifierIntegrityHashTest.java`` sincronizada com os binários oficiais do Verificador **$vVer** gerados nesta compilação (rejeitando versões anteriores).",
-            "- Plugin **$pVer** recompilado no CI como fat-JAR OpenCV autocontido com ``CHAT_CAPTURE_PLUGIN_VERSION = ""$pVer""`` e ``Implementation-Version: $pVer``.",
             "",
             "## Incluido",
             "- Plugin Chat Captura IPED ``$pVer`` (``$($env:PLUGIN_ASSET_NAME)`` | ``$pBytesFmt`` bytes | SHA-256: ``$($env:PLUGIN_SHA256)``).",
