@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.9.5-beta - Verificador de Integridade 1.6.2
+Pacote Chat Captura IPED 2.9.5 - Verificador de Integridade 1.6.2
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -10,7 +10,13 @@ O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260
 opencv_java4120.dll e o Verificador de Integridade 1.6.2 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão beta (2.9.5-beta / Verificador 1.6.2 — beta):
+Novidades desta versão estável (2.9.5 / Verificador 1.6.2 — main):
+- Verificador 1.6.2 (Botão "?" Sobre / About nas 4 telas principais):
+  * Novo botão compacto "?" no canto superior direito das 4 janelas principais (Início, Resultado, Integridade Público e Auditoria de origem) abrindo a janela Sobre (About) com versão, criador ("iagobusca"), criado desde "2026", licença GPLv3 e link do repositório oficial (https://github.com/iagobusca/chat-captura-IPED) com botões para copiar o link ou abrir no navegador;
+- Plugin 2.9.5:
+  * Promoção estável da 2.9.5-beta para a branch main com allowlist exclusiva sincronizada para os binários oficiais do Verificador 1.6.2.
+
+Novidades anteriores (2.9.5-beta / Verificador 1.6.2 — beta):
 - Verificador 1.6.2 (Botão "?" Sobre / About nas 4 telas principais):
   * Novo botão compacto "?" no canto superior direito das 4 janelas principais (Início, Resultado, Integridade Público e Auditoria de origem) que abre a janela Sobre (About) exibindo versão, criador ("iagobusca"), criado desde "2026", licença GPLv3 e o link do repositório oficial (https://github.com/iagobusca/chat-captura-IPED) com botões para copiar o link ou abrir no navegador;
 - Plugin 2.9.5-beta:
@@ -208,5 +214,5 @@ SHA-256 do Verificador 1.6.2:
 JAR D7AEE56F59A79F2396968B94EDA2C8DBD50219A7FF8C3E1241E360007C96D3C5
 EXE 5430CFCA723B329E5CDA31E40870D83E0CCE397667050B3DFBE1F2606E1880A8
 
-SHA-256 do plugin 2.9.5-beta:
-JAR 6EAFD76EC54837D1A35A0A2BE370378F080B17029F05EC90DD50970DB8A1C172
+SHA-256 do plugin 2.9.5:
+JAR 4EC4C288F42E6867BF0140EAEF6B8E898CB05F855A3E24F662EA79CBB428AC78

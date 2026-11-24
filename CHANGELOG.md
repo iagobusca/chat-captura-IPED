@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.5] - 2026-11-23
+
+### Release Estável (`main`) — Botão `"?"` Sobre (About) no Verificador 1.6.2
+- Promoção estável da `2.9.5-beta` para a branch `main`: botão compacto `"?"` no canto superior direito das 4 telas principais do **Verificador `1.6.2`** abrindo a janela **Sobre** com criador `iagobusca`, criado desde `2026`, licença GPLv3 e link do repositório `https://github.com/iagobusca/chat-captura-IPED` (com botões *Copiar link* e *Abrir no navegador*).
+- Verificador **1.6.2** (`13.066.909` bytes JAR `D7AEE56F...` | `90.593.370` bytes EXE `5430CFCA...`) e Plugin **2.9.5** (`1.684.214` bytes `4EC4C288...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.9.5-verificador-1.6.2.zip` (`120.434.877` bytes `6BBD2F80...`).
+
 ## [2.9.5-beta] - 2026-11-23
 
 ### Botão `"?"` Sobre (About) no Verificador 1.6.2 (Beta / `beta`)

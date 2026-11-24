@@ -7,6 +7,25 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.5 (Estável / `main`) / Verificador 1.6.2
+
+- **Tag**: [v2.9.5](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.5) (Release estável compilada deterministicamente via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.5-verificador-1.6.2.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.5/instalador-chat-captura-IPED-2.9.5-verificador-1.6.2.zip) (`120.434.877` bytes | SHA-256: `6BBD2F805CE9FCA550049DDCF458E34FBB6FD4E0EFAC6998EA6A77EF87610B12`)
+- [integridade-verifier-1.6.2.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.5/integridade-verifier-1.6.2.exe) (`90.593.370` bytes | SHA-256: `5430CFCA723B329E5CDA31E40870D83E0CCE397667050B3DFBE1F2606E1880A8`)
+- [integridade-verifier-1.6.2.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.5/integridade-verifier-1.6.2.jar) (`13.066.909` bytes | SHA-256: `D7AEE56F59A79F2396968B94EDA2C8DBD50219A7FF8C3E1241E360007C96D3C5`)
+- [iped-viewers-impl-4.3.1-2.9.5.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.5/iped-viewers-impl-4.3.1-2.9.5.jar) (`1.684.214` bytes | SHA-256: `4EC4C288F42E6867BF0140EAEF6B8E898CB05F855A3E24F662EA79CBB428AC78`)
+
+### Adicionado
+- **Botão `"?"` Sobre (About) no Verificador `1.6.2`:** botão compacto no canto superior direito das 4 telas principais (*Início*, *Resultado*, *Integridade Público* e *Auditoria de origem*) abrindo o diálogo **Sobre — Verificador de Integridade** com versão, criador (`iagobusca`), criado desde `2026`, licença GPLv3 e link do repositório oficial (`https://github.com/iagobusca/chat-captura-IPED`) com botões **Copiar link** e **Abrir no navegador** (`html.disable = true`).
+
+### Resumo
+- Promoção estável da **`2.9.5-beta`** para a branch **`main`** como **Plugin `2.9.5`** / **Verificador `1.6.2`**, com compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e suíte completa `full-local` aprovada.
+
+---
+
 ## v2.9.5-beta (Beta / `beta`) / Verificador 1.6.2
 
 - **Tag**: [v2.9.5-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.5-beta) (Compilação determinística via `build-reproducible.ps1`)
