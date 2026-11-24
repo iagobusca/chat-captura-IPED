@@ -38,7 +38,10 @@ import org.w3c.dom.NodeList;
 /** Independent, read-only checker for Chat Capture folders (Java 8+). */
 public final class IntegrityVerifier {
     private static final String ALG = "SHA-256";
-    private static final String VERIFIER_VERSION = "1.6.1";
+    private static final String VERIFIER_VERSION = "1.6.2";
+    static final String VERIFIER_CREATOR = "iagobusca";
+    static final String VERIFIER_REPO_URL = "https://github.com/iagobusca/chat-captura-IPED";
+    static final String VERIFIER_CREATED_SINCE = "2026";
     private static final long MAX_SCAN_ENTRIES = 100_000L;
     private static final int MAX_ORIGIN_WALK_FILES = 50_000;
     private static final Pattern CAPTURE_TIMESTAMP_SUFFIX = Pattern.compile("\\A.*-(\\d{8}-\\d{6})\\z", Pattern.DOTALL);
@@ -195,6 +198,92 @@ public final class IntegrityVerifier {
         JLabel label = new JLabel(text);
         label.putClientProperty("html.disable", Boolean.TRUE);
         return label;
+    }
+
+    static JButton createAboutButton(final Component owner) {
+        final JButton btn = new JButton("?");
+        btn.putClientProperty("html.disable", Boolean.TRUE);
+        btn.setToolTipText("Sobre o Verificador de Integridade");
+        btn.setMargin(new java.awt.Insets(1, 7, 1, 7));
+        btn.setFocusable(false);
+        btn.addActionListener(e -> showAboutDialog(owner != null ? owner : SwingUtilities.getWindowAncestor(btn)));
+        return btn;
+    }
+
+    private static JPanel pinTopRight(JComponent comp) {
+        JPanel wrap = new JPanel(new java.awt.BorderLayout());
+        wrap.setOpaque(false);
+        wrap.add(comp, java.awt.BorderLayout.NORTH);
+        return wrap;
+    }
+
+    static JPanel buildAboutDialogPanel(final Component owner) {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+
+        JLabel title = plainLabel("Verificador de Integridade — Chat Captura IPED");
+        title.setFont(title.getFont().deriveFont(java.awt.Font.BOLD, title.getFont().getSize2D() + 1f));
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(title);
+        p.add(Box.createVerticalStrut(6));
+
+        JLabel ver = plainLabel("Versão: " + VERIFIER_VERSION);
+        ver.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(ver);
+
+        JLabel creator = plainLabel("Criador: " + VERIFIER_CREATOR);
+        creator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(creator);
+
+        JLabel since = plainLabel("Criado desde: " + VERIFIER_CREATED_SINCE);
+        since.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(since);
+
+        JLabel license = plainLabel("Licença: GNU General Public License v3.0 (GPLv3)");
+        license.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(license);
+
+        p.add(Box.createVerticalStrut(10));
+        JLabel repoLbl = plainLabel("Repositório oficial:");
+        repoLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(repoLbl);
+        p.add(Box.createVerticalStrut(3));
+
+        JTextField urlField = new JTextField(VERIFIER_REPO_URL, 38);
+        urlField.putClientProperty("html.disable", Boolean.TRUE);
+        urlField.setEditable(false);
+        urlField.setCaretPosition(0);
+        urlField.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(urlField);
+        p.add(Box.createVerticalStrut(6));
+
+        JPanel linkActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0));
+        linkActions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JButton copyLink = new JButton("Copiar link");
+        copyLink.putClientProperty("html.disable", Boolean.TRUE);
+        copyLink.addActionListener(e -> copyToClipboard(owner, VERIFIER_REPO_URL, "Link do repositório copiado."));
+        JButton openLink = new JButton("Abrir no navegador");
+        openLink.putClientProperty("html.disable", Boolean.TRUE);
+        openLink.addActionListener(e -> {
+            try {
+                if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    throw new IOException("Este sistema não disponibilizou a abertura do navegador padrão.");
+                }
+                Desktop.getDesktop().browse(java.net.URI.create(VERIFIER_REPO_URL));
+            } catch (Exception ex) {
+                showTopMessage(owner, "Não foi possível abrir o navegador. Acesse manualmente:\n" + VERIFIER_REPO_URL
+                        + "\n\nDetalhe: " + ex.getMessage(), "Abrir repositório", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        linkActions.add(copyLink);
+        linkActions.add(openLink);
+        p.add(linkActions);
+        return p;
+    }
+
+    private static void showAboutDialog(Component owner) {
+        showTopMessage(owner, buildAboutDialogPanel(owner), "Sobre — Verificador de Integridade", JOptionPane.INFORMATION_MESSAGE);
     }
 
     static JTextArea wrappedPlainLabel(String text, int columns, java.awt.Color foreground) {
@@ -749,11 +838,20 @@ public final class IntegrityVerifier {
         final JFrame[] frameRef=new JFrame[1];
         final LaudoLogAuditResult logAudit = auditLaudoChainedLog(root);
         runOnEdt(()->{
+            final JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Resultado",true);
+            frameRef[0]=frame;
             final JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
             final List<JTextArea> wrappedLabels=new ArrayList<>();
-            JTextArea modeLbl=wrappedPlainLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada.",46,null);
-            wrappedLabels.add(modeLbl);
-            panel.add(modeLbl);
+            final JButton aboutBtn=createAboutButton(frame);
+            final JTextArea modeLbl=wrappedPlainLabel(mode==0?"MODO: INTEGRIDADE LOCAL — arquivos comparados com o registro local.":"MODO: INTEGRIDADE PÚBLICO — referência externa comparada.",42,null);
+            JPanel topHeader=new JPanel(new java.awt.BorderLayout(8,0)){
+                @Override public Dimension getMaximumSize(){return new Dimension(Integer.MAX_VALUE,getPreferredSize().height);}
+            };
+            topHeader.setOpaque(false);
+            topHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
+            topHeader.add(modeLbl,java.awt.BorderLayout.CENTER);
+            topHeader.add(pinTopRight(aboutBtn),java.awt.BorderLayout.EAST);
+            panel.add(topHeader);
             panel.add(Box.createVerticalStrut(4));
             JLabel countLbl=plainLabel("Capturas verificadas: "+selected.size());
             countLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -771,8 +869,6 @@ public final class IntegrityVerifier {
             panel.add(hashRow);
             panel.add(Box.createVerticalStrut(8));
             JPanel gridActions=new JPanel(new java.awt.GridLayout(2,2,6,6));
-            JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" - Resultado",true);
-            frameRef[0]=frame;
             JButton copyHistory=new JButton("Copiar histórico completo");copyHistory.addActionListener(e->copyToClipboard(frame,history,"Histórico completo copiado."));
             JButton copyPublicHistory=new JButton("Copiar histórico completo público");copyPublicHistory.addActionListener(e->copyToClipboard(frame,publicHistory,"Histórico completo público copiado."));
             JButton openHistory=new JButton("Abrir histórico");openHistory.addActionListener(e->openFile(frame,historyFile));
@@ -794,6 +890,8 @@ public final class IntegrityVerifier {
                     int innerW=Math.max(120,panel.getWidth()-ins.left-ins.right);
                     if(innerW==lastInnerWidth)return;
                     lastInnerWidth=innerW;
+                    int modeW=Math.max(120,innerW-aboutBtn.getPreferredSize().width-12);
+                    modeLbl.setSize(modeW,Short.MAX_VALUE);
                     for(JTextArea ta:wrappedLabels){
                         ta.setSize(innerW,Short.MAX_VALUE);
                     }
@@ -818,10 +916,22 @@ public final class IntegrityVerifier {
         final CountDownLatch latch=new CountDownLatch(1);
         final JFrame[] frameRef=new JFrame[1];
         runOnEdt(()->{
-            JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");JButton originAudit=new JButton("Auditoria de origem...");
-            JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));panel.add(plainLabel("Escolha a referência para verificar:"));panel.add(Box.createVerticalStrut(10));panel.add(plainLabel("Local: compara os arquivos com o integridade.json da captura."));panel.add(plainLabel("Público: verifica todas as capturas e compara com hash público ou histórico."));panel.add(plainLabel("Auditoria de origem: valida capturas contra a extração Avilla e caso IPED pai (opcional)."));panel.add(Box.createVerticalStrut(12));JPanel buttons=new JPanel();buttons.add(local);buttons.add(external);buttons.add(originAudit);panel.add(buttons);
-            JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" ("+System.getProperty("os.name")+")",false);
+            final JFrame frame=newWindow("Verificador de Integridade - v"+VERIFIER_VERSION+" ("+System.getProperty("os.name")+")",false);
             frameRef[0]=frame;
+            JButton local=new JButton("Integridade Local");JButton external=new JButton("Integridade Público");JButton originAudit=new JButton("Auditoria de origem...");
+            JPanel panel=new JPanel();panel.setBorder(BorderFactory.createEmptyBorder(8,10,8,10));panel.setLayout(new BoxLayout(panel,BoxLayout.Y_AXIS));
+            JPanel headerRow=new JPanel(new java.awt.BorderLayout(8,0));
+            headerRow.setOpaque(false);
+            headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            headerRow.add(plainLabel("Escolha a referência para verificar:"),java.awt.BorderLayout.CENTER);
+            headerRow.add(pinTopRight(createAboutButton(frame)),java.awt.BorderLayout.EAST);
+            panel.add(headerRow);
+            panel.add(Box.createVerticalStrut(10));
+            JLabel l1=plainLabel("Local: compara os arquivos com o integridade.json da captura.");l1.setAlignmentX(Component.LEFT_ALIGNMENT);panel.add(l1);
+            JLabel l2=plainLabel("Público: verifica todas as capturas e compara com hash público ou histórico.");l2.setAlignmentX(Component.LEFT_ALIGNMENT);panel.add(l2);
+            JLabel l3=plainLabel("Auditoria de origem: valida capturas contra a extração Avilla e caso IPED pai (opcional).");l3.setAlignmentX(Component.LEFT_ALIGNMENT);panel.add(l3);
+            panel.add(Box.createVerticalStrut(12));
+            JPanel buttons=new JPanel();buttons.setAlignmentX(Component.LEFT_ALIGNMENT);buttons.add(local);buttons.add(external);buttons.add(originAudit);panel.add(buttons);
             local.addActionListener(e->{selected[0]=0;frame.dispose();latch.countDown();});
             external.addActionListener(e->{selected[0]=1;frame.dispose();latch.countDown();});
             originAudit.addActionListener(e->{selected[0]=2;frame.dispose();latch.countDown();});
@@ -1285,8 +1395,12 @@ public final class IntegrityVerifier {
             hashInputRow.add(publicHash,java.awt.BorderLayout.CENTER);
             hashInputRow.add(compareHash,java.awt.BorderLayout.EAST);
 
+            JPanel sectionHashHeader=new JPanel(new java.awt.BorderLayout(8,0));
+            sectionHashHeader.setOpaque(false);
+            sectionHashHeader.add(plainLabel("1. Hash SHA-256 público (de historico-capturas.txt):"),java.awt.BorderLayout.CENTER);
+            sectionHashHeader.add(pinTopRight(createAboutButton(frame2)),java.awt.BorderLayout.EAST);
             JPanel sectionHash=new JPanel(new java.awt.BorderLayout(0,6));
-            sectionHash.add(plainLabel("1. Hash SHA-256 público (de historico-capturas.txt):"),java.awt.BorderLayout.NORTH);
+            sectionHash.add(sectionHashHeader,java.awt.BorderLayout.NORTH);
             sectionHash.add(hashInputRow,java.awt.BorderLayout.CENTER);
 
             JPanel recordButtonRow=new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT,8,0));
@@ -4448,9 +4562,10 @@ public final class IntegrityVerifier {
         JLabel trustChainLabel = plainLabel("Cadeia de confiança: confira o SHA-256 deste verificador (EXE/JAR) contra o GitHub / CHECKSUMS.md ANTES de executar (driver SQLite embutido).");
         trustChainLabel.setForeground(new java.awt.Color(90, 50, 0));
         trustChainLabel.setFont(trustChainLabel.getFont().deriveFont(java.awt.Font.BOLD));
-        JPanel trustWrap = new JPanel(new java.awt.BorderLayout());
+        JPanel trustWrap = new JPanel(new java.awt.BorderLayout(8, 0));
         trustWrap.setBorder(BorderFactory.createEmptyBorder(0, 2, 6, 2));
         trustWrap.add(trustChainLabel, java.awt.BorderLayout.CENTER);
+        trustWrap.add(pinTopRight(createAboutButton(win)), java.awt.BorderLayout.EAST);
         JPanel r1 = new JPanel(new java.awt.BorderLayout(6, 4));
         r1.add(plainLabel("Pasta de origem:"), java.awt.BorderLayout.NORTH);
         r1.add(originRow, java.awt.BorderLayout.CENTER);

@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.9.4 - Verificador de Integridade 1.6.1
+Pacote Chat Captura IPED 2.9.5-beta - Verificador de Integridade 1.6.2
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -7,10 +7,16 @@ Instalação:
 4. Reabra o IPED.
 
 O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260719,
-opencv_java4120.dll e o Verificador de Integridade 1.6.1 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
+opencv_java4120.dll e o Verificador de Integridade 1.6.2 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão estável (2.9.4 / Verificador 1.6.1 — main):
+Novidades desta versão beta (2.9.5-beta / Verificador 1.6.2 — beta):
+- Verificador 1.6.2 (Botão "?" Sobre / About nas 4 telas principais):
+  * Novo botão compacto "?" no canto superior direito das 4 janelas principais (Início, Resultado, Integridade Público e Auditoria de origem) que abre a janela Sobre (About) exibindo versão, criador ("iagobusca"), criado desde "2026", licença GPLv3 e o link do repositório oficial (https://github.com/iagobusca/chat-captura-IPED) com botões para copiar o link ou abrir no navegador;
+- Plugin 2.9.5-beta:
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.6.2.
+
+Novidades anteriores (2.9.4 / Verificador 1.6.1 — main):
 - Plugin 2.9.4 (Menu Lateral com Scroll + Correção de Re-Extrair em Lote e Páginas Divididas `_0`):
   * Menu lateral inteiro envolvido em JScrollPane vertical com rolagem suave na rodinha do mouse, "Similaridade blur" e "Blur censura" lado a lado e botões de ação em largura total;
   * Reaproveitamento do chat já carregado no WebView + sincronização real por geração de carga (`loadFile` -> `Worker.State.SUCCEEDED` + DOM `div.linha` pronto), eliminando falsas falhas por race condition em capturas consecutivas do mesmo chat;
@@ -198,9 +204,9 @@ a pasta integridade/ e o arquivo integridade.html da raiz são removidos, deixan
 limpa como nova, sem criar pastas de backup. Execute o Verificador para gerar um retrato novo quando desejar.
 Capturas html-message-v1 não aparecem mais como anotações legadas no índice.
 
-SHA-256 do Verificador 1.6.1:
-JAR D1DD34970DB68DA0442106CCF40E887B60A6FABCC7E2BDAEE92E9F87E938EFC9
-EXE B0ED015292457F5F3389755786EFCFE7961A77E18A3356C2CA6B0AFE7CFEC59B
+SHA-256 do Verificador 1.6.2:
+JAR D7AEE56F59A79F2396968B94EDA2C8DBD50219A7FF8C3E1241E360007C96D3C5
+EXE 5430CFCA723B329E5CDA31E40870D83E0CCE397667050B3DFBE1F2606E1880A8
 
-SHA-256 do plugin 2.9.4:
-JAR F3554FC0FA0160E1D26697119946F37807BEAE2EBEBA78D1BC9DBE6BC7A31CDD
+SHA-256 do plugin 2.9.5-beta:
+JAR 6EAFD76EC54837D1A35A0A2BE370378F080B17029F05EC90DD50970DB8A1C172

@@ -4,6 +4,11 @@ Mudanças relevantes do Verificador de Integridade.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [1.6.2] - 2026-11-23
+
+### Botão `"?"` Sobre (About) nas 4 Telas Principais (v2.9.5-beta)
+- Adiciona botão compacto `"?"` no canto superior direito das 4 janelas principais (*Início*, *Resultado*, *Integridade Público* e *Auditoria de origem*) que abre o diálogo **Sobre — Verificador de Integridade** contendo versão, criador `iagobusca`, criado desde `2026`, licença GPLv3 e link do repositório oficial (`https://github.com/iagobusca/chat-captura-IPED`) com ações de copiar link e abrir no navegador (`html.disable = true`). (`build-reproducible.ps1`; JAR `D7AEE56F...` / EXE `5430CFCA...`).
+
 ## [1.6.1] - 2026-11-23
 
 ### Quebra de Linha Responsiva na Janela de Resultado (v2.9.4-beta)

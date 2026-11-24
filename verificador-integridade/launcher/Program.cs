@@ -1,4 +1,4 @@
-// Versão 1.6.1 — beta: quebra de linha responsiva no resumo (Log Cronológico / MODO) + build determinístico (.NET 10.0.15).
+// Versão 1.6.2 — beta: botão "?" Sobre (About) no canto superior direito das janelas principais + build determinístico (.NET 10.0.15).
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;

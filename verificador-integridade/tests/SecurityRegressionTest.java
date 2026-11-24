@@ -60,6 +60,7 @@ public final class SecurityRegressionTest {
             buildPinSqliteJdbcHash();
             laudoFolderIgnoredAndOriginReportPdfCopyValidated(root);
             wrappedPlainLabelWrapsAndDisablesHtml();
+            aboutDialogContainsCreatorRepoUrlAndSince2026();
             System.out.println("SecurityRegressionTest: PASS");
         } finally {
             deleteTree(root);
@@ -2551,6 +2552,52 @@ public final class SecurityRegressionTest {
                 }
             }
         });
+    }
+
+    private static void aboutDialogContainsCreatorRepoUrlAndSince2026() throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(new Runnable() {
+            @Override
+            public void run() {
+                javax.swing.JButton btn = IntegrityVerifier.createAboutButton(null);
+                if (!"?".equals(btn.getText()) || !Boolean.TRUE.equals(btn.getClientProperty("html.disable"))) {
+                    throw new AssertionError("About button must display '?' with html.disable=true");
+                }
+                javax.swing.JPanel panel = IntegrityVerifier.buildAboutDialogPanel(null);
+                StringBuilder allText = new StringBuilder();
+                collectSwingText(panel, allText);
+                String text = allText.toString();
+                if (!text.contains("iagobusca")) {
+                    throw new AssertionError("About dialog must mention creator 'iagobusca': " + text);
+                }
+                if (!text.contains("https://github.com/iagobusca/chat-captura-IPED")) {
+                    throw new AssertionError("About dialog must contain official GitHub repo URL: " + text);
+                }
+                if (!text.contains("2026")) {
+                    throw new AssertionError("About dialog must mention created since 2026: " + text);
+                }
+            }
+        });
+    }
+
+    private static void collectSwingText(java.awt.Component comp, StringBuilder out) {
+        if (comp instanceof javax.swing.JLabel) {
+            if (!Boolean.TRUE.equals(((javax.swing.JLabel) comp).getClientProperty("html.disable"))) {
+                throw new AssertionError("About JLabel missing html.disable=true");
+            }
+            out.append(((javax.swing.JLabel) comp).getText()).append('\n');
+        } else if (comp instanceof javax.swing.text.JTextComponent) {
+            if (!Boolean.TRUE.equals(((javax.swing.text.JTextComponent) comp).getClientProperty("html.disable"))) {
+                throw new AssertionError("About JTextComponent missing html.disable=true");
+            }
+            out.append(((javax.swing.text.JTextComponent) comp).getText()).append('\n');
+        } else if (comp instanceof javax.swing.JButton) {
+            out.append(((javax.swing.JButton) comp).getText()).append('\n');
+        }
+        if (comp instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) comp).getComponents()) {
+                collectSwingText(child, out);
+            }
+        }
     }
 
     private static String sha256BytesHex(byte[] bytes) throws Exception {

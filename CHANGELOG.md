@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.5-beta] - 2026-11-23
+
+### Botão `"?"` Sobre (About) no Verificador 1.6.2 (Beta / `beta`)
+- **Verificador `1.6.2` (`IntegrityVerifier.createAboutButton` / `buildAboutDialogPanel`):** adiciona botão compacto `"?"` no canto superior direito das 4 telas principais (Início, Resultado, Integridade Público e Auditoria de origem) abrindo janela **Sobre** com criador `iagobusca`, criado desde `2026`, licença GPLv3 e link do repositório `https://github.com/iagobusca/chat-captura-IPED` (com botões *Copiar link* e *Abrir no navegador*, mantendo `html.disable = true`).
+- **Plugin `2.9.5-beta`:** allowlist exclusiva (`VerifierIntegrity`) e instalador sincronizados para os binários oficiais do Verificador **1.6.2** (`13.066.909` bytes JAR `D7AEE56F...` | `90.593.370` bytes EXE `5430CFCA...`); Plugin **2.9.5-beta** (`1.684.252` bytes `6EAFD76E...`) e instalador `instalador-chat-captura-IPED-2.9.5-beta-verificador-1.6.2.zip` (`120.434.850` bytes `264DDF82...`) compilados via `build-reproducible.ps1`.
+
 ## [2.9.4] - 2026-11-23
 
 ### Release Estável (`main`) — Menu Lateral com Scroll, Re-Extrair em Lote Estável e Verificador 1.6.1 com Quebra de Linha Responsiva
