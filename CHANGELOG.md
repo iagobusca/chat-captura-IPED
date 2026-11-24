@@ -6,6 +6,12 @@ Mudanças relevantes do plugin.
 
 ## [Não Lançado] - Em desenvolvimento
 
+## [2.9.4] - 2026-11-23
+
+### Release Estável (`main`) — Menu Lateral com Scroll, Re-Extrair em Lote Estável e Verificador 1.6.1 com Quebra de Linha Responsiva
+- Promoção estável da série `2.9.1-beta`..`2.9.4-beta` para a branch `main`: menu lateral rolável (`ChatCapturePanel`), reaproveitamento de chat carregado + sincronização real por geração no `WebEngine` + identificação estrita de páginas divididas (`_0`) no **Re-Extrair** (`HtmlLinkViewer`), e quebra de linha responsiva nos textos `"Log Cronológico (laudo/Log.txt)"` e `"MODO: ..."` do **Verificador `1.6.1`** (`IntegrityVerifier.wrappedPlainLabel`).
+- Verificador **1.6.1** (`13.064.528` bytes JAR `D1DD3497...` | `90.590.810` bytes EXE `B0ED0152...`) e Plugin **2.9.4** (`1.684.209` bytes `F3554FC0...`) compilados via `build-reproducible.ps1`; instalador `instalador-chat-captura-IPED-2.9.4-verificador-1.6.1.zip` (`120.429.334` bytes `B4A30FD9...`).
+
 ## [2.9.4-beta] - 2026-11-23
 
 ### Quebra de Linha Responsiva no Verificador 1.6.1 (Beta / `beta`)

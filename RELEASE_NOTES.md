@@ -7,6 +7,29 @@ Para hashes detalhados e versões anteriores, consulte [CHECKSUMS.md](CHECKSUMS.
 
 ---
 
+## v2.9.4 (Estável / `main`) / Verificador 1.6.1
+
+- **Tag**: [v2.9.4](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.4) (Release estável compilada deterministicamente via `build-reproducible.ps1`)
+- **Branch base**: `main`
+
+### Downloads
+- [instalador-chat-captura-IPED-2.9.4-verificador-1.6.1.zip](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.4/instalador-chat-captura-IPED-2.9.4-verificador-1.6.1.zip) (`120.429.334` bytes | SHA-256: `B4A30FD9CEFBD9997D7927E738D932202A502F9806E1D0350F81B8A42332E9D9`)
+- [integridade-verifier-1.6.1.exe](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.4/integridade-verifier-1.6.1.exe) (`90.590.810` bytes | SHA-256: `B0ED015292457F5F3389755786EFCFE7961A77E18A3356C2CA6B0AFE7CFEC59B`)
+- [integridade-verifier-1.6.1.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.4/integridade-verifier-1.6.1.jar) (`13.064.528` bytes | SHA-256: `D1DD34970DB68DA0442106CCF40E887B60A6FABCC7E2BDAEE92E9F87E938EFC9`)
+- [iped-viewers-impl-4.3.1-2.9.4.jar](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/download/v2.9.4/iped-viewers-impl-4.3.1-2.9.4.jar) (`1.684.209` bytes | SHA-256: `F3554FC0FA0160E1D26697119946F37807BEAE2EBEBA78D1BC9DBE6BC7A31CDD`)
+
+### Adicionado
+- **Scroll vertical completo no menu lateral (`ChatCapturePanel`):** todo o menu lateral (pasta destino, nome custom, pasta imagens blur, origem Avilla, caso IPED pai, anotações, contadores, busca e botões `Start` / `Re-Extrair` / `Anotar chat salvo...` / `Salvar Trecho-Notas` / `Dados do Laudo...`) agora conta com `JScrollPane` vertical sem barra horizontal e rolagem suave pela rodinha do mouse, além de `Similaridade blur` e `Blur censura` lado a lado e botões de ação em largura total.
+
+### Corrigido
+- **Re-Extrair em lote (race condition + páginas divididas `_0`):** `HtmlLinkViewer` agora reaproveita o chat já aberto e pronto no WebView (evitando reloads redundantes no `FileProcessor`), sincroniza trocas de conversa por geração de carga (`loadFile` → `Worker.State.SUCCEEDED` + DOM `div.linha` pronto) e impede falsos positivos entre páginas divididas do mesmo chat (`...5511985514199` vs `...5511985514199_0`).
+- **Quebra de linha responsiva no Verificador `1.6.1`:** `"Log Cronológico (laudo/Log.txt): ..."` e `"MODO: ..."` na janela de resultado usam `wrappedPlainLabel` (`JTextArea` somente leitura com quebra por palavra, `html.disable = true`, seleção/cópia com Ctrl+C e reflow dinâmico ao redimensionar a janela), eliminando truncamento com `"..."`.
+
+### Resumo
+- Promoção estável da série `2.9.1-beta`..`2.9.4-beta` para a branch **`main`** como **Plugin `2.9.4`** / **Verificador `1.6.1`**, com compilação determinística dupla verificada (`REPRODUCIBLE_BUILD_VERIFIED=PASS`) e suíte completa `full-local` aprovada.
+
+---
+
 ## v2.9.4-beta (Beta / `beta`) / Verificador 1.6.1
 
 - **Tag**: [v2.9.4-beta](http://127.0.0.1:3000/meuprojeto/chat-captura-IPED/releases/tag/v2.9.4-beta) (Compilação determinística via `build-reproducible.ps1`)

@@ -1,4 +1,4 @@
-Pacote Chat Captura IPED 2.9.4-beta - Verificador de Integridade 1.6.1
+Pacote Chat Captura IPED 2.9.4 - Verificador de Integridade 1.6.1
 
 Instalação:
 1. Confira antes o SHA-256 do arquivo ZIP baixado com CHECKSUMS.md obtido por canal confiável (o hash embutido no .bat protege apenas contra corrupção ou troca parcial, não contra adulteração completa do ZIP).
@@ -10,7 +10,16 @@ O pacote inclui o fat-JAR do plugin (com org/opencv/** embutido), org.json 20260
 opencv_java4120.dll e o Verificador de Integridade 1.6.1 em JAR e EXE (dentro de instalar_captura_chat_zap\, copiados pelo instalador para <IPED>\verificador-integridade\ com conferência de SHA-256).
 O JAR do verificador funciona com Java 8 ou superior. O EXE Windows x64 é autocontido.
 
-Novidades desta versão beta (2.9.4-beta / Verificador 1.6.1 — beta):
+Novidades desta versão estável (2.9.4 / Verificador 1.6.1 — main):
+- Plugin 2.9.4 (Menu Lateral com Scroll + Correção de Re-Extrair em Lote e Páginas Divididas `_0`):
+  * Menu lateral inteiro envolvido em JScrollPane vertical com rolagem suave na rodinha do mouse, "Similaridade blur" e "Blur censura" lado a lado e botões de ação em largura total;
+  * Reaproveitamento do chat já carregado no WebView + sincronização real por geração de carga (`loadFile` -> `Worker.State.SUCCEEDED` + DOM `div.linha` pronto), eliminando falsas falhas por race condition em capturas consecutivas do mesmo chat;
+  * Identificação estrita de páginas divididas (`_0`, `_1`, ...) em `matchesRecaptureJob` quando há metadados explícitos do item, impedindo reaproveitar a página errada do mesmo chat;
+  * Allowlist exclusiva sincronizada com os binários oficiais do Verificador 1.6.1.
+- Verificador 1.6.1 (Quebra de Linha Responsiva no Resumo):
+  * Substitui os rótulos de linha única "Log Cronológico (laudo/Log.txt): ..." e "MODO: ..." na tela de resultado por texto somente leitura com quebra automática por palavra (`html.disable = true`, cópia com Ctrl+C e reflow dinâmico ao redimensionar a janela).
+
+Novidades anteriores (2.9.4-beta / Verificador 1.6.1 — beta):
 - Verificador 1.6.1 (Quebra de Linha Responsiva no Resumo):
   * Substitui os rótulos de linha única "Log Cronológico (laudo/Log.txt): ..." e "MODO: ..." na janela de resultado por texto somente leitura com quebra automática de linha por palavra (`wrappedPlainLabel`, mantendo `html.disable = true` e seleção/cópia com Ctrl+C), evitando o corte com "..." em janelas menores e acompanhando o redimensionamento da janela;
 - Plugin 2.9.4-beta:
@@ -193,5 +202,5 @@ SHA-256 do Verificador 1.6.1:
 JAR D1DD34970DB68DA0442106CCF40E887B60A6FABCC7E2BDAEE92E9F87E938EFC9
 EXE B0ED015292457F5F3389755786EFCFE7961A77E18A3356C2CA6B0AFE7CFEC59B
 
-SHA-256 do plugin 2.9.4-beta:
-JAR B36A4D283120DA7D9D4D2ADF43B17E5CC57F4823F69516B06B30DB4295F527A9
+SHA-256 do plugin 2.9.4:
+JAR F3554FC0FA0160E1D26697119946F37807BEAE2EBEBA78D1BC9DBE6BC7A31CDD

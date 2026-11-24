@@ -2,7 +2,7 @@
 
 Plugin/customização em Java para o **IPED 4.3.1** que captura intervalos de mensagens de chats no viewer HTML, gerando pacote offline auditável (`html-message-v1`) acompanhado pelo **Verificador de Integridade** criptográfico independente (JAR Java 8+ e executável Windows x64 autocontido).
 
-- **Versão atual do plugin:** `2.9.4-beta` (branch `beta`)
+- **Versão atual do plugin:** `2.9.4` (estável / `main`)
 - **Verificador de Integridade:** `1.6.1`
 - **Compatibilidade alvo:** IPED `4.3.1` oficial (Java 11+) | Launcher EXE com runtime `.NET 10.0.15`
 - **Build reproduzível auditável (Windows / Linux / macOS):** [`build-reproducible.ps1`](build-reproducible.ps1)
